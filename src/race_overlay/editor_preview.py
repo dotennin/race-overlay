@@ -106,10 +106,18 @@ def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, o
         expected_widget = expected_widgets_by_id.get(widget_id)
         if expected_widget is None or set(widget_payload) != set(expected_widget):
             raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+        expected_style_keys = set(expected_widget["style"])
+        payload_style = widget_payload.get("style")
         if (
             not isinstance(widget_payload.get("bindings"), dict)
             or set(widget_payload["bindings"]) != set(expected_widget["bindings"])
-            or not isinstance(widget_payload.get("style"), dict)
-            or set(widget_payload["style"]) != set(expected_widget["style"])
+            or not isinstance(payload_style, dict)
+            or (
+                set(payload_style) != expected_style_keys
+                and not (
+                    "label" not in expected_style_keys
+                    and set(payload_style) == expected_style_keys | {"label"}
+                )
+            )
         ):
             raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")

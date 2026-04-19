@@ -13,7 +13,7 @@ from race_overlay.config import ProjectConfig, load_config, save_config
 from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
 from race_overlay.hud_presets import broadcast_runner_preset
-from race_overlay.hud_schema import serialize_hud_config
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
 
 
 def test_build_editor_state_exposes_widgets_for_preview() -> None:
@@ -44,6 +44,40 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     hero_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "hero-pace")
     assert hero_widget.x == 48
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
+
+
+def test_save_editor_payload_allows_missing_widget_label(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=HudConfig(
+                preset="route-only",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=176,
+                        height=128,
+                    )
+                ],
+            ),
+        ),
+    )
+
+    payload = serialize_hud_config(load_config(config_path).hud)
+    payload["widgets"][0]["style"]["label"] = ""
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    assert reloaded.hud.widgets[0].style == {"label": ""}
 
 
 def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Path) -> None:
