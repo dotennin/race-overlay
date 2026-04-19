@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 
 
@@ -18,6 +20,7 @@ def broadcast_runner_preset() -> HudConfig:
 
 
 def apply_legacy_field_visibility(config: HudConfig, fields: dict[str, bool]) -> HudConfig:
+    updated = deepcopy(config)
     visibility_map = {
         "route-map": fields.get("mini_map", True),
         "hero-pace": fields.get("pace", True),
@@ -27,7 +30,7 @@ def apply_legacy_field_visibility(config: HudConfig, fields: dict[str, bool]) ->
         "metric-elapsed": fields.get("elapsed", True),
         "metric-speed": fields.get("speed", True),
     }
-    for widget in config.widgets:
+    for widget in updated.widgets:
         if widget.id in visibility_map:
             widget.visible = visibility_map[widget.id]
-    return config
+    return updated

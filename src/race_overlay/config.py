@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -63,8 +63,18 @@ def load_config(path: Path) -> ProjectConfig:
 
 
 def save_config(path: Path, config: ProjectConfig) -> None:
-    payload = asdict(config)
-    payload["hud"] = serialize_hud_config(config.hud)
+    payload = {
+        "activity_file": config.activity_file,
+        "video_globs": list(config.video_globs),
+        "output_dir": config.output_dir,
+        "cache_dir": config.cache_dir,
+        "timeline": {
+            "global_offset_seconds": config.timeline.global_offset_seconds,
+            "outside_activity": config.timeline.outside_activity,
+        },
+        "hud": serialize_hud_config(config.hud),
+        "overrides": {filename: dict(values) for filename, values in config.overrides.items()},
+    }
     path.write_text(yaml.safe_dump(payload, sort_keys=False))
 
 

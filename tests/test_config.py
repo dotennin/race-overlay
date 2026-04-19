@@ -1,10 +1,11 @@
 from pathlib import Path
+import copy
 
 import yaml
 from typer.testing import CliRunner
 
 from race_overlay.cli import app
-from race_overlay.config import load_config, write_default_config
+from race_overlay.config import ProjectConfig, load_config, save_config, write_default_config
 
 
 def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -82,3 +83,18 @@ def test_resolve_override_prefers_per_video_values() -> None:
     override = resolve_override(config, "DJI_20260419090559_0002_D.MP4")
     assert override.offset_seconds == 1.5
     assert override.outside_activity == "skip"
+
+
+def test_save_config_uses_hud_serializer_boundary(tmp_path: Path, monkeypatch) -> None:
+    def boom(*args, **kwargs):
+        raise AssertionError("deepcopy should not be used for config serialization")
+
+    monkeypatch.setattr(copy, "deepcopy", boom)
+
+    path = tmp_path / "overlay.yaml"
+    config = ProjectConfig(activity_file="activity_22577902433.tcx")
+
+    save_config(path, config)
+
+    payload = yaml.safe_load(path.read_text())
+    assert payload["hud"]["preset"] == "broadcast-runner"
