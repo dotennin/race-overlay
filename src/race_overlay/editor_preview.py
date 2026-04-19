@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from threading import Lock
 
 import yaml
 
@@ -8,6 +9,8 @@ from race_overlay.config import ProjectConfig, _load_hud_config, load_config, sa
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import HudSample
+
+_EDITOR_SAVE_LOCK = Lock()
 
 
 def _sample_hud_value() -> HudSample:
@@ -50,10 +53,11 @@ def load_editor_config(config_path: Path) -> ProjectConfig:
 
 
 def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
-    config = load_editor_config(config_path)
-    _validate_complete_hud_payload(config.hud, payload)
-    config.hud = _load_hud_config(payload, require_complete=True)
-    save_config(config_path, config)
+    with _EDITOR_SAVE_LOCK:
+        config = load_editor_config(config_path)
+        _validate_complete_hud_payload(config.hud, payload)
+        config.hud = _load_hud_config(payload, require_complete=True)
+        save_config(config_path, config)
 
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:

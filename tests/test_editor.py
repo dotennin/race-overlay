@@ -4,13 +4,14 @@ import subprocess
 from contextlib import contextmanager
 from http.client import HTTPConnection
 from pathlib import Path
+from threading import Event, Thread
 from urllib.parse import urlparse
 
 import pytest
 import yaml
 
 from race_overlay.config import ProjectConfig, load_config, save_config
-from race_overlay.editor_preview import build_editor_state, save_editor_payload
+from race_overlay.editor_preview import build_editor_state, load_editor_config, save_editor_payload
 from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
@@ -78,6 +79,55 @@ def test_save_editor_payload_allows_missing_widget_label(tmp_path: Path) -> None
 
     reloaded = load_config(config_path)
     assert reloaded.hud.widgets[0].style == {"label": ""}
+
+
+def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurrently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    original_load_editor_config = load_editor_config
+    first_load_entered = Event()
+    release_first_load = Event()
+    second_load_entered = Event()
+    call_count = 0
+
+    def blocking_load_editor_config(path: Path) -> ProjectConfig:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            first_load_entered.set()
+            release_first_load.wait(timeout=1)
+        else:
+            second_load_entered.set()
+        return original_load_editor_config(path)
+
+    monkeypatch.setattr("race_overlay.editor_preview.load_editor_config", blocking_load_editor_config)
+
+    payload_one = serialize_hud_config(broadcast_runner_preset())
+    payload_one["theme"]["note_text"] = "first"
+    payload_two = serialize_hud_config(broadcast_runner_preset())
+    payload_two["theme"]["note_text"] = "second"
+
+    errors: list[BaseException] = []
+
+    def save_payload(payload: dict[str, object]) -> None:
+        try:
+            save_editor_payload(config_path, payload)
+        except BaseException as exc:  # pragma: no cover - captured for assertion
+            errors.append(exc)
+
+    first_thread = Thread(target=save_payload, args=(payload_one,))
+    second_thread = Thread(target=save_payload, args=(payload_two,))
+    first_thread.start()
+    assert first_load_entered.wait(timeout=1)
+    second_thread.start()
+
+    assert not second_load_entered.wait(timeout=0.1)
+    release_first_load.set()
+    first_thread.join(timeout=1)
+    second_thread.join(timeout=1)
+
+    assert errors == []
 
 
 def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Path) -> None:
