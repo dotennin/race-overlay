@@ -1,6 +1,8 @@
 import json
 import socket
 import subprocess
+import sys
+import time
 from contextlib import contextmanager
 from http.client import HTTPConnection
 from pathlib import Path
@@ -191,6 +193,81 @@ def test_save_editor_payload_rejects_stale_hud_revision(tmp_path: Path) -> None:
         save_editor_payload(config_path, payload)
 
     assert load_config(config_path).hud.theme.note_text == "newer edit"
+
+
+def test_save_editor_payload_rejects_external_concurrent_save_from_another_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    state = build_editor_state(load_config(config_path), width=1280, height=720)
+    payload_one = json.loads(json.dumps(state["hud"]))
+    payload_one["revision"] = state["revision"]
+    payload_one["theme"]["note_text"] = "first"
+    payload_two = json.loads(json.dumps(state["hud"]))
+    payload_two["revision"] = state["revision"]
+    payload_two["theme"]["note_text"] = "second"
+
+    original_save_config = save_editor_payload.__globals__["save_config"]
+    first_save_entered = Event()
+    release_first_save = Event()
+    errors: list[BaseException] = []
+
+    def blocking_save_config(path: Path, config: ProjectConfig) -> None:
+        first_save_entered.set()
+        assert release_first_save.wait(timeout=5)
+        original_save_config(path, config)
+
+    monkeypatch.setattr("race_overlay.editor_preview.save_config", blocking_save_config)
+
+    def save_first_payload() -> None:
+        try:
+            save_editor_payload(config_path, payload_one)
+        except BaseException as exc:  # pragma: no cover - captured for assertion
+            errors.append(exc)
+
+    first_thread = Thread(target=save_first_payload)
+    first_thread.start()
+    assert first_save_entered.wait(timeout=1)
+
+    payload_path = tmp_path / "payload-two.json"
+    payload_path.write_text(json.dumps(payload_two))
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json, sys\n"
+                "from pathlib import Path\n"
+                "from race_overlay.editor_preview import save_editor_payload\n"
+                "config_path = Path(sys.argv[1])\n"
+                "payload = json.loads(Path(sys.argv[2]).read_text())\n"
+                "save_editor_payload(config_path, payload)\n"
+            ),
+            str(config_path),
+            str(payload_path),
+        ],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    time.sleep(0.2)
+    assert process.poll() is None
+
+    release_first_save.set()
+    stdout, stderr = process.communicate(timeout=5)
+    first_thread.join(timeout=5)
+
+    assert not errors
+    assert process.returncode != 0
+    assert "stale HUD save rejected" in stderr
+    assert stdout == ""
+    assert load_config(config_path).hud.theme.note_text == "first"
 
 
 def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Path) -> None:

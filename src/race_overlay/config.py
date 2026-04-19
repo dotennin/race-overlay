@@ -1,6 +1,8 @@
-from contextlib import suppress
+import fcntl
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import RLock, local
 from uuid import uuid4
 
 import yaml
@@ -8,6 +10,10 @@ import yaml
 from race_overlay.hud import validate_hud_config
 from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, deserialize_hud_config, serialize_hud_config
+
+
+_CONFIG_SAVE_LOCK = RLock()
+_CONFIG_SAVE_STATE = local()
 
 
 @dataclass(slots=True)
@@ -62,20 +68,40 @@ def load_config(path: Path) -> ProjectConfig:
 
 
 def save_config(path: Path, config: ProjectConfig) -> None:
+    with _locked_config_save(path):
+        _save_config_unlocked(path, config)
+
+
+@contextmanager
+def _locked_config_save(path: Path):
+    current_path = getattr(_CONFIG_SAVE_STATE, "path", None)
+    depth = getattr(_CONFIG_SAVE_STATE, "depth", 0)
+    if depth and current_path == path:
+        _CONFIG_SAVE_STATE.depth = depth + 1
+        try:
+            yield
+        finally:
+            _CONFIG_SAVE_STATE.depth -= 1
+        return
+
+    lock_path = path.with_name(f".{path.name}.lock")
+    with _CONFIG_SAVE_LOCK:
+        lock_path.touch(exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            _CONFIG_SAVE_STATE.path = path
+            _CONFIG_SAVE_STATE.depth = 1
+            try:
+                yield
+            finally:
+                _CONFIG_SAVE_STATE.depth = 0
+                _CONFIG_SAVE_STATE.path = None
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _save_config_unlocked(path: Path, config: ProjectConfig) -> None:
     validate_hud_config(config.hud)
-    payload = {
-        "activity_file": config.activity_file,
-        "video_globs": list(config.video_globs),
-        "output_dir": config.output_dir,
-        "cache_dir": config.cache_dir,
-        "timeline": {
-            "global_offset_seconds": config.timeline.global_offset_seconds,
-            "outside_activity": config.timeline.outside_activity,
-        },
-        "hud": serialize_hud_config(config.hud),
-        "overrides": {filename: dict(values) for filename, values in config.overrides.items()},
-    }
-    _write_text_atomic(path, yaml.safe_dump(payload, sort_keys=False))
+    _write_text_atomic(path, yaml.safe_dump(_serialize_config(config), sort_keys=False))
 
 
 def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:
@@ -95,3 +121,18 @@ def _write_text_atomic(path: Path, contents: str) -> None:
         with suppress(FileNotFoundError):
             temp_path.unlink()
         raise
+
+
+def _serialize_config(config: ProjectConfig) -> dict[str, object]:
+    return {
+        "activity_file": config.activity_file,
+        "video_globs": list(config.video_globs),
+        "output_dir": config.output_dir,
+        "cache_dir": config.cache_dir,
+        "timeline": {
+            "global_offset_seconds": config.timeline.global_offset_seconds,
+            "outside_activity": config.timeline.outside_activity,
+        },
+        "hud": serialize_hud_config(config.hud),
+        "overrides": {filename: dict(values) for filename, values in config.overrides.items()},
+    }

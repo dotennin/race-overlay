@@ -7,7 +7,7 @@ from threading import Lock
 
 import yaml
 
-from race_overlay.config import ProjectConfig, _load_hud_config, load_config, save_config
+from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_save, load_config, save_config
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import HudSample
@@ -68,11 +68,12 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
     expected_revision = _editor_payload_revision(payload)
 
     with _EDITOR_SAVE_LOCK:
-        latest_config = load_editor_config(config_path)
-        if _hud_revision(latest_config.hud) != expected_revision:
-            raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
-        latest_config.hud = updated_hud
-        save_config(config_path, latest_config)
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            if _hud_revision(latest_config.hud) != expected_revision:
+                raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
+            latest_config.hud = updated_hud
+            save_config(config_path, latest_config)
 
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
