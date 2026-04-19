@@ -1,0 +1,15 @@
+.worktrees/
+.superpowers/
+cache/
+rendered/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+*.MP4
+*.mov
+*.FIT
+*.fit
+*.TCX
+*.tcx
