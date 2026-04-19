@@ -92,7 +92,7 @@ def _render_widget(
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m, theme, frame_width, frame_height)
     elif widget.type == "route_map":
-        _draw_route_map(draw, widget, route_points, theme, frame_width, frame_height)
+        _draw_route_map(draw, widget, route_points, hud_value, theme, frame_width, frame_height)
     elif widget.type == "hero_metric":
         _draw_hero_metric(draw, widget, hud_value.pace_seconds_per_km, theme, frame_width, frame_height)
     elif widget.type == "metric_card":
@@ -173,6 +173,7 @@ def _draw_route_map(
     draw: ImageDraw.ImageDraw,
     widget: HudWidgetConfig,
     route_points: list[tuple[float, float]],
+    hud_value: HudSample,
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
@@ -196,7 +197,7 @@ def _draw_route_map(
 
     projected = [project(point) for point in route_points]
     draw.line(projected, fill=tuple(theme.accent_rgba), width=4)
-    x, y = projected[-1]
+    x, y = project(_resolve_current_route_point(route_points, hud_value))
     draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
 
 
@@ -286,7 +287,7 @@ def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds
         minutes, seconds = divmod(remainder, 60)
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     if binding == "speed_mps":
-        return f"{(hud_value.speed_mps or 0.0) * 3.6:.1f}"
+        return "--" if hud_value.speed_mps is None else f"{hud_value.speed_mps * 3.6:.1f}"
     raise AssertionError(f"unreachable metric binding '{binding}'")
 
 
@@ -309,3 +310,49 @@ def _format_pace(pace_seconds_per_km: float | None) -> str:
     total_seconds = max(int(round(pace_seconds_per_km)), 0)
     minutes, seconds = divmod(total_seconds, 60)
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def _resolve_current_route_point(route_points: list[tuple[float, float]], hud_value: HudSample) -> tuple[float, float]:
+    if hud_value.latitude is None or hud_value.longitude is None:
+        return route_points[-1]
+
+    current = (hud_value.latitude, hud_value.longitude)
+    closest_point = route_points[-1]
+    closest_distance_sq = float("inf")
+
+    for segment_start, segment_end in zip(route_points, route_points[1:]):
+        candidate = _project_point_onto_segment(current, segment_start, segment_end)
+        distance_sq = _distance_squared(current, candidate)
+        if distance_sq < closest_distance_sq:
+            closest_point = candidate
+            closest_distance_sq = distance_sq
+
+    return closest_point
+
+
+def _project_point_onto_segment(
+    point: tuple[float, float],
+    segment_start: tuple[float, float],
+    segment_end: tuple[float, float],
+) -> tuple[float, float]:
+    start_lat, start_lon = segment_start
+    end_lat, end_lon = segment_end
+    delta_lat = end_lat - start_lat
+    delta_lon = end_lon - start_lon
+    segment_length_sq = (delta_lat * delta_lat) + (delta_lon * delta_lon)
+    if segment_length_sq <= 0.0:
+        return segment_start
+
+    point_lat, point_lon = point
+    projection = (
+        ((point_lat - start_lat) * delta_lat) + ((point_lon - start_lon) * delta_lon)
+    ) / segment_length_sq
+    clamped_projection = min(max(projection, 0.0), 1.0)
+    return (
+        start_lat + (delta_lat * clamped_projection),
+        start_lon + (delta_lon * clamped_projection),
+    )
+
+
+def _distance_squared(left: tuple[float, float], right: tuple[float, float]) -> float:
+    return ((left[0] - right[0]) ** 2) + ((left[1] - right[1]) ** 2)

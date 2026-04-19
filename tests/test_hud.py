@@ -6,7 +6,7 @@ import time
 from PIL import Image
 import pytest
 
-from race_overlay.hud import HudLayout, render_hud_frame
+from race_overlay.hud import HudLayout, _metric_value, render_hud_frame
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
@@ -365,3 +365,87 @@ def test_render_hud_frame_context_card_uses_sample_timezone(monkeypatch) -> None
         time.tzset()
 
     assert list(utc_image.getdata()) == list(la_image.getdata())
+
+
+def test_render_hud_frame_route_map_marker_tracks_current_sample_position() -> None:
+    hud_config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=120,
+                height=120,
+            )
+        ],
+    )
+    route_points = [(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)]
+    first_position = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.0,
+        longitude=139.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    later_position = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.5,
+        longitude=139.5,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    first_image = render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=first_position,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+    later_image = render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=later_position,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    assert list(first_image.getdata()) != list(later_image.getdata())
+
+
+def test_metric_value_returns_placeholder_for_missing_speed() -> None:
+    widget = HudWidgetConfig(
+        id="metric-speed",
+        type="metric_card",
+        bindings={"value": "speed_mps"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=160,
+        height=96,
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=None,
+        pace_seconds_per_km=None,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    assert _metric_value(widget, hud_value, elapsed_seconds=6852) == "--"
