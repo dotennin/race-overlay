@@ -85,23 +85,23 @@ def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurren
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
-    original_load_editor_config = load_editor_config
-    first_load_entered = Event()
-    release_first_load = Event()
-    second_load_entered = Event()
+    original_save_config = save_editor_payload.__globals__["save_config"]
+    first_save_entered = Event()
+    release_first_save = Event()
+    second_save_entered = Event()
     call_count = 0
 
-    def blocking_load_editor_config(path: Path) -> ProjectConfig:
+    def blocking_save_config(path: Path, config: ProjectConfig) -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            first_load_entered.set()
-            release_first_load.wait(timeout=1)
+            first_save_entered.set()
+            release_first_save.wait(timeout=1)
         else:
-            second_load_entered.set()
-        return original_load_editor_config(path)
+            second_save_entered.set()
+        original_save_config(path, config)
 
-    monkeypatch.setattr("race_overlay.editor_preview.load_editor_config", blocking_load_editor_config)
+    monkeypatch.setattr("race_overlay.editor_preview.save_config", blocking_save_config)
 
     payload_one = serialize_hud_config(broadcast_runner_preset())
     payload_one["theme"]["note_text"] = "first"
@@ -119,15 +119,44 @@ def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurren
     first_thread = Thread(target=save_payload, args=(payload_one,))
     second_thread = Thread(target=save_payload, args=(payload_two,))
     first_thread.start()
-    assert first_load_entered.wait(timeout=1)
+    assert first_save_entered.wait(timeout=1)
     second_thread.start()
 
-    assert not second_load_entered.wait(timeout=0.1)
-    release_first_load.set()
+    assert not second_save_entered.wait(timeout=0.1)
+    release_first_save.set()
     first_thread.join(timeout=1)
     second_thread.join(timeout=1)
 
     assert errors == []
+
+
+def test_save_editor_payload_preserves_newer_non_hud_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["theme"]["note_text"] = "Kasumigaura"
+
+    original_validate = save_editor_payload.__globals__["_validate_complete_hud_payload"]
+
+    def validate_then_apply_external_non_hud_changes(existing_hud: HudConfig, candidate_payload: dict[str, object]) -> None:
+        original_validate(existing_hud, candidate_payload)
+        updated = load_config(config_path)
+        updated.timeline.global_offset_seconds = 12.5
+        updated.overrides["clip.mp4"] = {"offset_seconds": 3.0, "outside_activity": "freeze"}
+        save_config(config_path, updated)
+
+    monkeypatch.setattr(
+        "race_overlay.editor_preview._validate_complete_hud_payload",
+        validate_then_apply_external_non_hud_changes,
+    )
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    assert reloaded.hud.theme.note_text == "Kasumigaura"
+    assert reloaded.timeline.global_offset_seconds == 12.5
+    assert reloaded.overrides == {"clip.mp4": {"offset_seconds": 3.0, "outside_activity": "freeze"}}
 
 
 def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Path) -> None:

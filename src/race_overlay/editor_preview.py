@@ -53,11 +53,14 @@ def load_editor_config(config_path: Path) -> ProjectConfig:
 
 
 def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
+    config = load_editor_config(config_path)
+    _validate_complete_hud_payload(config.hud, payload)
+    updated_hud = _load_hud_config(payload, require_complete=True)
+
     with _EDITOR_SAVE_LOCK:
-        config = load_editor_config(config_path)
-        _validate_complete_hud_payload(config.hud, payload)
-        config.hud = _load_hud_config(payload, require_complete=True)
-        save_config(config_path, config)
+        latest_config = load_editor_config(config_path)
+        latest_config.hud = updated_hud
+        save_config(config_path, latest_config)
 
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
