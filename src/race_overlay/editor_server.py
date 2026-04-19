@@ -1,4 +1,5 @@
 import json
+from json import JSONDecodeError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
@@ -14,6 +15,14 @@ _ACTIVE_THREADS: list[Thread] = []
 
 def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPRequestHandler]:
     class EditorHandler(BaseHTTPRequestHandler):
+        def _write_json(self, status: int, payload: dict[str, object]) -> None:
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self) -> None:
             request_path = urlparse(self.path).path
             if request_path == "/":
@@ -60,9 +69,32 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self.send_response(404)
                 self.end_headers()
                 return
-            content_length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(content_length) or b"{}")
-            save_editor_payload(config_path, payload)
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._write_json(400, {"error": "invalid Content-Length header"})
+                return
+            if content_length < 0:
+                self._write_json(400, {"error": "invalid Content-Length header"})
+                return
+            try:
+                payload = json.loads(
+                    self.rfile.read(content_length) or b"{}",
+                    parse_constant=_reject_invalid_json_constant,
+                )
+            except JSONDecodeError:
+                self._write_json(400, {"error": "invalid JSON payload"})
+                return
+            except ValueError:
+                self._write_json(400, {"error": "invalid JSON payload"})
+                return
+            try:
+                if not isinstance(payload, dict):
+                    raise ValueError("HUD config payload must be a JSON object")
+                save_editor_payload(config_path, payload)
+            except (TypeError, ValueError) as exc:
+                self._write_json(400, {"error": str(exc)})
+                return
             self.send_response(204)
             self.end_headers()
 
@@ -70,6 +102,10 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
             return
 
     return EditorHandler
+
+
+def _reject_invalid_json_constant(value: str) -> object:
+    raise ValueError(f"invalid constant {value}")
 
 
 def launch_editor(config_path: Path, width: int, height: int) -> str:

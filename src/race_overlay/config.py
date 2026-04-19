@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 
 from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
-from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
+from race_overlay.hud_schema import HudConfig, deserialize_hud_config, serialize_hud_config
 
 
 @dataclass(slots=True)
@@ -34,19 +34,15 @@ def write_default_config(path: Path, activity_file: str) -> None:
     save_config(path, ProjectConfig(activity_file=activity_file, hud=broadcast_runner_preset()))
 
 
-def _load_hud_config(payload: dict[str, object]) -> HudConfig:
+def _load_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
     if "fields" in payload:
+        if require_complete:
+            raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
         fields = payload["fields"]
         if not isinstance(fields, dict):
             raise TypeError("hud.fields must be a mapping")
         return apply_legacy_field_visibility(broadcast_runner_preset(), fields)
-    theme_payload = payload.get("theme", {})
-    widgets_payload = payload.get("widgets", [])
-    return HudConfig(
-        preset=str(payload.get("preset", "broadcast-runner")),
-        theme=HudThemeConfig(**theme_payload),
-        widgets=[HudWidgetConfig(**widget) for widget in widgets_payload],
-    )
+    return deserialize_hud_config(payload, require_complete=require_complete)
 
 
 def load_config(path: Path) -> ProjectConfig:

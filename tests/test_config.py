@@ -1,6 +1,7 @@
 from pathlib import Path
 import copy
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -105,3 +106,47 @@ def test_project_config_defaults_to_broadcast_runner_hud() -> None:
 
     assert config.hud.preset == "broadcast-runner"
     assert any(widget.id == "distance-progress" for widget in config.hud.widgets)
+
+
+def test_load_config_rejects_non_finite_style_values(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": {
+                    "preset": "broadcast-runner",
+                    "theme": {
+                        "panel_rgba": [12, 18, 28, 168],
+                        "accent_rgba": [255, 196, 92, 255],
+                        "text_rgba": [255, 255, 255, 255],
+                        "note_text": "Race Day",
+                    },
+                    "widgets": [
+                        {
+                            "id": "hero-pace",
+                            "type": "hero_metric",
+                            "bindings": {"value": "pace_seconds_per_km"},
+                            "anchor": "top-left",
+                            "x": 24,
+                            "y": 172,
+                            "width": 336,
+                            "height": 116,
+                            "z_index": 20,
+                            "visible": True,
+                            "style": {"label": float("nan")},
+                        }
+                    ],
+                },
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="finite"):
+        load_config(path)

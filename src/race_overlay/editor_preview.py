@@ -4,7 +4,7 @@ from pathlib import Path
 
 from race_overlay.config import ProjectConfig, _load_hud_config, load_config, save_config
 from race_overlay.hud import render_hud_frame
-from race_overlay.hud_schema import serialize_hud_config
+from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import HudSample
 
 
@@ -34,7 +34,8 @@ def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[s
 
 def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
     config = load_config(config_path)
-    config.hud = _load_hud_config(payload)
+    _validate_complete_hud_payload(config.hud, payload)
+    config.hud = _load_hud_config(payload, require_complete=True)
     save_config(config_path, config)
 
 
@@ -50,3 +51,42 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, object]) -> None:
+    expected = serialize_hud_config(existing_hud)
+    if set(payload) != set(expected):
+        raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+    expected_theme_keys = set(expected["theme"])
+    theme_payload = payload.get("theme")
+    if not isinstance(theme_payload, dict) or set(theme_payload) != expected_theme_keys:
+        raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+
+    widgets_payload = payload.get("widgets")
+    expected_widget_ids = [widget["id"] for widget in expected["widgets"]]
+    if not isinstance(widgets_payload, list):
+        raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+
+    payload_widget_ids = [widget.get("id") for widget in widgets_payload if isinstance(widget, dict)]
+    if (
+        len(widgets_payload) != len(expected_widget_ids)
+        or len(payload_widget_ids) != len(expected_widget_ids)
+        or set(payload_widget_ids) != set(expected_widget_ids)
+    ):
+        raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+
+    expected_widgets_by_id = {widget["id"]: widget for widget in expected["widgets"]}
+    for widget_payload in widgets_payload:
+        if not isinstance(widget_payload, dict):
+            raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+        widget_id = widget_payload.get("id")
+        expected_widget = expected_widgets_by_id.get(widget_id)
+        if expected_widget is None or set(widget_payload) != set(expected_widget):
+            raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+        if (
+            not isinstance(widget_payload.get("bindings"), dict)
+            or set(widget_payload["bindings"]) != set(expected_widget["bindings"])
+            or not isinstance(widget_payload.get("style"), dict)
+            or set(widget_payload["style"]) != set(expected_widget["style"])
+        ):
+            raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")

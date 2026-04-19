@@ -53,7 +53,14 @@ function widgetInputValue(input) {
     return input.checked;
   }
   if (input.type === "number") {
-    return Number.parseInt(input.value, 10);
+    if (input.value.trim() === "") {
+      throw new Error(`${input.dataset.field} must be a whole number`);
+    }
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      throw new Error(`${input.dataset.field} must be a whole number`);
+    }
+    return value;
   }
   return input.value;
 }
@@ -98,13 +105,21 @@ async function loadState() {
 }
 
 async function saveState() {
-  const payload = collectEditorPayload();
-  await fetch("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  await loadState();
+  try {
+    const payload = collectEditorPayload();
+    const response = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.error ?? "Failed to save HUD config");
+    }
+    await loadState();
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "Failed to save HUD config");
+  }
 }
 
 document.getElementById("save-button").addEventListener("click", saveState);

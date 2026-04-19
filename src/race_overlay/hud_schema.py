@@ -1,3 +1,4 @@
+import math
 from dataclasses import asdict, dataclass, field
 
 
@@ -31,5 +32,129 @@ class HudConfig:
     widgets: list[HudWidgetConfig] = field(default_factory=list)
 
 
+def deserialize_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
+    if not isinstance(payload, dict):
+        raise TypeError("hud config must be a mapping")
+    if "fields" in payload:
+        raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
+    if require_complete:
+        missing = [key for key in ("preset", "theme", "widgets") if key not in payload]
+        if missing:
+            raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
+
+    theme_payload = payload.get("theme", {})
+    widgets_payload = payload.get("widgets", [])
+    if not isinstance(theme_payload, dict):
+        raise TypeError("hud.theme must be a mapping")
+    if not isinstance(widgets_payload, list):
+        raise TypeError("hud.widgets must be a list")
+    if require_complete and not widgets_payload:
+        raise ValueError("editor save requires a complete HUD document with at least one widget")
+
+    return HudConfig(
+        preset=_require_string(payload.get("preset", "broadcast-runner"), "hud.preset"),
+        theme=_deserialize_theme(theme_payload),
+        widgets=[_deserialize_widget(widget_payload) for widget_payload in widgets_payload],
+    )
+
+
 def serialize_hud_config(config: HudConfig) -> dict[str, object]:
     return asdict(config)
+
+
+def _deserialize_widget(payload: object) -> HudWidgetConfig:
+    if not isinstance(payload, dict):
+        raise TypeError("hud.widgets entries must be mappings")
+    return HudWidgetConfig(
+        id=_require_string(payload.get("id"), "hud.widgets[].id"),
+        type=_require_string(payload.get("type"), "hud.widgets[].type"),
+        bindings=_require_string_mapping(payload.get("bindings"), "hud.widgets[].bindings"),
+        anchor=_require_string(payload.get("anchor"), "hud.widgets[].anchor"),
+        x=_coerce_int(payload.get("x"), "x"),
+        y=_coerce_int(payload.get("y"), "y"),
+        width=_coerce_int(payload.get("width"), "width"),
+        height=_coerce_int(payload.get("height"), "height"),
+        z_index=_coerce_int(payload.get("z_index", 0), "z_index"),
+        visible=_coerce_bool(payload.get("visible", True), "hud.widgets[].visible"),
+        style=_require_style_mapping(payload.get("style", {}), "hud.widgets[].style"),
+    )
+
+
+def _deserialize_theme(payload: object) -> HudThemeConfig:
+    if not isinstance(payload, dict):
+        raise TypeError("hud.theme must be a mapping")
+    defaults = HudThemeConfig()
+    return HudThemeConfig(
+        panel_rgba=_require_rgba_list(payload.get("panel_rgba", defaults.panel_rgba), "panel_rgba"),
+        accent_rgba=_require_rgba_list(payload.get("accent_rgba", defaults.accent_rgba), "accent_rgba"),
+        text_rgba=_require_rgba_list(payload.get("text_rgba", defaults.text_rgba), "text_rgba"),
+        note_text=_require_text(payload.get("note_text", defaults.note_text), "note_text"),
+    )
+
+
+def _require_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _require_string_mapping(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise TypeError(f"{field_name} must be a mapping")
+    mapping: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, str):
+            raise ValueError(f"{field_name} must contain only string keys and values")
+        mapping[key] = item
+    return mapping
+
+
+def _require_style_mapping(value: object, field_name: str) -> dict[str, str | int | float | bool]:
+    if not isinstance(value, dict):
+        raise TypeError(f"{field_name} must be a mapping")
+    mapping: dict[str, str | int | float | bool] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{field_name} must contain only string keys")
+        if isinstance(item, float) and not math.isfinite(item):
+            raise ValueError(f"{field_name} values must be strings, booleans, or finite numbers")
+        if isinstance(item, bool | str | int | float):
+            mapping[key] = item
+            continue
+        raise ValueError(f"{field_name} values must be strings, booleans, or finite numbers")
+    return mapping
+
+
+def _require_rgba_list(value: object, field_name: str) -> list[int]:
+    if not isinstance(value, list) or len(value) != 4:
+        raise ValueError(f"{field_name} must be a list of 4 integers")
+    return [_coerce_color_channel(channel, field_name) for channel in value]
+
+
+def _require_text(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    return value
+
+
+def _coerce_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{field_name} must be a finite integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    raise ValueError(f"{field_name} must be a finite integer")
+
+
+def _coerce_color_channel(value: object, field_name: str) -> int:
+    channel = _coerce_int(value, field_name)
+    if channel < 0 or channel > 255:
+        raise ValueError(f"{field_name} must contain integers between 0 and 255")
+    return channel
+
+
+def _coerce_bool(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a boolean")
+    return value
