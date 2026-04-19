@@ -132,6 +132,10 @@ def _load_editor_config(config_path: Path):
         return load_config(config_path)
     except FileNotFoundError as exc:
         raise ValueError(f"config file not found: {config_path}") from exc
+    except IsADirectoryError as exc:
+        raise ValueError(f"config file is not a readable file: {config_path}") from exc
+    except OSError as exc:
+        raise ValueError(f"config file is not readable: {exc}") from exc
     except yaml.YAMLError as exc:
         raise ValueError(f"config file is not valid YAML: {exc}") from exc
     except (KeyError, TypeError, ValueError) as exc:

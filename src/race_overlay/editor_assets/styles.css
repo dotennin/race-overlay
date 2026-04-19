@@ -31,6 +31,15 @@ h3 {
   margin: 0 0 12px;
 }
 
+#status-message {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 95, 109, 0.18);
+  border: 1px solid rgba(255, 95, 109, 0.42);
+  color: #ffd7dd;
+}
+
 .preview-frame {
   flex: 1;
   display: flex;

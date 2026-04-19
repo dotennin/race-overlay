@@ -1,5 +1,6 @@
 import json
 import socket
+import subprocess
 from contextlib import contextmanager
 from http.client import HTTPConnection
 from pathlib import Path
@@ -389,3 +390,119 @@ def test_api_state_returns_structured_error_when_config_becomes_malformed(tmp_pa
 
     assert response.status == 400
     assert "config" in json.loads(body.decode("utf-8"))["error"]
+
+
+def test_launch_editor_rejects_directory_config_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    config_path.mkdir()
+
+    with pytest.raises(ValueError, match="config file"):
+        launch_editor(config_path, width=1280, height=720)
+
+
+def test_api_state_returns_structured_error_when_config_path_becomes_directory(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        config_path.unlink()
+        config_path.mkdir()
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert "config file" in json.loads(body.decode("utf-8"))["error"]
+
+
+def test_editor_app_surfaces_api_state_errors_without_throwing() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    app_path = repo_root / "src" / "race_overlay" / "editor_assets" / "app.js"
+    script = f"""
+import fs from "node:fs";
+import vm from "node:vm";
+
+const elements = new Map();
+
+function createElement(id) {{
+  return {{
+    id,
+    value: "",
+    checked: false,
+    hidden: true,
+    disabled: false,
+    innerHTML: "",
+    textContent: "",
+    src: "",
+    className: "",
+    dataset: {{}},
+    appendChild() {{}},
+    addEventListener() {{}},
+    removeAttribute(name) {{
+      this[name] = "";
+    }},
+  }};
+}}
+
+const document = {{
+  createElement(tagName) {{
+    return createElement(tagName);
+  }},
+  getElementById(id) {{
+    if (!elements.has(id)) {{
+      elements.set(id, createElement(id));
+    }}
+    return elements.get(id);
+  }},
+  querySelectorAll() {{
+    return [];
+  }},
+}};
+
+let unhandled = null;
+process.on("unhandledRejection", (error) => {{
+  unhandled = error instanceof Error ? error.message : String(error);
+}});
+
+globalThis.document = document;
+globalThis.window = {{ alert() {{}} }};
+globalThis.fetch = async () => ({{
+  ok: false,
+  async json() {{
+    return {{ error: "config file is not readable: permission denied" }};
+  }},
+}});
+
+const source = fs.readFileSync({json.dumps(str(app_path))}, "utf8");
+vm.runInThisContext(source, {{ filename: {json.dumps(str(app_path))} }});
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+console.log(JSON.stringify({{
+  statusText: document.getElementById("status-message").textContent,
+  statusHidden: document.getElementById("status-message").hidden,
+  previewSrc: document.getElementById("preview").src,
+  widgetList: document.getElementById("widget-list").innerHTML,
+  saveDisabled: document.getElementById("save-button").disabled,
+  unhandled,
+}}));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    payload = json.loads(result.stdout.strip())
+
+    assert payload["unhandled"] is None
+    assert payload["statusText"] == "config file is not readable: permission denied"
+    assert payload["statusHidden"] is False
+    assert payload["previewSrc"] == ""
+    assert payload["widgetList"] == ""
+    assert payload["saveDisabled"] is True

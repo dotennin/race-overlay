@@ -1,5 +1,24 @@
 let currentState = null;
 
+function setStatusMessage(message) {
+  const status = document.getElementById("status-message");
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+function readErrorMessage(error, fallback) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+async function fetchJson(url, fallbackMessage) {
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error ?? fallbackMessage);
+  }
+  return payload;
+}
+
 function createField(label, type, value, widgetId, fieldName) {
   const wrapper = document.createElement("label");
   wrapper.className = "field";
@@ -97,15 +116,35 @@ function collectEditorPayload() {
 }
 
 async function loadState() {
-  currentState = await fetch("/api/state").then((response) => response.json());
-  document.getElementById("preset").value = currentState.hud.preset;
-  document.getElementById("note-text").value = currentState.hud.theme.note_text ?? "";
-  document.getElementById("preview").src = `/api/preview.png?cache=${Date.now()}`;
-  renderWidgetList(currentState.hud.widgets);
+  const saveButton = document.getElementById("save-button");
+  try {
+    currentState = await fetchJson("/api/state", "Failed to load HUD config");
+    document.getElementById("preset").value = currentState.hud.preset;
+    document.getElementById("note-text").value = currentState.hud.theme.note_text ?? "";
+    document.getElementById("preview").src = `/api/preview.png?cache=${Date.now()}`;
+    renderWidgetList(currentState.hud.widgets);
+    saveButton.disabled = false;
+    setStatusMessage("");
+    return true;
+  } catch (error) {
+    currentState = null;
+    document.getElementById("preset").value = "";
+    document.getElementById("note-text").value = "";
+    document.getElementById("preview").removeAttribute("src");
+    renderWidgetList([]);
+    saveButton.disabled = true;
+    setStatusMessage(readErrorMessage(error, "Failed to load HUD config"));
+    return false;
+  }
 }
 
 async function saveState() {
   try {
+    if (!currentState) {
+      throw new Error(
+        document.getElementById("status-message").textContent || "Failed to load HUD config",
+      );
+    }
     const payload = collectEditorPayload();
     const response = await fetch("/api/config", {
       method: "POST",
@@ -116,11 +155,12 @@ async function saveState() {
       const errorPayload = await response.json().catch(() => ({}));
       throw new Error(errorPayload.error ?? "Failed to save HUD config");
     }
-    await loadState();
   } catch (error) {
     window.alert(error instanceof Error ? error.message : "Failed to save HUD config");
+    return;
   }
+  await loadState();
 }
 
 document.getElementById("save-button").addEventListener("click", saveState);
-loadState();
+void loadState();
