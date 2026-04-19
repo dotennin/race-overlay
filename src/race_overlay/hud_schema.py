@@ -32,11 +32,17 @@ class HudConfig:
     widgets: list[HudWidgetConfig] = field(default_factory=list)
 
 
+_HUD_KEYS = frozenset(HudConfig.__dataclass_fields__)
+_HUD_THEME_KEYS = frozenset(HudThemeConfig.__dataclass_fields__)
+_HUD_WIDGET_KEYS = frozenset(HudWidgetConfig.__dataclass_fields__)
+
+
 def deserialize_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
     if not isinstance(payload, dict):
         raise TypeError("hud config must be a mapping")
     if "fields" in payload:
         raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
+    _reject_unexpected_keys(payload, _HUD_KEYS, "hud")
     if require_complete:
         missing = [key for key in ("preset", "theme", "widgets") if key not in payload]
         if missing:
@@ -65,6 +71,7 @@ def serialize_hud_config(config: HudConfig) -> dict[str, object]:
 def _deserialize_widget(payload: object) -> HudWidgetConfig:
     if not isinstance(payload, dict):
         raise TypeError("hud.widgets entries must be mappings")
+    _reject_unexpected_keys(payload, _HUD_WIDGET_KEYS, "hud.widgets")
     return HudWidgetConfig(
         id=_require_string(payload.get("id"), "hud.widgets[].id"),
         type=_require_string(payload.get("type"), "hud.widgets[].type"),
@@ -83,6 +90,7 @@ def _deserialize_widget(payload: object) -> HudWidgetConfig:
 def _deserialize_theme(payload: object) -> HudThemeConfig:
     if not isinstance(payload, dict):
         raise TypeError("hud.theme must be a mapping")
+    _reject_unexpected_keys(payload, _HUD_THEME_KEYS, "hud.theme")
     defaults = HudThemeConfig()
     return HudThemeConfig(
         panel_rgba=_require_rgba_list(payload.get("panel_rgba", defaults.panel_rgba), "panel_rgba"),
@@ -158,3 +166,10 @@ def _coerce_bool(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be a boolean")
     return value
+
+
+def _reject_unexpected_keys(payload: dict[str, object], allowed: frozenset[str], field_name: str) -> None:
+    unexpected = sorted(set(payload) - allowed)
+    if unexpected:
+        suffix = "s" if len(unexpected) != 1 else ""
+        raise ValueError(f"unexpected {field_name} key{suffix}: {', '.join(unexpected)}")

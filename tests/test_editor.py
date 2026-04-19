@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+import yaml
 
 from race_overlay.config import ProjectConfig, load_config, save_config
 from race_overlay.editor_preview import build_editor_state, save_editor_payload
@@ -254,6 +255,43 @@ def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, mon
 
     assert response.status == 500
     assert "read-only filesystem" in json.loads(body.decode("utf-8"))["error"]
+    assert load_config(config_path).hud.preset == "broadcast-runner"
+
+
+def test_api_config_returns_structured_error_when_save_reload_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_load_config = load_config
+    call_count = 0
+
+    def raise_yaml_error(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise yaml.YAMLError("concurrent write truncated file")
+        return original_load_config(*args, **kwargs)
+
+    monkeypatch.setattr("race_overlay.editor_preview.load_config", raise_yaml_error)
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/config",
+                body=json.dumps(serialize_hud_config(broadcast_runner_preset())),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert "config file is not valid YAML" in json.loads(body.decode("utf-8"))["error"]
     assert load_config(config_path).hud.preset == "broadcast-runner"
 
 

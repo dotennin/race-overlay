@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from race_overlay.cli import app
 from race_overlay.config import ProjectConfig, load_config, save_config, write_default_config
+from race_overlay.hud_presets import broadcast_runner_preset
 
 
 def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -172,4 +173,32 @@ def test_load_config_rejects_non_finite_style_values(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="finite"):
+        load_config(path)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda hud: hud.update(unknown_top_level=True),
+            "unexpected hud key",
+        ),
+        (
+            lambda hud: hud["theme"].update(unknown_theme=True),
+            "unexpected hud.theme key",
+        ),
+        (
+            lambda hud: hud["widgets"][0].update(unknown_widget=True),
+            "unexpected hud.widgets",
+        ),
+    ],
+)
+def test_load_config_rejects_unknown_hud_keys(tmp_path: Path, mutate, message: str) -> None:
+    path = tmp_path / "overlay.yaml"
+    save_config(path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    payload = yaml.safe_load(path.read_text())
+    mutate(payload["hud"])
+    path.write_text(yaml.safe_dump(payload, sort_keys=False))
+
+    with pytest.raises(ValueError, match=message):
         load_config(path)

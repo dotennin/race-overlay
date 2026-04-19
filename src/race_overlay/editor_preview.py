@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 
+import yaml
+
 from race_overlay.config import ProjectConfig, _load_hud_config, load_config, save_config
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HudConfig, serialize_hud_config
@@ -32,8 +34,23 @@ def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[s
     }
 
 
+def load_editor_config(config_path: Path) -> ProjectConfig:
+    try:
+        return load_config(config_path)
+    except FileNotFoundError as exc:
+        raise ValueError(f"config file not found: {config_path}") from exc
+    except IsADirectoryError as exc:
+        raise ValueError(f"config file is not a readable file: {config_path}") from exc
+    except OSError as exc:
+        raise ValueError(f"config file is not readable: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(f"config file is not valid YAML: {exc}") from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"config file is invalid: {exc}") from exc
+
+
 def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
-    config = load_config(config_path)
+    config = load_editor_config(config_path)
     _validate_complete_hud_payload(config.hud, payload)
     config.hud = _load_hud_config(payload, require_complete=True)
     save_config(config_path, config)
