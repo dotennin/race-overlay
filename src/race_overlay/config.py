@@ -20,7 +20,7 @@ class ProjectConfig:
     output_dir: str = "rendered"
     cache_dir: str = "cache"
     timeline: TimelineConfig = field(default_factory=TimelineConfig)
-    hud: HudConfig = field(default_factory=HudConfig)
+    hud: HudConfig = field(default_factory=broadcast_runner_preset)
     overrides: dict[str, dict[str, float | str]] = field(default_factory=dict)
 
 

@@ -98,3 +98,10 @@ def test_save_config_uses_hud_serializer_boundary(tmp_path: Path, monkeypatch) -
 
     payload = yaml.safe_load(path.read_text())
     assert payload["hud"]["preset"] == "broadcast-runner"
+
+
+def test_project_config_defaults_to_broadcast_runner_hud() -> None:
+    config = ProjectConfig(activity_file="activity_22577902433.tcx")
+
+    assert config.hud.preset == "broadcast-runner"
+    assert any(widget.id == "distance-progress" for widget in config.hud.widgets)
