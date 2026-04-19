@@ -3,27 +3,14 @@ from pathlib import Path
 
 import yaml
 
+from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
+
 
 @dataclass(slots=True)
 class TimelineConfig:
     global_offset_seconds: float = 0.0
     outside_activity: str = "no_data"
-
-
-@dataclass(slots=True)
-class HudFieldConfig:
-    pace: bool = True
-    elapsed: bool = True
-    distance: bool = True
-    speed: bool = True
-    heart_rate: bool = True
-    cadence: bool = True
-    mini_map: bool = True
-
-
-@dataclass(slots=True)
-class HudConfig:
-    fields: HudFieldConfig = field(default_factory=HudFieldConfig)
 
 
 @dataclass(slots=True)
@@ -44,7 +31,22 @@ class ClipOverride:
 
 
 def write_default_config(path: Path, activity_file: str) -> None:
-    save_config(path, ProjectConfig(activity_file=activity_file))
+    save_config(path, ProjectConfig(activity_file=activity_file, hud=broadcast_runner_preset()))
+
+
+def _load_hud_config(payload: dict[str, object]) -> HudConfig:
+    if "fields" in payload:
+        fields = payload["fields"]
+        if not isinstance(fields, dict):
+            raise TypeError("hud.fields must be a mapping")
+        return apply_legacy_field_visibility(broadcast_runner_preset(), fields)
+    theme_payload = payload.get("theme", {})
+    widgets_payload = payload.get("widgets", [])
+    return HudConfig(
+        preset=str(payload.get("preset", "broadcast-runner")),
+        theme=HudThemeConfig(**theme_payload),
+        widgets=[HudWidgetConfig(**widget) for widget in widgets_payload],
+    )
 
 
 def load_config(path: Path) -> ProjectConfig:
@@ -55,13 +57,15 @@ def load_config(path: Path) -> ProjectConfig:
         output_dir=payload["output_dir"],
         cache_dir=payload["cache_dir"],
         timeline=TimelineConfig(**payload["timeline"]),
-        hud=HudConfig(fields=HudFieldConfig(**payload["hud"]["fields"])),
+        hud=_load_hud_config(payload["hud"]),
         overrides=payload.get("overrides", {}),
     )
 
 
 def save_config(path: Path, config: ProjectConfig) -> None:
-    path.write_text(yaml.safe_dump(asdict(config), sort_keys=False))
+    payload = asdict(config)
+    payload["hud"] = serialize_hud_config(config.hud)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False))
 
 
 def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:

@@ -4,6 +4,7 @@ import yaml
 from typer.testing import CliRunner
 
 from race_overlay.cli import app
+from race_overlay.config import load_config, write_default_config
 
 
 def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -19,8 +20,56 @@ def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
     assert payload["video_globs"] == ["*.MP4", "*.mov"]
     assert payload["timeline"]["global_offset_seconds"] == 0.0
     assert payload["timeline"]["outside_activity"] == "no_data"
-    assert payload["hud"]["fields"]["pace"] is True
-    assert payload["hud"]["fields"]["mini_map"] is True
+    assert payload["hud"]["preset"] == "broadcast-runner"
+    assert payload["hud"]["theme"]["note_text"] == "Race Day"
+    assert any(widget["id"] == "distance-progress" for widget in payload["hud"]["widgets"])
+
+
+def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": {
+                    "fields": {
+                        "pace": True,
+                        "elapsed": True,
+                        "distance": True,
+                        "speed": True,
+                        "heart_rate": True,
+                        "cadence": True,
+                        "mini_map": False,
+                    }
+                },
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    visibility = {widget.id: widget.visible for widget in config.hud.widgets}
+
+    assert config.hud.preset == "broadcast-runner"
+    assert visibility["hero-pace"] is True
+    assert visibility["route-map"] is False
+    assert visibility["metric-heart-rate"] is True
+
+
+def test_write_default_config_includes_broadcast_runner_schema(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+
+    write_default_config(path, "activity_22577902433.tcx")
+
+    payload = yaml.safe_load(path.read_text())
+    assert payload["hud"]["preset"] == "broadcast-runner"
+    assert payload["hud"]["theme"]["note_text"] == "Race Day"
+    assert any(widget["id"] == "distance-progress" for widget in payload["hud"]["widgets"])
 
 
 def test_resolve_override_prefers_per_video_values() -> None:
