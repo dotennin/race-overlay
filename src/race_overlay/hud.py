@@ -3,12 +3,15 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw
 
+from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.models import HudSample
 
 
 @dataclass(slots=True, frozen=True)
 class HudLayout:
+    """Legacy layout compatibility shim. Prefer passing ``hud_config``."""
+
     pace_anchor: tuple[int, int]
     stats_anchor: tuple[int, int]
     map_box: tuple[int, int, int, int]
@@ -17,21 +20,48 @@ class HudLayout:
     def default(cls) -> "HudLayout":
         return cls(pace_anchor=(64, 48), stats_anchor=(64, 180), map_box=(980, 40, 1220, 280))
 
+    def to_hud_config(self) -> HudConfig:
+        config = broadcast_runner_preset()
+        positions = {
+            "route-map": (*self.map_box[:2], self.map_box[2] - self.map_box[0], self.map_box[3] - self.map_box[1]),
+            "hero-pace": (max(self.pace_anchor[0] - 20, 0), max(self.pace_anchor[1] - 18, 0), 336, 116),
+            "metric-heart-rate": (max(self.stats_anchor[0] - 40, 0), max(self.stats_anchor[1] - 16, 0), 160, 96),
+            "metric-cadence": (max(self.stats_anchor[0] + 132, 0), max(self.stats_anchor[1] - 16, 0), 160, 96),
+            "metric-elapsed": (max(self.stats_anchor[0] - 40, 0), max(self.stats_anchor[1] + 92, 0), 160, 96),
+            "metric-speed": (max(self.stats_anchor[0] + 132, 0), max(self.stats_anchor[1] + 92, 0), 160, 96),
+        }
+        for widget in config.widgets:
+            if widget.id in positions:
+                widget.x, widget.y, widget.width, widget.height = positions[widget.id]
+        return config
+
 
 def render_hud_frame(
     width: int,
     height: int,
     hud_value: HudSample,
     route_points: list[tuple[float, float]],
-    hud_config: HudConfig,
-    elapsed_seconds: int,
+    hud_config: HudConfig | HudLayout | None = None,
+    elapsed_seconds: int = 0,
+    *,
+    layout: HudLayout | None = None,
 ) -> Image.Image:
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    widgets = sorted((widget for widget in hud_config.widgets if widget.visible), key=lambda item: item.z_index)
+    resolved_hud_config = _resolve_hud_config(hud_config, layout)
+    widgets = sorted((widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
     for widget in widgets:
-        _render_widget(draw, widget, hud_value, route_points, elapsed_seconds, hud_config.theme)
+        _render_widget(draw, widget, hud_value, route_points, elapsed_seconds, resolved_hud_config.theme)
     return image
+
+
+def _resolve_hud_config(hud_config: HudConfig | HudLayout | None, layout: HudLayout | None) -> HudConfig:
+    if isinstance(hud_config, HudLayout):
+        layout = hud_config
+        hud_config = None
+    if hud_config is not None:
+        return hud_config
+    return (layout or HudLayout.default()).to_hud_config()
 
 
 def _render_widget(
