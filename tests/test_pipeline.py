@@ -5,9 +5,10 @@ from PIL import Image
 from typer.testing import CliRunner
 
 from race_overlay.cli import app
-from race_overlay.config import ProjectConfig, save_config
+from race_overlay.config import ProjectConfig, load_config, save_config
+from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.hud_presets import broadcast_runner_preset
-from race_overlay.hud_schema import HudConfig
+from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
 from race_overlay.pipeline import run_pipeline
 
@@ -100,3 +101,31 @@ def test_run_pipeline_passes_loaded_hud_config_to_renderer(tmp_path: Path, monke
 
     assert render_calls[0].preset == "broadcast-runner"
     assert render_calls[0].widgets[0].id == "route-map"
+
+
+def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    payload["theme"]["note_text"] = "Kasumigaura"
+    save_editor_payload(config_path, payload)
+    (tmp_path / "clip.MP4").write_bytes(b"")
+
+    captured: list[str] = []
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: captured.append(kwargs["hud_config"].theme.note_text)
+        or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4")
+
+    assert captured == ["Kasumigaura"]

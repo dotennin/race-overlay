@@ -6,7 +6,12 @@ from PIL import Image
 
 from race_overlay.activity.loader import load_activity
 from race_overlay.alignment import align_clip
-from race_overlay.config import load_config, resolve_override
+from race_overlay.config import (
+    load_config,
+    resolve_override,
+    resolve_path_from_config,
+    resolve_video_globs_from_config,
+)
 from race_overlay.ffmpeg import build_overlay_video, compose_video
 from race_overlay.hud import render_hud_frame
 from race_overlay.sampling import sample_at
@@ -22,18 +27,18 @@ def _discover_videos(patterns: list[str]) -> list[Path]:
 
 def run_pipeline(config_path: Path, only: str | None = None) -> None:
     config = load_config(config_path)
-    activity = load_activity(Path(config.activity_file))
+    activity = load_activity(resolve_path_from_config(config_path, config.activity_file))
     route_points = [
         (sample.latitude, sample.longitude)
         for sample in activity.samples
         if sample.latitude is not None and sample.longitude is not None
     ]
-    output_dir = Path(config.output_dir)
-    cache_dir = Path(config.cache_dir)
+    output_dir = resolve_path_from_config(config_path, config.output_dir)
+    cache_dir = resolve_path_from_config(config_path, config.cache_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    for video_path in _discover_videos(config.video_globs):
+    for video_path in _discover_videos(resolve_video_globs_from_config(config_path, config.video_globs)):
         if only and video_path.name != only:
             continue
         clip = probe_video(video_path)

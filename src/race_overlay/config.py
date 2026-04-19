@@ -112,6 +112,17 @@ def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:
     )
 
 
+def resolve_path_from_config(config_path: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return config_path.resolve().parent / path
+
+
+def resolve_video_globs_from_config(config_path: Path, patterns: list[str]) -> list[str]:
+    return [str(resolve_path_from_config(config_path, pattern)) for pattern in patterns]
+
+
 def _write_text_atomic(path: Path, contents: str) -> None:
     temp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:

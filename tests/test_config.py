@@ -6,7 +6,14 @@ import yaml
 from typer.testing import CliRunner
 
 from race_overlay.cli import app
-from race_overlay.config import ProjectConfig, load_config, save_config, write_default_config
+from race_overlay.config import (
+    ProjectConfig,
+    load_config,
+    resolve_path_from_config,
+    resolve_video_globs_from_config,
+    save_config,
+    write_default_config,
+)
 from race_overlay.hud_presets import broadcast_runner_preset
 
 
@@ -202,3 +209,21 @@ def test_load_config_rejects_unknown_hud_keys(tmp_path: Path, mutate, message: s
 
     with pytest.raises(ValueError, match=message):
         load_config(path)
+
+
+def test_resolve_path_from_config_uses_config_directory_for_relative_values(tmp_path: Path) -> None:
+    config_path = tmp_path / "nested" / "overlay.yaml"
+    config_path.parent.mkdir()
+
+    resolved = resolve_path_from_config(config_path, "cache")
+
+    assert resolved == config_path.parent / "cache"
+
+
+def test_resolve_video_globs_from_config_uses_config_directory_for_relative_patterns(tmp_path: Path) -> None:
+    config_path = tmp_path / "nested" / "overlay.yaml"
+    config_path.parent.mkdir()
+
+    resolved = resolve_video_globs_from_config(config_path, ["*.MP4", "/already/absolute.mov"])
+
+    assert resolved == [str(config_path.parent / "*.MP4"), "/already/absolute.mov"]
