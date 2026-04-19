@@ -174,8 +174,9 @@ def _draw_context_card(
     right, bottom = left + widget.width, top + widget.height
     draw.rounded_rectangle((left, top, right, bottom), radius=22, fill=tuple(theme.panel_rgba))
     draw.text((left + 20, top + 20), "Context", fill=tuple(theme.text_rgba))
-    draw.text((left + 20, top + 70), timestamp.astimezone().strftime("%H:%M"), fill=tuple(theme.text_rgba))
-    draw.text((left + 20, top + 122), timestamp.astimezone().strftime("%Y.%m.%d"), fill=tuple(theme.text_rgba))
+    context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
+    draw.text((left + 20, top + 70), context_timestamp.strftime("%H:%M"), fill=tuple(theme.text_rgba))
+    draw.text((left + 20, top + 122), context_timestamp.strftime("%Y.%m.%d"), fill=tuple(theme.text_rgba))
     draw.text((left + 140, top + 70), theme.note_text, fill=tuple(theme.text_rgba))
 
 

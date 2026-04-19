@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+import os
 from pathlib import Path
+import time
 
 from PIL import Image
 
@@ -85,3 +87,48 @@ def test_render_hud_frame_accepts_legacy_layout_argument() -> None:
     assert image.getpixel((700, 70))[3] > 0
     assert image.getpixel((120, 220))[3] > 0
     assert image.getpixel((1080, 170))[3] > 0
+
+
+def test_render_hud_frame_context_card_uses_sample_timezone(monkeypatch) -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    original_tz = os.environ.get("TZ")
+    try:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
+        utc_image = render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=broadcast_runner_preset(),
+            elapsed_seconds=6852,
+        )
+
+        monkeypatch.setenv("TZ", "America/Los_Angeles")
+        time.tzset()
+        la_image = render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=broadcast_runner_preset(),
+            elapsed_seconds=6852,
+        )
+    finally:
+        if original_tz is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", original_tz)
+        time.tzset()
+
+    assert list(utc_image.getdata()) == list(la_image.getdata())
