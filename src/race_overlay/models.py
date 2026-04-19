@@ -29,3 +29,25 @@ class VideoClip:
     width: int
     height: int
     fps: float
+
+
+@dataclass(slots=True, frozen=True)
+class ClipAlignment:
+    clip: VideoClip
+    status: str
+    clip_start: datetime
+    clip_end: datetime
+    overlay_start: datetime | None
+    overlay_end: datetime | None
+
+
+@dataclass(slots=True, frozen=True)
+class HudSample:
+    timestamp: datetime
+    latitude: float | None
+    longitude: float | None
+    distance_m: float | None
+    speed_mps: float | None
+    pace_seconds_per_km: float | None
+    heart_rate_bpm: int | None
+    cadence_spm: int | None
