@@ -53,6 +53,11 @@ def write_default_config(path: Path, activity_file: str) -> None:
 
 def _load_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
     if "fields" in payload:
+        if any(key != "fields" for key in payload):
+            return deserialize_hud_config(
+                {key: value for key, value in payload.items() if key != "fields"},
+                require_complete=require_complete,
+            )
         if require_complete:
             raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
         fields = payload["fields"]

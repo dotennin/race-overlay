@@ -15,6 +15,7 @@ from race_overlay.config import (
     write_default_config,
 )
 from race_overlay.hud_presets import broadcast_runner_preset
+from race_overlay.hud_schema import serialize_hud_config
 
 
 def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
@@ -69,6 +70,52 @@ def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: P
     assert visibility["hero-pace"] is True
     assert visibility["route-map"] is False
     assert visibility["metric-heart-rate"] is True
+
+
+def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    schema_hud = broadcast_runner_preset()
+    schema_hud.theme.note_text = "Custom schema HUD"
+    route_map = next(widget for widget in schema_hud.widgets if widget.id == "route-map")
+    hero_pace = next(widget for widget in schema_hud.widgets if widget.id == "hero-pace")
+    route_map.visible = True
+    hero_pace.visible = False
+    hero_pace.x = 144
+    schema_payload = serialize_hud_config(schema_hud)
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": {
+                    "fields": {
+                        "pace": True,
+                        "elapsed": True,
+                        "distance": True,
+                        "speed": True,
+                        "heart_rate": True,
+                        "cadence": True,
+                        "mini_map": False,
+                    },
+                    **schema_payload,
+                },
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    route_map_loaded = next(widget for widget in config.hud.widgets if widget.id == "route-map")
+    hero_pace_loaded = next(widget for widget in config.hud.widgets if widget.id == "hero-pace")
+
+    assert config.hud.theme.note_text == "Custom schema HUD"
+    assert route_map_loaded.visible is True
+    assert hero_pace_loaded.visible is False
+    assert hero_pace_loaded.x == 144
 
 
 def test_write_default_config_includes_broadcast_runner_schema(tmp_path: Path) -> None:

@@ -52,6 +52,56 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
 
 
+def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_present(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    schema_hud = broadcast_runner_preset()
+    schema_hud.theme.note_text = "Schema wins"
+    route_map = next(widget for widget in schema_hud.widgets if widget.id == "route-map")
+    hero_pace = next(widget for widget in schema_hud.widgets if widget.id == "hero-pace")
+    route_map.visible = True
+    hero_pace.visible = False
+    hero_pace.x = 144
+    mixed_payload = {
+        "activity_file": "activity_22577902433.tcx",
+        "video_globs": ["*.MP4", "*.mov"],
+        "output_dir": "rendered",
+        "cache_dir": "cache",
+        "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+        "hud": {
+            "fields": {
+                "pace": True,
+                "elapsed": True,
+                "distance": True,
+                "speed": True,
+                "heart_rate": True,
+                "cadence": True,
+                "mini_map": False,
+            },
+            **serialize_hud_config(schema_hud),
+        },
+        "overrides": {},
+    }
+    config_path.write_text(yaml.safe_dump(mixed_payload, sort_keys=False))
+
+    editor_state = build_editor_state(load_config(config_path), width=1280, height=720)
+    payload = json.loads(json.dumps(editor_state["hud"]))
+    payload["revision"] = editor_state["revision"]
+    payload["theme"]["note_text"] = "Saved schema HUD"
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    saved_payload = yaml.safe_load(config_path.read_text())
+    route_map_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "route-map")
+    hero_pace_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "hero-pace")
+
+    assert reloaded.hud.theme.note_text == "Saved schema HUD"
+    assert route_map_reloaded.visible is True
+    assert hero_pace_reloaded.visible is False
+    assert hero_pace_reloaded.x == 144
+    assert "fields" not in saved_payload["hud"]
+
+
 def test_save_editor_payload_allows_missing_widget_label(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(
