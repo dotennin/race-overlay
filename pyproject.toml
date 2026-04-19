@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "race-overlay"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "typer>=0.16,<1.0",
+  "PyYAML>=6.0,<7.0",
+  "fitparse>=1.2,<2.0",
+  "Pillow>=11.0,<12.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<9.0"]
+
+[project.scripts]
+race-overlay = "race_overlay.cli:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
