@@ -104,6 +104,13 @@ def _render_widget(
 
 
 def _validate_widget(widget: HudWidgetConfig) -> None:
+    supported_anchors = {"top-left", "top-right", "bottom-left", "bottom-right"}
+    if widget.anchor not in supported_anchors:
+        supported = ", ".join(sorted(supported_anchors))
+        raise ValueError(
+            f"unsupported anchor '{widget.anchor}' for widget '{widget.id}' of type '{widget.type}'; "
+            f"supported anchors: {supported}"
+        )
     if widget.type == "progress_bar":
         _require_supported_binding(widget, {"distance_m"})
     elif widget.type == "route_map":
