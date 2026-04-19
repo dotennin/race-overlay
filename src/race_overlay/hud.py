@@ -8,6 +8,7 @@ from race_overlay.models import HudSample
 
 HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
+PROGRESS_BAR_MIN_WIDTH = 232
 
 
 @dataclass(slots=True, frozen=True)
@@ -156,6 +157,11 @@ def _draw_progress_bar(
 ) -> None:
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     right, bottom = left + widget.width, top + widget.height
+    if widget.width < PROGRESS_BAR_MIN_WIDTH:
+        raise ValueError(
+            f"progress_bar widget '{widget.id}' requires a minimum width of {PROGRESS_BAR_MIN_WIDTH}px "
+            f"(got {widget.width}px)"
+        )
     draw.rounded_rectangle((left, top, right, bottom), radius=18, fill=tuple(theme.panel_rgba))
     track_left = left + 108
     track_top = top + 28

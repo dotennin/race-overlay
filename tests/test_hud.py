@@ -218,6 +218,44 @@ def test_render_hud_frame_rejects_hidden_unknown_widget_types() -> None:
         )
 
 
+def test_render_hud_frame_rejects_too_narrow_progress_bar_widgets() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(ValueError, match="progress_bar.*minimum width"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=HudConfig(
+                preset="broken",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="distance-progress",
+                        type="progress_bar",
+                        bindings={"value": "distance_m"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=160,
+                        height=64,
+                    )
+                ],
+            ),
+            elapsed_seconds=6852,
+        )
+
+
 def test_render_hud_frame_rejects_unsupported_metric_bindings() -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
