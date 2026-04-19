@@ -21,3 +21,15 @@ def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
     assert payload["timeline"]["outside_activity"] == "no_data"
     assert payload["hud"]["fields"]["pace"] is True
     assert payload["hud"]["fields"]["mini_map"] is True
+
+
+def test_resolve_override_prefers_per_video_values() -> None:
+    from race_overlay.config import ProjectConfig, resolve_override
+
+    config = ProjectConfig(
+        activity_file="activity_22577902433.tcx",
+        overrides={"DJI_20260419090559_0002_D.MP4": {"offset_seconds": 1.5, "outside_activity": "skip"}},
+    )
+    override = resolve_override(config, "DJI_20260419090559_0002_D.MP4")
+    assert override.offset_seconds == 1.5
+    assert override.outside_activity == "skip"

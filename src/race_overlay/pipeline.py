@@ -6,7 +6,7 @@ from PIL import Image
 
 from race_overlay.activity.loader import load_activity
 from race_overlay.alignment import align_clip
-from race_overlay.config import load_config
+from race_overlay.config import load_config, resolve_override
 from race_overlay.ffmpeg import build_overlay_video, compose_video
 from race_overlay.hud import HudLayout, render_hud_frame
 from race_overlay.sampling import sample_at
@@ -37,14 +37,14 @@ def run_pipeline(config_path: Path, only: str | None = None) -> None:
         if only and video_path.name != only:
             continue
         clip = probe_video(video_path)
-        override = config.overrides.get(clip.path.name, {})
+        override = resolve_override(config, clip.path.name)
         alignment = align_clip(
             activity,
             clip,
             global_offset_seconds=config.timeline.global_offset_seconds,
-            per_video_offset_seconds=float(override.get("offset_seconds", 0.0)),
+            per_video_offset_seconds=override.offset_seconds,
         )
-        outside_policy = str(override.get("outside_activity", config.timeline.outside_activity))
+        outside_policy = override.outside_activity or config.timeline.outside_activity
         if alignment.status == "outside" and outside_policy == "skip":
             continue
 
