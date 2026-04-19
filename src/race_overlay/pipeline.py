@@ -8,7 +8,7 @@ from race_overlay.activity.loader import load_activity
 from race_overlay.alignment import align_clip
 from race_overlay.config import load_config, resolve_override
 from race_overlay.ffmpeg import build_overlay_video, compose_video
-from race_overlay.hud import HudLayout, render_hud_frame
+from race_overlay.hud import render_hud_frame
 from race_overlay.sampling import sample_at
 from race_overlay.video_probe import probe_video
 
@@ -61,7 +61,7 @@ def run_pipeline(config_path: Path, only: str | None = None) -> None:
                     height=clip.height,
                     hud_value=hud_value,
                     route_points=route_points,
-                    layout=HudLayout.default(),
+                    hud_config=config.hud,
                     elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
                 )
             image.save(frame_dir / f"{index:06d}.png")
