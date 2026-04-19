@@ -3,6 +3,7 @@ from pathlib import Path
 import typer
 
 from race_overlay.config import write_default_config
+from race_overlay.pipeline import run_pipeline
 
 app = typer.Typer(help="Overlay running telemetry onto race videos.")
 
@@ -18,5 +19,10 @@ def init(
 
 
 @app.command()
-def render() -> None:
+def render(
+    config_path: Path = typer.Option(Path("overlay.yaml"), "--config-path"),
+    only: str | None = typer.Option(None, "--only"),
+) -> None:
     """Render all configured videos with telemetry overlays."""
+    run_pipeline(config_path, only)
+    typer.echo("Render completed")
