@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 
 @dataclass(slots=True, frozen=True)
@@ -18,3 +19,13 @@ class ActivitySample:
 class ActivityTrack:
     sport: str
     samples: list[ActivitySample]
+
+
+@dataclass(slots=True, frozen=True)
+class VideoClip:
+    path: Path
+    creation_time: datetime
+    duration_seconds: float
+    width: int
+    height: int
+    fps: float
