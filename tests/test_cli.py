@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 import pytest
+import yaml
 
 from race_overlay.cli import app
 from race_overlay.config import ProjectConfig, save_config
@@ -25,6 +28,25 @@ def test_edit_hud_rejects_missing_config_path(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert "HUD editor available at" not in result.stdout
+
+
+def test_init_rewrites_relative_paths_for_nested_config(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    config_path = Path("configs/overlay.yaml")
+    config_path.parent.mkdir()
+
+    result = runner.invoke(
+        app,
+        ["init", "--config-path", str(config_path), "--activity-file", "activity.tcx"],
+    )
+
+    assert result.exit_code == 0
+    assert config_path.exists()
+
+    payload = yaml.safe_load(config_path.read_text())
+    assert payload["activity_file"] == "../activity.tcx"
+    assert payload["video_globs"] == ["../*.MP4", "../*.mov"]
 
 
 def test_edit_hud_rejects_directory_config_path(tmp_path) -> None:

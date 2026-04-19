@@ -1,4 +1,5 @@
 import fcntl
+import os
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,7 +41,14 @@ class ClipOverride:
 
 
 def write_default_config(path: Path, activity_file: str) -> None:
-    save_config(path, ProjectConfig(activity_file=activity_file, hud=broadcast_runner_preset()))
+    save_config(
+        path,
+        ProjectConfig(
+            activity_file=_record_path_relative_to_config(path, activity_file),
+            video_globs=[_record_path_relative_to_config(path, pattern) for pattern in ["*.MP4", "*.mov"]],
+            hud=broadcast_runner_preset(),
+        ),
+    )
 
 
 def _load_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
@@ -121,6 +129,15 @@ def resolve_path_from_config(config_path: Path, value: str) -> Path:
 
 def resolve_video_globs_from_config(config_path: Path, patterns: list[str]) -> list[str]:
     return [str(resolve_path_from_config(config_path, pattern)) for pattern in patterns]
+
+
+def _record_path_relative_to_config(config_path: Path, value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return value
+    config_dir = config_path.resolve().parent
+    target = Path.cwd() / path
+    return os.path.relpath(target, config_dir)
 
 
 def _write_text_atomic(path: Path, contents: str) -> None:
