@@ -3,7 +3,6 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw
 
-from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.models import HudSample
 
@@ -22,21 +21,6 @@ class HudLayout:
     @classmethod
     def default(cls) -> "HudLayout":
         return cls(pace_anchor=(64, 48), stats_anchor=(64, 180), map_box=(980, 40, 1220, 280))
-
-    def to_hud_config(self) -> HudConfig:
-        config = broadcast_runner_preset()
-        positions = {
-            "route-map": (*self.map_box[:2], self.map_box[2] - self.map_box[0], self.map_box[3] - self.map_box[1]),
-            "hero-pace": (max(self.pace_anchor[0] - 20, 0), max(self.pace_anchor[1] - 18, 0), 336, 116),
-            "metric-heart-rate": (max(self.stats_anchor[0] - 40, 0), max(self.stats_anchor[1] - 16, 0), 160, 96),
-            "metric-cadence": (max(self.stats_anchor[0] + 132, 0), max(self.stats_anchor[1] - 16, 0), 160, 96),
-            "metric-elapsed": (max(self.stats_anchor[0] - 40, 0), max(self.stats_anchor[1] + 92, 0), 160, 96),
-            "metric-speed": (max(self.stats_anchor[0] + 132, 0), max(self.stats_anchor[1] + 92, 0), 160, 96),
-        }
-        for widget in config.widgets:
-            if widget.id in positions:
-                widget.x, widget.y, widget.width, widget.height = positions[widget.id]
-        return config
 
 
 def render_hud_frame(
@@ -66,9 +50,7 @@ def render_hud_frame(
 def _resolve_legacy_layout(hud_config: HudConfig | HudLayout | None, layout: HudLayout | None) -> HudLayout | None:
     if isinstance(hud_config, HudLayout):
         return hud_config
-    if hud_config is None:
-        return layout or HudLayout.default()
-    return None
+    return layout
 
 
 def _resolve_hud_config(hud_config: HudConfig | HudLayout | None) -> HudConfig:

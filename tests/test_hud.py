@@ -4,6 +4,7 @@ from pathlib import Path
 import time
 
 from PIL import Image
+import pytest
 
 from race_overlay.hud import HudLayout, render_hud_frame
 from race_overlay.hud_presets import broadcast_runner_preset
@@ -115,6 +116,32 @@ def test_render_hud_frame_accepts_legacy_layout_argument_without_preset_only_wid
     assert image.getpixel((160, 480))[3] > 0
     assert image.getpixel((700, 70))[3] == 0
     assert image.getpixel((1080, 170))[3] == 0
+
+
+def test_render_hud_frame_requires_explicit_hud_config_or_legacy_layout() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(TypeError, match="hud_config"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            elapsed_seconds=6852,
+        )
+
+
+def test_hud_layout_does_not_expose_lossy_hud_config_conversion_helper() -> None:
+    assert not hasattr(HudLayout, "to_hud_config")
 
 
 def test_render_hud_frame_context_card_uses_sample_timezone(monkeypatch) -> None:
