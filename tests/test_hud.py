@@ -7,6 +7,7 @@ from PIL import Image
 import pytest
 
 from race_overlay.hud import HudLayout, render_hud_frame
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
 
@@ -136,6 +137,145 @@ def test_render_hud_frame_requires_explicit_hud_config_or_legacy_layout() -> Non
             height=720,
             hud_value=hud_value,
             route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            elapsed_seconds=6852,
+        )
+
+
+def test_render_hud_frame_rejects_unknown_widget_types() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(ValueError, match="unknown widget type"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=HudConfig(
+                preset="broken",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="mystery-widget",
+                        type="mystery_widget",
+                        bindings={"value": "distance_m"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=160,
+                        height=96,
+                    )
+                ],
+            ),
+            elapsed_seconds=6852,
+        )
+
+
+def test_render_hud_frame_rejects_hidden_unknown_widget_types() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(ValueError, match="unknown widget type"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=HudConfig(
+                preset="broken",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="hidden-mystery-widget",
+                        type="mystery_widget",
+                        bindings={"value": "distance_m"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=160,
+                        height=96,
+                        visible=False,
+                    )
+                ],
+            ),
+            elapsed_seconds=6852,
+        )
+
+
+def test_render_hud_frame_rejects_unsupported_metric_bindings() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(ValueError, match="unsupported binding"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=HudConfig(
+                preset="broken",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="metric-power",
+                        type="metric_card",
+                        bindings={"value": "power_watts"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=160,
+                        height=96,
+                    )
+                ],
+            ),
+            elapsed_seconds=6852,
+        )
+
+
+def test_render_hud_frame_rejects_hud_config_and_layout_together() -> None:
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    with pytest.raises(TypeError, match="hud_config.*layout"):
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=hud_value,
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=broadcast_runner_preset(),
+            layout=HudLayout.default(),
             elapsed_seconds=6852,
         )
 

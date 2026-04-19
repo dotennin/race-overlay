@@ -41,6 +41,8 @@ def render_hud_frame(
         return image
 
     resolved_hud_config = _resolve_hud_config(hud_config)
+    for widget in resolved_hud_config.widgets:
+        _validate_widget(widget)
     widgets = sorted((widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
     for widget in widgets:
         _render_widget(draw, widget, hud_value, route_points, elapsed_seconds, resolved_hud_config.theme, width, height)
@@ -48,6 +50,8 @@ def render_hud_frame(
 
 
 def _resolve_legacy_layout(hud_config: HudConfig | HudLayout | None, layout: HudLayout | None) -> HudLayout | None:
+    if hud_config is not None and layout is not None:
+        raise TypeError("hud_config and layout cannot be passed together")
     if isinstance(hud_config, HudLayout):
         return hud_config
     return layout
@@ -95,6 +99,34 @@ def _render_widget(
         _draw_metric_card(draw, widget, hud_value, elapsed_seconds, theme, frame_width, frame_height)
     elif widget.type == "context_card":
         _draw_context_card(draw, widget, hud_value.timestamp, theme, frame_width, frame_height)
+    else:
+        raise ValueError(f"unknown widget type '{widget.type}' for widget '{widget.id}'")
+
+
+def _validate_widget(widget: HudWidgetConfig) -> None:
+    if widget.type == "progress_bar":
+        _require_supported_binding(widget, {"distance_m"})
+    elif widget.type == "route_map":
+        _require_supported_binding(widget, {"route_points"})
+    elif widget.type == "hero_metric":
+        _require_supported_binding(widget, {"pace_seconds_per_km"})
+    elif widget.type == "metric_card":
+        _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+    elif widget.type == "context_card":
+        _require_supported_binding(widget, {"timestamp"})
+    else:
+        raise ValueError(f"unknown widget type '{widget.type}' for widget '{widget.id}'")
+
+
+def _require_supported_binding(widget: HudWidgetConfig, supported_bindings: set[str]) -> str:
+    binding = widget.bindings.get("value")
+    if binding not in supported_bindings:
+        supported = ", ".join(sorted(supported_bindings))
+        raise ValueError(
+            f"unsupported binding '{binding}' for widget '{widget.id}' of type '{widget.type}'; "
+            f"supported bindings: {supported}"
+        )
+    return binding
 
 
 def _resolve_widget_origin(widget: HudWidgetConfig, frame_width: int, frame_height: int) -> tuple[int, int]:
@@ -237,7 +269,7 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
 
 
 def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds: int) -> str:
-    binding = widget.bindings.get("value")
+    binding = _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     if binding == "cadence_spm":
@@ -248,11 +280,11 @@ def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     if binding == "speed_mps":
         return f"{(hud_value.speed_mps or 0.0) * 3.6:.1f}"
-    return "--"
+    raise AssertionError(f"unreachable metric binding '{binding}'")
 
 
 def _metric_suffix(widget: HudWidgetConfig) -> str:
-    binding = widget.bindings.get("value")
+    binding = _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
     if binding == "heart_rate_bpm":
         return "bpm"
     if binding == "cadence_spm":
@@ -261,7 +293,7 @@ def _metric_suffix(widget: HudWidgetConfig) -> str:
         return "hh:mm:ss"
     if binding == "speed_mps":
         return "km/h"
-    return ""
+    raise AssertionError(f"unreachable metric binding '{binding}'")
 
 
 def _format_pace(pace_seconds_per_km: float | None) -> str:
