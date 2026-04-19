@@ -9,7 +9,12 @@ from urllib.parse import urlparse
 import yaml
 
 from race_overlay.config import load_config
-from race_overlay.editor_preview import build_editor_state, render_preview_png, save_editor_payload
+from race_overlay.editor_preview import (
+    _validate_preview_dimensions,
+    build_editor_state,
+    render_preview_png,
+    save_editor_payload,
+)
 
 _ACTIVE_SERVERS: list[ThreadingHTTPServer] = []
 _ACTIVE_THREADS: list[Thread] = []
@@ -106,6 +111,9 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
             except (TypeError, ValueError) as exc:
                 self._write_json(400, {"error": str(exc)})
                 return
+            except OSError as exc:
+                self._write_json(500, {"error": str(exc)})
+                return
             self.send_response(204)
             self.end_headers()
 
@@ -131,6 +139,7 @@ def _load_editor_config(config_path: Path):
 
 
 def launch_editor(config_path: Path, width: int, height: int) -> str:
+    _validate_preview_dimensions(width, height)
     _load_editor_config(config_path)
     server = ThreadingHTTPServer(("127.0.0.1", 0), _build_handler(config_path, width, height))
     thread = Thread(target=server.serve_forever)

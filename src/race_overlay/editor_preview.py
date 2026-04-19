@@ -40,6 +40,7 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
 
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
+    _validate_preview_dimensions(width, height)
     image = render_hud_frame(
         width,
         height,
@@ -51,6 +52,11 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _validate_preview_dimensions(width: int, height: int) -> None:
+    if width <= 0 or height <= 0:
+        raise ValueError("preview width and height must be greater than 0")
 
 
 def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, object]) -> None:

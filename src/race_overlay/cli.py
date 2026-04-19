@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import click
 import typer
 
 from race_overlay.config import write_default_config
@@ -36,5 +37,8 @@ def edit_hud(
     height: int = typer.Option(720, "--height"),
 ) -> None:
     """Launch the local HUD editor."""
-    url = launch_editor(config_path=config_path, width=width, height=height)
+    try:
+        url = launch_editor(config_path=config_path, width=width, height=height)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
     typer.echo(f"HUD editor available at {url}")

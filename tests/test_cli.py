@@ -1,5 +1,7 @@
 from typer.testing import CliRunner
 
+import pytest
+
 from race_overlay.cli import app
 
 
@@ -21,3 +23,11 @@ def test_edit_hud_rejects_missing_config_path(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert "HUD editor available at" not in result.stdout
+
+
+@pytest.mark.parametrize("width,height", [(0, 720), (1280, 0), (-1, 720), (1280, -1)])
+def test_edit_hud_rejects_non_positive_preview_dimensions(width: int, height: int) -> None:
+    result = CliRunner().invoke(app, ["edit-hud", "--width", str(width), "--height", str(height)])
+
+    assert result.exit_code != 0
+    assert "must be greater than 0" in result.output

@@ -195,6 +195,35 @@ def test_api_config_rejects_partial_payload_with_400(tmp_path: Path) -> None:
     assert len(load_config(config_path).hud.widgets) == len(broadcast_runner_preset().widgets)
 
 
+def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    def raise_permission_error(*args, **kwargs) -> None:
+        raise PermissionError("read-only filesystem")
+
+    monkeypatch.setattr("race_overlay.editor_preview.save_config", raise_permission_error)
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/config",
+                body=json.dumps(serialize_hud_config(broadcast_runner_preset())),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 500
+    assert "read-only filesystem" in json.loads(body.decode("utf-8"))["error"]
+    assert load_config(config_path).hud.preset == "broadcast-runner"
+
+
 def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -219,7 +248,6 @@ def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
 
     assert response.status == 400
     assert json.loads(body.decode("utf-8"))["error"] == "invalid JSON payload"
-
 
 def test_api_config_rejects_invalid_content_length_with_400(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
