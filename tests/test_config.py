@@ -101,6 +101,29 @@ def test_save_config_uses_hud_serializer_boundary(tmp_path: Path, monkeypatch) -
     assert payload["hud"]["preset"] == "broadcast-runner"
 
 
+def test_save_config_is_atomic_when_write_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "overlay.yaml"
+    original = ProjectConfig(activity_file="activity_22577902433.tcx")
+    save_config(path, original)
+    original_text = path.read_text()
+
+    updated = ProjectConfig(activity_file="activity_22577902433.tcx")
+    updated.hud.theme.note_text = "Kasumigaura"
+
+    def fail_after_partial_write(target: Path, data: str, *args, **kwargs) -> int:
+        with target.open("w", encoding=kwargs.get("encoding", "utf-8")) as handle:
+            handle.write("hud:\n  theme:\n")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", fail_after_partial_write)
+
+    with pytest.raises(OSError, match="disk full"):
+        save_config(path, updated)
+
+    assert path.read_text() == original_text
+    assert load_config(path).hud.theme.note_text == "Race Day"
+
+
 def test_project_config_defaults_to_broadcast_runner_hud() -> None:
     config = ProjectConfig(activity_file="activity_22577902433.tcx")
 

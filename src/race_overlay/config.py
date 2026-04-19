@@ -1,8 +1,11 @@
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
 
+from race_overlay.hud import validate_hud_config
 from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, deserialize_hud_config, serialize_hud_config
 
@@ -59,6 +62,7 @@ def load_config(path: Path) -> ProjectConfig:
 
 
 def save_config(path: Path, config: ProjectConfig) -> None:
+    validate_hud_config(config.hud)
     payload = {
         "activity_file": config.activity_file,
         "video_globs": list(config.video_globs),
@@ -71,7 +75,7 @@ def save_config(path: Path, config: ProjectConfig) -> None:
         "hud": serialize_hud_config(config.hud),
         "overrides": {filename: dict(values) for filename, values in config.overrides.items()},
     }
-    path.write_text(yaml.safe_dump(payload, sort_keys=False))
+    _write_text_atomic(path, yaml.safe_dump(payload, sort_keys=False))
 
 
 def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:
@@ -80,3 +84,14 @@ def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:
         offset_seconds=float(payload.get("offset_seconds", 0.0)),
         outside_activity=str(payload["outside_activity"]) if "outside_activity" in payload else None,
     )
+
+
+def _write_text_atomic(path: Path, contents: str) -> None:
+    temp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(contents)
+        temp_path.replace(path)
+    except Exception:
+        with suppress(FileNotFoundError):
+            temp_path.unlink()
+        raise

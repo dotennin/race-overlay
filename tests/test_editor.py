@@ -133,6 +133,38 @@ def test_save_editor_payload_rejects_partial_widget_bindings(tmp_path: Path) -> 
     assert hero_widget.bindings == {"value": "pace_seconds_per_km"}
 
 
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace").update(anchor="center"),
+            "unsupported anchor",
+        ),
+        (
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-progress").update(width=160),
+            "minimum width",
+        ),
+    ],
+)
+def test_save_editor_payload_rejects_renderer_invalid_widgets_before_persisting(
+    tmp_path: Path,
+    mutate,
+    message: str,
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_text = config_path.read_text()
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    mutate(payload)
+
+    with pytest.raises(ValueError, match=message):
+        save_editor_payload(config_path, payload)
+
+    assert config_path.read_text() == original_text
+    assert load_config(config_path).hud.preset == "broadcast-runner"
+
+
 @contextmanager
 def running_editor(config_path: Path) -> str:
     base_url = launch_editor(config_path, width=1280, height=720)
@@ -248,6 +280,51 @@ def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
 
     assert response.status == 400
     assert json.loads(body.decode("utf-8"))["error"] == "invalid JSON payload"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace").update(anchor="center"),
+            "unsupported anchor",
+        ),
+        (
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-progress").update(width=160),
+            "minimum width",
+        ),
+    ],
+)
+def test_api_config_rejects_renderer_invalid_widgets_with_400(
+    tmp_path: Path,
+    mutate,
+    message: str,
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_text = config_path.read_text()
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    mutate(payload)
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/config",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert message in json.loads(body.decode("utf-8"))["error"]
+    assert config_path.read_text() == original_text
 
 def test_api_config_rejects_invalid_content_length_with_400(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"

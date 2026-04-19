@@ -9,6 +9,7 @@ from race_overlay.models import HudSample
 HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
 PROGRESS_BAR_MIN_WIDTH = 232
+SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 
 
 @dataclass(slots=True, frozen=True)
@@ -41,9 +42,7 @@ def render_hud_frame(
         _render_legacy_layout(draw, legacy_layout, hud_value, route_points, elapsed_seconds)
         return image
 
-    resolved_hud_config = _resolve_hud_config(hud_config)
-    for widget in resolved_hud_config.widgets:
-        _validate_widget(widget)
+    resolved_hud_config = validate_hud_config(_resolve_hud_config(hud_config))
     widgets = sorted((widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
     for widget in widgets:
         _render_widget(draw, widget, hud_value, route_points, elapsed_seconds, resolved_hud_config.theme, width, height)
@@ -61,6 +60,12 @@ def _resolve_legacy_layout(hud_config: HudConfig | HudLayout | None, layout: Hud
 def _resolve_hud_config(hud_config: HudConfig | HudLayout | None) -> HudConfig:
     if hud_config is None or isinstance(hud_config, HudLayout):
         raise TypeError("hud_config must be a HudConfig when rendering configurable widgets")
+    return hud_config
+
+
+def validate_hud_config(hud_config: HudConfig) -> HudConfig:
+    for widget in hud_config.widgets:
+        _validate_widget(widget)
     return hud_config
 
 
@@ -105,15 +110,15 @@ def _render_widget(
 
 
 def _validate_widget(widget: HudWidgetConfig) -> None:
-    supported_anchors = {"top-left", "top-right", "bottom-left", "bottom-right"}
-    if widget.anchor not in supported_anchors:
-        supported = ", ".join(sorted(supported_anchors))
+    if widget.anchor not in SUPPORTED_WIDGET_ANCHORS:
+        supported = ", ".join(sorted(SUPPORTED_WIDGET_ANCHORS))
         raise ValueError(
             f"unsupported anchor '{widget.anchor}' for widget '{widget.id}' of type '{widget.type}'; "
             f"supported anchors: {supported}"
         )
     if widget.type == "progress_bar":
         _require_supported_binding(widget, {"distance_m"})
+        _validate_progress_bar_widget(widget)
     elif widget.type == "route_map":
         _require_supported_binding(widget, {"route_points"})
     elif widget.type == "hero_metric":
@@ -124,6 +129,14 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
         _require_supported_binding(widget, {"timestamp"})
     else:
         raise ValueError(f"unknown widget type '{widget.type}' for widget '{widget.id}'")
+
+
+def _validate_progress_bar_widget(widget: HudWidgetConfig) -> None:
+    if widget.width < PROGRESS_BAR_MIN_WIDTH:
+        raise ValueError(
+            f"progress_bar widget '{widget.id}' requires a minimum width of {PROGRESS_BAR_MIN_WIDTH}px "
+            f"(got {widget.width}px)"
+        )
 
 
 def _require_supported_binding(widget: HudWidgetConfig, supported_bindings: set[str]) -> str:
@@ -157,11 +170,6 @@ def _draw_progress_bar(
 ) -> None:
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     right, bottom = left + widget.width, top + widget.height
-    if widget.width < PROGRESS_BAR_MIN_WIDTH:
-        raise ValueError(
-            f"progress_bar widget '{widget.id}' requires a minimum width of {PROGRESS_BAR_MIN_WIDTH}px "
-            f"(got {widget.width}px)"
-        )
     draw.rounded_rectangle((left, top, right, bottom), radius=18, fill=tuple(theme.panel_rgba))
     track_left = left + 108
     track_top = top + 28
