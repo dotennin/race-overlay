@@ -6,6 +6,8 @@ from pathlib import Path
 from threading import Thread
 from urllib.parse import urlparse
 
+import yaml
+
 from race_overlay.config import load_config
 from race_overlay.editor_preview import build_editor_state, render_preview_png, save_editor_payload
 
@@ -47,14 +49,22 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self.wfile.write(body)
                 return
             if request_path == "/api/state":
-                state = json.dumps(build_editor_state(load_config(config_path), width, height)).encode("utf-8")
+                try:
+                    state = json.dumps(build_editor_state(_load_editor_config(config_path), width, height)).encode("utf-8")
+                except ValueError as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(state)
                 return
             if request_path == "/api/preview.png":
-                payload = render_preview_png(load_config(config_path), width, height)
+                try:
+                    payload = render_preview_png(_load_editor_config(config_path), width, height)
+                except ValueError as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.end_headers()
@@ -89,6 +99,7 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self._write_json(400, {"error": "invalid JSON payload"})
                 return
             try:
+                _load_editor_config(config_path)
                 if not isinstance(payload, dict):
                     raise ValueError("HUD config payload must be a JSON object")
                 save_editor_payload(config_path, payload)
@@ -108,7 +119,19 @@ def _reject_invalid_json_constant(value: str) -> object:
     raise ValueError(f"invalid constant {value}")
 
 
+def _load_editor_config(config_path: Path):
+    try:
+        return load_config(config_path)
+    except FileNotFoundError as exc:
+        raise ValueError(f"config file not found: {config_path}") from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(f"config file is not valid YAML: {exc}") from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"config file is invalid: {exc}") from exc
+
+
 def launch_editor(config_path: Path, width: int, height: int) -> str:
+    _load_editor_config(config_path)
     server = ThreadingHTTPServer(("127.0.0.1", 0), _build_handler(config_path, width, height))
     thread = Thread(target=server.serve_forever)
     thread.start()

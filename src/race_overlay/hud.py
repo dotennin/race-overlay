@@ -187,9 +187,16 @@ def _draw_route_map(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     right, bottom = left + widget.width, top + widget.height
     draw.rounded_rectangle((left, top, right, bottom), radius=16, fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
+    label = str(widget.style.get("label", "Route map"))
+    draw.text((left + 12, top + 10), label, fill=tuple(theme.text_rgba))
     if len(route_points) < 2:
         return
 
+    map_left = left + 12
+    map_top = top + 36
+    map_bottom = bottom - 12
+    inner_width = max(widget.width - 24, 1)
+    inner_height = max(widget.height - 48, 1)
     latitudes = [point[0] for point in route_points]
     longitudes = [point[1] for point in route_points]
     lat_min, lat_max = min(latitudes), max(latitudes)
@@ -197,8 +204,8 @@ def _draw_route_map(
 
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        x = left + 12 + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * (widget.width - 24)
-        y = bottom - 12 - ((lat - lat_min) / max(lat_max - lat_min, 1e-9)) * (widget.height - 24)
+        x = map_left + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * inner_width
+        y = map_bottom - ((lat - lat_min) / max(lat_max - lat_min, 1e-9)) * inner_height
         return (x, y)
 
     projected = [project(point) for point in route_points]
@@ -252,7 +259,7 @@ def _draw_context_card(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     right, bottom = left + widget.width, top + widget.height
     draw.rounded_rectangle((left, top, right, bottom), radius=22, fill=tuple(theme.panel_rgba))
-    draw.text((left + 20, top + 20), "Context", fill=tuple(theme.text_rgba))
+    draw.text((left + 20, top + 20), str(widget.style.get("label", "Context")), fill=tuple(theme.text_rgba))
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
     draw.text((left + 20, top + 70), context_timestamp.strftime("%H:%M"), fill=tuple(theme.text_rgba))
     draw.text((left + 20, top + 122), context_timestamp.strftime("%Y.%m.%d"), fill=tuple(theme.text_rgba))

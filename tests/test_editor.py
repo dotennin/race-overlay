@@ -265,3 +265,22 @@ def test_api_config_rejects_negative_content_length_with_400(tmp_path: Path) -> 
 
     assert b" 400 " in response.splitlines()[0]
     assert b'"error": "invalid Content-Length header"' in response
+
+
+def test_api_state_returns_structured_error_when_config_becomes_malformed(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        config_path.write_text("hud: [\n")
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert "config" in json.loads(body.decode("utf-8"))["error"]
