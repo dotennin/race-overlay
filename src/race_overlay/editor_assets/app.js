@@ -106,6 +106,7 @@ function collectEditorPayload() {
   });
 
   return {
+    revision: currentState.revision,
     preset: document.getElementById("preset").value,
     theme: {
       ...currentState.hud.theme,

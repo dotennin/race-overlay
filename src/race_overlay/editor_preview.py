@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -11,6 +13,11 @@ from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import HudSample
 
 _EDITOR_SAVE_LOCK = Lock()
+_EDITOR_REVISION_FIELD = "revision"
+
+
+class StaleHudSaveError(ValueError):
+    """Raised when an editor save is based on outdated HUD state."""
 
 
 def _sample_hud_value() -> HudSample:
@@ -29,6 +36,7 @@ def _sample_hud_value() -> HudSample:
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
+        "revision": _hud_revision(config.hud),
         "preview": {
             "width": width,
             "height": height,
@@ -54,11 +62,15 @@ def load_editor_config(config_path: Path) -> ProjectConfig:
 
 def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
     config = load_editor_config(config_path)
-    _validate_complete_hud_payload(config.hud, payload)
-    updated_hud = _load_hud_config(payload, require_complete=True)
+    hud_payload = _hud_payload_from_editor_save(payload)
+    _validate_complete_hud_payload(config.hud, hud_payload)
+    updated_hud = _load_hud_config(hud_payload, require_complete=True)
+    expected_revision = _editor_payload_revision(payload)
 
     with _EDITOR_SAVE_LOCK:
         latest_config = load_editor_config(config_path)
+        if _hud_revision(latest_config.hud) != expected_revision:
+            raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
         latest_config.hud = updated_hud
         save_config(config_path, latest_config)
 
@@ -128,3 +140,19 @@ def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, o
             )
         ):
             raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+
+
+def _hud_payload_from_editor_save(payload: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in payload.items() if key != _EDITOR_REVISION_FIELD}
+
+
+def _editor_payload_revision(payload: dict[str, object]) -> str:
+    revision = payload.get(_EDITOR_REVISION_FIELD)
+    if not isinstance(revision, str) or not revision:
+        raise ValueError("editor save requires a revision from /api/state")
+    return revision
+
+
+def _hud_revision(hud: HudConfig) -> str:
+    payload = json.dumps(serialize_hud_config(hud), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()

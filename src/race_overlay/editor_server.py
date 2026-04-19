@@ -7,6 +7,7 @@ from threading import Thread
 from urllib.parse import urlparse
 
 from race_overlay.editor_preview import (
+    StaleHudSaveError,
     _validate_preview_dimensions,
     build_editor_state,
     load_editor_config,
@@ -106,6 +107,9 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 if not isinstance(payload, dict):
                     raise ValueError("HUD config payload must be a JSON object")
                 save_editor_payload(config_path, payload)
+            except StaleHudSaveError as exc:
+                self._write_json(409, {"error": str(exc)})
+                return
             except (TypeError, ValueError) as exc:
                 self._write_json(400, {"error": str(exc)})
                 return

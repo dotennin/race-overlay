@@ -27,6 +27,8 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     assert state["hud"]["preset"] == "broadcast-runner"
     assert any(widget["id"] == "hero-pace" for widget in state["hud"]["widgets"])
     assert state["preview"]["width"] == 1280
+    assert isinstance(state["revision"], str)
+    assert state["revision"]
 
 
 def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
@@ -34,6 +36,7 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["theme"]["note_text"] = "Kasumigaura"
     hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
     hero_pace["x"] = 48
@@ -73,6 +76,7 @@ def test_save_editor_payload_allows_missing_widget_label(tmp_path: Path) -> None
     )
 
     payload = serialize_hud_config(load_config(config_path).hud)
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["widgets"][0]["style"]["label"] = ""
 
     save_editor_payload(config_path, payload)
@@ -104,8 +108,10 @@ def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurren
     monkeypatch.setattr("race_overlay.editor_preview.save_config", blocking_save_config)
 
     payload_one = serialize_hud_config(broadcast_runner_preset())
+    payload_one["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload_one["theme"]["note_text"] = "first"
     payload_two = serialize_hud_config(broadcast_runner_preset())
+    payload_two["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload_two["theme"]["note_text"] = "second"
 
     errors: list[BaseException] = []
@@ -127,7 +133,9 @@ def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurren
     first_thread.join(timeout=1)
     second_thread.join(timeout=1)
 
-    assert errors == []
+    assert second_save_entered.is_set() is False
+    assert len(errors) == 1
+    assert "stale HUD" in str(errors[0])
 
 
 def test_save_editor_payload_preserves_newer_non_hud_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,6 +143,7 @@ def test_save_editor_payload_preserves_newer_non_hud_changes(tmp_path: Path, mon
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["theme"]["note_text"] = "Kasumigaura"
 
     original_validate = save_editor_payload.__globals__["_validate_complete_hud_payload"]
@@ -159,11 +168,37 @@ def test_save_editor_payload_preserves_newer_non_hud_changes(tmp_path: Path, mon
     assert reloaded.overrides == {"clip.mp4": {"offset_seconds": 3.0, "outside_activity": "freeze"}}
 
 
+def test_save_editor_payload_rejects_stale_hud_revision(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    initial_state = build_editor_state(load_config(config_path), width=1280, height=720)
+    payload = dict(initial_state["hud"])
+    payload["theme"] = dict(initial_state["hud"]["theme"])
+    payload["widgets"] = [
+        {**widget, "bindings": dict(widget["bindings"]), "style": dict(widget["style"])}
+        for widget in initial_state["hud"]["widgets"]
+    ]
+    payload["revision"] = initial_state["revision"]
+
+    updated = load_config(config_path)
+    updated.hud.theme.note_text = "newer edit"
+    save_config(config_path, updated)
+
+    payload["theme"]["note_text"] = "older edit"
+
+    with pytest.raises(ValueError, match="stale HUD"):
+        save_editor_payload(config_path, payload)
+
+    assert load_config(config_path).hud.theme.note_text == "newer edit"
+
+
 def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
     hero_pace["x"] = None
 
@@ -209,6 +244,7 @@ def test_save_editor_payload_rejects_invalid_theme_values(tmp_path: Path) -> Non
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["theme"]["panel_rgba"] = "oops"
     payload["theme"]["note_text"] = "Kasumigaura"
 
@@ -223,6 +259,7 @@ def test_save_editor_payload_rejects_partial_widget_objects(tmp_path: Path) -> N
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
     hero_pace.pop("visible")
 
@@ -238,6 +275,7 @@ def test_save_editor_payload_rejects_partial_widget_bindings(tmp_path: Path) -> 
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
     hero_pace["bindings"] = {}
 
@@ -271,6 +309,7 @@ def test_save_editor_payload_rejects_renderer_invalid_widgets_before_persisting(
     original_text = config_path.read_text()
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     mutate(payload)
 
     with pytest.raises(ValueError, match=message):
@@ -342,6 +381,51 @@ def test_api_config_rejects_partial_payload_with_400(tmp_path: Path) -> None:
     assert len(load_config(config_path).hud.widgets) == len(broadcast_runner_preset().widgets)
 
 
+def test_api_config_rejects_stale_hud_save_with_409(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            state_response = connection.getresponse()
+            state = json.loads(state_response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+        updated = load_config(config_path)
+        updated.hud.theme.note_text = "newer edit"
+        save_config(config_path, updated)
+
+        stale_payload = dict(state["hud"])
+        stale_payload["theme"] = dict(state["hud"]["theme"])
+        stale_payload["widgets"] = [
+            {**widget, "bindings": dict(widget["bindings"]), "style": dict(widget["style"])}
+            for widget in state["hud"]["widgets"]
+        ]
+        stale_payload["revision"] = state["revision"]
+        stale_payload["theme"]["note_text"] = "older edit"
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/config",
+                body=json.dumps(stale_payload),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 409
+    assert "stale HUD" in json.loads(body.decode("utf-8"))["error"]
+    assert load_config(config_path).hud.theme.note_text == "newer edit"
+
+
 def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -358,7 +442,12 @@ def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, mon
             connection.request(
                 "POST",
                 "/api/config",
-                body=json.dumps(serialize_hud_config(broadcast_runner_preset())),
+                body=json.dumps(
+                    {
+                        **serialize_hud_config(broadcast_runner_preset()),
+                        "revision": build_editor_state(load_config(config_path), width=1280, height=720)["revision"],
+                    }
+                ),
                 headers={"Content-Type": "application/json"},
             )
             response = connection.getresponse()
@@ -395,7 +484,12 @@ def test_api_config_returns_structured_error_when_save_reload_fails(
             connection.request(
                 "POST",
                 "/api/config",
-                body=json.dumps(serialize_hud_config(broadcast_runner_preset())),
+                body=json.dumps(
+                    {
+                        **serialize_hud_config(broadcast_runner_preset()),
+                        "revision": build_editor_state(load_config(config_path), width=1280, height=720)["revision"],
+                    }
+                ),
                 headers={"Content-Type": "application/json"},
             )
             response = connection.getresponse()
@@ -412,6 +506,7 @@ def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
     hero_pace["style"]["label"] = float("nan")
 
@@ -457,6 +552,7 @@ def test_api_config_rejects_renderer_invalid_widgets_with_400(
     original_text = config_path.read_text()
 
     payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     mutate(payload)
 
     with running_editor(config_path) as base_url:
