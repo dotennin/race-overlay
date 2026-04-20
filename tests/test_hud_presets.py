@@ -22,6 +22,9 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
 
     assert ruler.width == 560
     assert ruler.y == 28
-    assert route_map.width == 140
-    assert route_map.height == 140
-    assert route_map.y == 554
+    assert route_map.x == 26
+    assert route_map.width == 180
+    assert route_map.height == 180
+    assert route_map.y == 514
+    assert route_map.style["shape"] == "circle"
+    assert route_map.width * route_map.height > 176 * 128
