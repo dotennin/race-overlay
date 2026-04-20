@@ -136,6 +136,7 @@ def apply_legacy_field_visibility(config: HudConfig, fields: dict[str, bool]) ->
     updated = deepcopy(config)
     visibility_map = {
         "distance-ruler": fields.get("distance", True),
+        "elevation-stat": fields.get("distance", True),
         "distance-stat": fields.get("distance", True),
         "heart-rate-stat": fields.get("heart_rate", True),
         "pace-chip": fields.get("pace", True),

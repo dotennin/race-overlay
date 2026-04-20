@@ -6,7 +6,8 @@ import time
 from PIL import Image, ImageDraw
 import pytest
 
-from race_overlay.hud import HudLayout, _metric_value, render_hud_frame
+import race_overlay.hud as hud_module
+from race_overlay.hud import HudLayout, _draw_progress_bar, _metric_value, render_hud_frame
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
@@ -605,6 +606,92 @@ def test_render_hud_frame_clips_circular_route_map_content_to_circle() -> None:
 
     assert image.getpixel((15, 15))[3] == 0
     assert image.getpixel((60, 6))[3] > 0
+
+
+def test_render_hud_frame_route_map_renders_without_private_pillow_attributes(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_draw = hud_module.ImageDraw.Draw
+
+    class PublicImageDrawProxy:
+        def __init__(self, image: Image.Image) -> None:
+            self._delegate = original_draw(image)
+
+        def __getattr__(self, name: str):
+            if name == "_image":
+                raise AttributeError(name)
+            return getattr(self._delegate, name)
+
+    monkeypatch.setattr(hud_module.ImageDraw, "Draw", lambda image: PublicImageDrawProxy(image))
+
+    image = render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=120,
+                    height=120,
+                    style={"label": "", "shape": "circle"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert image.getbbox() is not None
+
+
+def test_draw_progress_bar_treats_zero_total_distance_as_explicit_goal(monkeypatch: pytest.MonkeyPatch) -> None:
+    line_calls: list[tuple[object, object, int]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, fill=None, width=0, *args, **kwargs):
+        line_calls.append((xy, fill, width))
+        return original_line(self, xy, fill=fill, width=width, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    image = Image.new("RGBA", (320, 96), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    _draw_progress_bar(
+        draw,
+        HudWidgetConfig(
+            id="distance-progress",
+            type="progress_bar",
+            bindings={"value": "distance_m"},
+            anchor="top-left",
+            x=0,
+            y=0,
+            width=280,
+            height=64,
+        ),
+        distance_m=5000.0,
+        total_distance_m=0.0,
+        theme=HudThemeConfig(),
+        frame_width=320,
+        frame_height=96,
+    )
+
+    assert len(line_calls) == 2
 
 
 def test_metric_value_returns_placeholder_for_missing_speed() -> None:

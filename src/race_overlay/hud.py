@@ -52,6 +52,7 @@ def render_hud_frame(
     widgets = sorted((widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
     for widget in widgets:
         _render_widget(
+            image,
             draw,
             widget,
             hud_value,
@@ -103,6 +104,7 @@ def _render_legacy_layout(
 
 
 def _render_widget(
+    image: Image.Image,
     draw: ImageDraw.ImageDraw,
     widget: HudWidgetConfig,
     hud_value: HudSample,
@@ -118,7 +120,7 @@ def _render_widget(
     elif widget.type == "stat_block":
         _draw_stat_block(draw, widget, hud_value, theme, frame_width, frame_height)
     elif widget.type == "route_map":
-        _draw_route_map(draw, widget, route_points, hud_value, theme, frame_width, frame_height)
+        _draw_route_map(image, draw, widget, route_points, hud_value, theme, frame_width, frame_height)
     elif widget.type == "hero_metric":
         _draw_hero_metric(draw, widget, hud_value.pace_seconds_per_km, theme, frame_width, frame_height)
     elif widget.type == "metric_card":
@@ -191,7 +193,8 @@ def _draw_progress_bar(
     frame_width: int,
     frame_height: int,
 ) -> None:
-    goal_m = max(total_distance_m or distance_m or 1.0, 1.0)
+    goal_source_m = total_distance_m if total_distance_m is not None else distance_m
+    goal_m = max(goal_source_m if goal_source_m is not None else 1.0, 1.0)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     if not bool(widget.style.get("transparent_panel", False)):
         draw.rounded_rectangle((left, top, left + widget.width, top + widget.height), radius=18, fill=tuple(theme.panel_rgba))
@@ -204,7 +207,8 @@ def _draw_progress_bar(
         x = track_left + int((track_right - track_left) * ratio)
         tick_height = 20 if kilometer % 2 == 0 else 14
         draw.line((x, track_y - tick_height // 2, x, track_y + tick_height // 2), fill=tuple(theme.text_rgba), width=2)
-    progress_ratio = min(max((distance_m or 0.0) / goal_m, 0.0), 1.0)
+    progress_value_m = distance_m if distance_m is not None else 0.0
+    progress_ratio = min(max(progress_value_m / goal_m, 0.0), 1.0)
     marker_x = track_left + int((track_right - track_left) * progress_ratio)
     draw.ellipse((marker_x - 9, track_y - 9, marker_x + 9, track_y + 9), fill=tuple(theme.accent_rgba), outline=tuple(theme.text_rgba))
 
@@ -253,6 +257,7 @@ def _stat_block_value(binding: str, hud_value: HudSample, decimals: int) -> str:
 
 
 def _draw_route_map(
+    image: Image.Image,
     draw: ImageDraw.ImageDraw,
     widget: HudWidgetConfig,
     route_points: list[tuple[float, float]],
@@ -278,7 +283,7 @@ def _draw_route_map(
     if label:
         widget_draw.text((12, 10), label, fill=tuple(theme.text_rgba))
     if len(route_points) < 2:
-        draw._image.alpha_composite(widget_image, (left, top))
+        image.alpha_composite(widget_image, (left, top))
         return
 
     map_left = 12
@@ -308,10 +313,10 @@ def _draw_route_map(
         mask = Image.new("L", (widget.width, widget.height), 0)
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.ellipse((0, 0, widget.width, widget.height), fill=255)
-        draw._image.paste(widget_image, (left, top), mask)
+        image.paste(widget_image, (left, top), mask)
         return
 
-    draw._image.alpha_composite(widget_image, (left, top))
+    image.alpha_composite(widget_image, (left, top))
 
 
 def _draw_hero_metric(

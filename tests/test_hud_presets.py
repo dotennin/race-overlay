@@ -1,4 +1,4 @@
-from race_overlay.hud_presets import broadcast_runner_preset
+from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
 
 
 def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
@@ -28,3 +28,13 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert route_map.y == 514
     assert route_map.style["shape"] == "circle"
     assert route_map.width * route_map.height > 176 * 128
+
+
+def test_apply_legacy_field_visibility_maps_distance_flag_to_elevation_stat_for_back_compat() -> None:
+    config = apply_legacy_field_visibility(broadcast_runner_preset(), {"distance": False})
+    visibility = {widget.id: widget.visible for widget in config.widgets}
+
+    assert visibility["distance-ruler"] is False
+    assert visibility["distance-stat"] is False
+    assert visibility["elevation-stat"] is False
+    assert visibility["heart-rate-stat"] is True

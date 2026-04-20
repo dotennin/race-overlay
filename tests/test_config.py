@@ -103,7 +103,7 @@ def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> 
     visibility = {widget.id: widget.visible for widget in config.hud.widgets}
 
     assert config.hud.preset == "broadcast-runner"
-    assert visibility["elevation-stat"] is True
+    assert visibility["elevation-stat"] is False
     assert visibility["distance-ruler"] is False
     assert visibility["distance-stat"] is False
     assert visibility["heart-rate-stat"] is False
