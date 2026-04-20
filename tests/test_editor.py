@@ -27,7 +27,7 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     )
 
     assert state["hud"]["preset"] == "broadcast-runner"
-    assert any(widget["id"] == "hero-pace" for widget in state["hud"]["widgets"])
+    assert any(widget["id"] == "pace-chip" for widget in state["hud"]["widgets"])
     assert state["preview"]["width"] == 1280
     assert isinstance(state["revision"], str)
     assert state["revision"]
@@ -40,15 +40,15 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["theme"]["note_text"] = "Kasumigaura"
-    hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
-    hero_pace["x"] = 48
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip["x"] = 48
 
     save_editor_payload(config_path, payload)
     reloaded = load_config(config_path)
 
     assert reloaded.hud.theme.note_text == "Kasumigaura"
-    hero_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "hero-pace")
-    assert hero_widget.x == 48
+    pace_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
+    assert pace_widget.x == 48
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
 
 
@@ -57,10 +57,10 @@ def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_presen
     schema_hud = broadcast_runner_preset()
     schema_hud.theme.note_text = "Schema wins"
     route_map = next(widget for widget in schema_hud.widgets if widget.id == "route-map")
-    hero_pace = next(widget for widget in schema_hud.widgets if widget.id == "hero-pace")
+    pace_chip = next(widget for widget in schema_hud.widgets if widget.id == "pace-chip")
     route_map.visible = True
-    hero_pace.visible = False
-    hero_pace.x = 144
+    pace_chip.visible = False
+    pace_chip.x = 944
     mixed_payload = {
         "activity_file": "activity_22577902433.tcx",
         "video_globs": ["*.MP4", "*.mov"],
@@ -93,12 +93,12 @@ def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_presen
     reloaded = load_config(config_path)
     saved_payload = yaml.safe_load(config_path.read_text())
     route_map_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "route-map")
-    hero_pace_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "hero-pace")
+    pace_chip_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
 
     assert reloaded.hud.theme.note_text == "Saved schema HUD"
     assert route_map_reloaded.visible is True
-    assert hero_pace_reloaded.visible is False
-    assert hero_pace_reloaded.x == 144
+    assert pace_chip_reloaded.visible is False
+    assert pace_chip_reloaded.x == 944
     assert "fields" not in saved_payload["hud"]
 
 
@@ -351,14 +351,14 @@ def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Pat
 
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
-    hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
-    hero_pace["x"] = None
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip["x"] = None
 
     with pytest.raises(ValueError, match="x must be a finite integer"):
         save_editor_payload(config_path, payload)
 
-    hero_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "hero-pace")
-    assert hero_widget.x == 24
+    pace_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "pace-chip")
+    assert pace_widget.x == 980
 
 
 @pytest.mark.parametrize(
@@ -403,7 +403,7 @@ def test_save_editor_payload_rejects_invalid_theme_values(tmp_path: Path) -> Non
     with pytest.raises(ValueError, match="panel_rgba must be a list of 4 integers"):
         save_editor_payload(config_path, payload)
 
-    assert load_config(config_path).hud.theme.panel_rgba == [12, 18, 28, 168]
+    assert load_config(config_path).hud.theme.panel_rgba == [12, 18, 28, 148]
 
 
 def test_save_editor_payload_rejects_partial_widget_objects(tmp_path: Path) -> None:
@@ -412,14 +412,14 @@ def test_save_editor_payload_rejects_partial_widget_objects(tmp_path: Path) -> N
 
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
-    hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
-    hero_pace.pop("visible")
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip.pop("visible")
 
     with pytest.raises(ValueError, match="complete HUD document"):
         save_editor_payload(config_path, payload)
 
-    hero_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "hero-pace")
-    assert hero_widget.visible is True
+    pace_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "pace-chip")
+    assert pace_widget.visible is True
 
 
 def test_save_editor_payload_rejects_partial_widget_bindings(tmp_path: Path) -> None:
@@ -428,25 +428,25 @@ def test_save_editor_payload_rejects_partial_widget_bindings(tmp_path: Path) -> 
 
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
-    hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
-    hero_pace["bindings"] = {}
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip["bindings"] = {}
 
     with pytest.raises(ValueError, match="complete HUD document"):
         save_editor_payload(config_path, payload)
 
-    hero_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "hero-pace")
-    assert hero_widget.bindings == {"value": "pace_seconds_per_km"}
+    pace_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "pace-chip")
+    assert pace_widget.bindings == {"value": "pace_seconds_per_km"}
 
 
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
         (
-            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace").update(anchor="center"),
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip").update(anchor="center"),
             "unsupported anchor",
         ),
         (
-            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-progress").update(width=160),
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-ruler").update(width=160),
             "minimum width",
         ),
     ],
@@ -659,8 +659,8 @@ def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
-    hero_pace = next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace")
-    hero_pace["style"]["label"] = float("nan")
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip["style"]["label"] = float("nan")
 
     with running_editor(config_path) as base_url:
         parts = urlparse(base_url)
@@ -685,11 +685,11 @@ def test_api_config_rejects_nan_values_with_400(tmp_path: Path) -> None:
     ("mutate", "message"),
     [
         (
-            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "hero-pace").update(anchor="center"),
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip").update(anchor="center"),
             "unsupported anchor",
         ),
         (
-            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-progress").update(width=160),
+            lambda payload: next(widget for widget in payload["widgets"] if widget["id"] == "distance-ruler").update(width=160),
             "minimum width",
         ),
     ],

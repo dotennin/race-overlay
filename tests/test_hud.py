@@ -70,31 +70,35 @@ def test_render_hud_frame_creates_transparent_rgba_image(tmp_path: Path) -> None
     assert image.getbbox() is not None
 
 
-def test_render_hud_frame_draws_reference_layout_regions() -> None:
-    hud_value = HudSample(
-        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
-        latitude=36.0833,
-        longitude=140.2106,
-        altitude_m=25.0,
-        distance_m=24600.0,
-        speed_mps=3.58,
-        pace_seconds_per_km=278.0,
-        heart_rate_bpm=162,
-        cadence_spm=178,
-    )
+def test_render_hud_frame_draws_hud_v2_regions(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(monkeypatch, broadcast_runner_preset())
     image = render_hud_frame(
         width=1280,
         height=720,
-        hud_value=hud_value,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
         route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
         hud_config=broadcast_runner_preset(),
         elapsed_seconds=6852,
+        total_distance_m=10000.0,
     )
 
-    assert image.getpixel((100, 90))[3] > 0
-    assert image.getpixel((700, 70))[3] > 0
-    assert image.getpixel((120, 220))[3] > 0
-    assert image.getpixel((1080, 170))[3] > 0
+    assert "Elevation" in labels
+    assert "Distance" in labels
+    assert "Heart rate" in labels
+    assert image.getpixel((640, 70))[3] > 0
+    assert image.getpixel((90, 610))[3] > 0
+    assert image.getpixel((80, 210))[3] > 0
+    assert image.getpixel((1150, 170))[3] > 0
 
 
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
@@ -118,7 +122,7 @@ def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frame
         elapsed_seconds=6852,
     )
 
-    assert image.getpixel((900, 170))[3] > 0
+    assert image.getpixel((950, 170))[3] > 0
     assert image.getpixel((1090, 170))[3] == 0
 
 
@@ -558,6 +562,49 @@ def test_render_hud_frame_route_map_skips_marker_when_gps_is_missing(
     )
 
     assert ellipse_calls == []
+
+
+def test_render_hud_frame_clips_circular_route_map_content_to_circle() -> None:
+    hud_config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=120,
+                height=120,
+                style={"label": "", "shape": "circle"},
+            )
+        ],
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.0,
+        longitude=139.0,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    image = render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=hud_value,
+        route_points=[(36.0, 139.0), (35.0, 140.0)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    assert image.getpixel((15, 15))[3] == 0
+    assert image.getpixel((60, 6))[3] > 0
 
 
 def test_metric_value_returns_placeholder_for_missing_speed() -> None:

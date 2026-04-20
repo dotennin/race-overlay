@@ -110,6 +110,8 @@ def _render_widget(
 ) -> None:
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m, total_distance_m, theme, frame_width, frame_height)
+    elif widget.type == "stat_block":
+        _draw_stat_block(draw, widget, hud_value, theme, frame_width, frame_height)
     elif widget.type == "route_map":
         _draw_route_map(draw, widget, route_points, hud_value, theme, frame_width, frame_height)
     elif widget.type == "hero_metric":
@@ -132,12 +134,14 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
     if widget.type == "progress_bar":
         _require_supported_binding(widget, {"distance_m"})
         _validate_progress_bar_widget(widget)
+    elif widget.type == "stat_block":
+        _require_supported_binding(widget, {"altitude_m", "distance_m", "heart_rate_bpm"})
     elif widget.type == "route_map":
         _require_supported_binding(widget, {"route_points"})
     elif widget.type == "hero_metric":
         _require_supported_binding(widget, {"pace_seconds_per_km"})
     elif widget.type == "metric_card":
-        _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+        _require_supported_binding(widget, {"pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
     elif widget.type == "context_card":
         _require_supported_binding(widget, {"timestamp"})
     else:
@@ -182,20 +186,65 @@ def _draw_progress_bar(
     frame_width: int,
     frame_height: int,
 ) -> None:
+    goal_m = max(total_distance_m or distance_m or 1.0, 1.0)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
-    right, bottom = left + widget.width, top + widget.height
-    draw.rounded_rectangle((left, top, right, bottom), radius=18, fill=tuple(theme.panel_rgba))
-    track_left = left + 108
-    track_top = top + 28
-    track_right = right - 124
-    track_bottom = top + 38
-    draw.rounded_rectangle((track_left, track_top, track_right, track_bottom), radius=999, fill=(255, 255, 255, 40))
-    progress_target_m = total_distance_m or 42195.0
-    progress = min(max((distance_m or 0.0) / progress_target_m, 0.0), 1.0)
-    filled = track_left + int((widget.width - 232) * progress)
-    draw.rounded_rectangle((track_left, track_top, max(track_left, filled), track_bottom), radius=999, fill=tuple(theme.accent_rgba))
-    draw.text((left + 22, top + 18), str(widget.style.get("label", "Distance")), fill=tuple(theme.text_rgba))
-    draw.text((right - 94, top + 18), f"{(distance_m or 0.0) / 1000:.1f} km", fill=tuple(theme.text_rgba))
+    if not bool(widget.style.get("transparent_panel", False)):
+        draw.rounded_rectangle((left, top, left + widget.width, top + widget.height), radius=18, fill=tuple(theme.panel_rgba))
+    track_left = left + 16
+    track_right = left + widget.width - 16
+    track_y = top + 42
+    draw.line((track_left, track_y, track_right, track_y), fill=tuple(theme.text_rgba), width=2)
+    for kilometer in range(int(goal_m // 1000) + 1):
+        ratio = kilometer / max(goal_m / 1000.0, 1.0)
+        x = track_left + int((track_right - track_left) * ratio)
+        tick_height = 20 if kilometer % 2 == 0 else 14
+        draw.line((x, track_y - tick_height // 2, x, track_y + tick_height // 2), fill=tuple(theme.text_rgba), width=2)
+    progress_ratio = min(max((distance_m or 0.0) / goal_m, 0.0), 1.0)
+    marker_x = track_left + int((track_right - track_left) * progress_ratio)
+    draw.ellipse((marker_x - 9, track_y - 9, marker_x + 9, track_y + 9), fill=tuple(theme.accent_rgba), outline=tuple(theme.text_rgba))
+
+
+def _draw_stat_block(
+    draw: ImageDraw.ImageDraw,
+    widget: HudWidgetConfig,
+    hud_value: HudSample,
+    theme: HudThemeConfig,
+    frame_width: int,
+    frame_height: int,
+) -> None:
+    binding = _require_supported_binding(widget, {"altitude_m", "distance_m", "heart_rate_bpm"})
+    left, top = _resolve_widget_origin(widget, frame_width, frame_height)
+    draw.rounded_rectangle(
+        (left, top, left + widget.width, top + widget.height),
+        radius=20,
+        fill=tuple(theme.panel_rgba),
+    )
+    label = str(widget.style.get("label", "Metric"))
+    unit = str(widget.style.get("unit", ""))
+    align = str(widget.style.get("align", "left"))
+    value_text = _stat_block_value(binding, hud_value, decimals=int(widget.style.get("decimals", 0)))
+    if align == "right":
+        value_right = left + widget.width - 12
+        draw.text((value_right, top + 12), label, fill=tuple(theme.text_rgba), anchor="ra")
+        draw.text((value_right, top + 38), value_text, fill=tuple(theme.text_rgba), anchor="ra")
+        draw.text((value_right, top + 58), unit, fill=tuple(theme.text_rgba), anchor="ra")
+        return
+
+    draw.text((left + 12, top + 12), label, fill=tuple(theme.text_rgba))
+    draw.text((left + 12, top + 38), value_text, fill=tuple(theme.text_rgba))
+    draw.text((left + widget.width - 12, top + 58), unit, fill=tuple(theme.text_rgba), anchor="ra")
+
+
+def _stat_block_value(binding: str, hud_value: HudSample, decimals: int) -> str:
+    if binding == "altitude_m":
+        return "--" if hud_value.altitude_m is None else f"{hud_value.altitude_m:.0f}"
+    if binding == "distance_m":
+        if hud_value.distance_m is None:
+            return "--"
+        return f"{hud_value.distance_m / 1000:.{decimals}f}"
+    if binding == "heart_rate_bpm":
+        return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
+    raise AssertionError(f"unsupported stat_block binding '{binding}'")
 
 
 def _draw_route_map(
@@ -208,18 +257,30 @@ def _draw_route_map(
     frame_height: int,
 ) -> None:
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
-    right, bottom = left + widget.width, top + widget.height
-    draw.rounded_rectangle((left, top, right, bottom), radius=16, fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
+    shape = str(widget.style.get("shape", "rect"))
+    widget_image = Image.new("RGBA", (widget.width, widget.height), (0, 0, 0, 0))
+    widget_draw = ImageDraw.Draw(widget_image)
+    if shape == "circle":
+        widget_draw.ellipse((0, 0, widget.width, widget.height), fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
+    else:
+        widget_draw.rounded_rectangle(
+            (0, 0, widget.width, widget.height),
+            radius=16,
+            fill=tuple(theme.panel_rgba),
+            outline=(255, 255, 255, 120),
+        )
     label = str(widget.style.get("label", "Route map"))
-    draw.text((left + 12, top + 10), label, fill=tuple(theme.text_rgba))
+    if label:
+        widget_draw.text((12, 10), label, fill=tuple(theme.text_rgba))
     if len(route_points) < 2:
+        draw._image.alpha_composite(widget_image, (left, top))
         return
 
-    map_left = left + 12
-    map_top = top + 36
-    map_bottom = bottom - 12
+    map_left = 12
+    map_top = 36 if label else 12
+    map_bottom = widget.height - 12
     inner_width = max(widget.width - 24, 1)
-    inner_height = max(widget.height - 48, 1)
+    inner_height = max(widget.height - (48 if label else 24), 1)
     latitudes = [point[0] for point in route_points]
     longitudes = [point[1] for point in route_points]
     lat_min, lat_max = min(latitudes), max(latitudes)
@@ -232,11 +293,20 @@ def _draw_route_map(
         return (x, y)
 
     projected = [project(point) for point in route_points]
-    draw.line(projected, fill=tuple(theme.accent_rgba), width=4)
+    widget_draw.line(projected, fill=tuple(theme.accent_rgba), width=4)
     current_point = _resolve_current_route_point(route_points, hud_value)
     if current_point is not None:
         x, y = project(current_point)
-        draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
+        widget_draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
+
+    if shape == "circle":
+        mask = Image.new("L", (widget.width, widget.height), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse((0, 0, widget.width, widget.height), fill=255)
+        draw._image.paste(widget_image, (left, top), mask)
+        return
+
+    draw._image.alpha_composite(widget_image, (left, top))
 
 
 def _draw_hero_metric(
@@ -266,6 +336,14 @@ def _draw_metric_card(
 ) -> None:
     left, top = _resolve_widget_origin(widget, frame_width, frame_height)
     right, bottom = left + widget.width, top + widget.height
+    if widget.style.get("variant") == "compact":
+        draw.rounded_rectangle((left, top, right, bottom), radius=20, fill=tuple(theme.panel_rgba))
+        label = str(widget.style.get("label", "Metric"))
+        draw.text((left + 12, top + 12), label, fill=tuple(theme.text_rgba))
+        draw.text((left + 12, top + 34), _metric_value(widget, hud_value, elapsed_seconds), fill=tuple(theme.text_rgba))
+        draw.text((right - 12, bottom - 12), _metric_suffix(widget), fill=(255, 255, 255, 160), anchor="rs")
+        return
+
     draw.rounded_rectangle((left, top, right, bottom), radius=18, fill=tuple(theme.panel_rgba))
     label = str(widget.style.get("label", "Metric"))
     draw.text((left + 16, top + 16), label, fill=tuple(theme.text_rgba))
@@ -315,7 +393,9 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
 
 
 def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds: int) -> str:
-    binding = _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+    binding = _require_supported_binding(widget, {"pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+    if binding == "pace_seconds_per_km":
+        return _format_pace(hud_value.pace_seconds_per_km)
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     if binding == "cadence_spm":
@@ -330,7 +410,9 @@ def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds
 
 
 def _metric_suffix(widget: HudWidgetConfig) -> str:
-    binding = _require_supported_binding(widget, {"heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+    binding = _require_supported_binding(widget, {"pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+    if binding == "pace_seconds_per_km":
+        return "/km"
     if binding == "heart_rate_bpm":
         return "bpm"
     if binding == "cadence_spm":

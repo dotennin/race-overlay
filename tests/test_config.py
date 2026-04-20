@@ -33,7 +33,7 @@ def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
     assert payload["timeline"]["outside_activity"] == "no_data"
     assert payload["hud"]["preset"] == "broadcast-runner"
     assert payload["hud"]["theme"]["note_text"] == "Race Day"
-    assert any(widget["id"] == "distance-progress" for widget in payload["hud"]["widgets"])
+    assert any(widget["id"] == "distance-ruler" for widget in payload["hud"]["widgets"])
 
 
 def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: Path) -> None:
@@ -67,9 +67,9 @@ def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: P
     visibility = {widget.id: widget.visible for widget in config.hud.widgets}
 
     assert config.hud.preset == "broadcast-runner"
-    assert visibility["hero-pace"] is True
+    assert visibility["pace-chip"] is True
     assert visibility["route-map"] is False
-    assert visibility["metric-heart-rate"] is True
+    assert visibility["heart-rate-stat"] is True
 
 
 def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> None:
@@ -103,8 +103,15 @@ def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> 
     visibility = {widget.id: widget.visible for widget in config.hud.widgets}
 
     assert config.hud.preset == "broadcast-runner"
-    assert all(is_visible is False for is_visible in visibility.values())
-    assert visibility["context-card"] is False
+    assert visibility["elevation-stat"] is True
+    assert visibility["distance-ruler"] is False
+    assert visibility["distance-stat"] is False
+    assert visibility["heart-rate-stat"] is False
+    assert visibility["pace-chip"] is False
+    assert visibility["cadence-chip"] is False
+    assert visibility["elapsed-chip"] is False
+    assert visibility["speed-chip"] is False
+    assert visibility["route-map"] is False
 
 
 def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(tmp_path: Path) -> None:
@@ -112,10 +119,10 @@ def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(
     schema_hud = broadcast_runner_preset()
     schema_hud.theme.note_text = "Custom schema HUD"
     route_map = next(widget for widget in schema_hud.widgets if widget.id == "route-map")
-    hero_pace = next(widget for widget in schema_hud.widgets if widget.id == "hero-pace")
+    pace_chip = next(widget for widget in schema_hud.widgets if widget.id == "pace-chip")
     route_map.visible = True
-    hero_pace.visible = False
-    hero_pace.x = 144
+    pace_chip.visible = False
+    pace_chip.x = 944
     schema_payload = serialize_hud_config(schema_hud)
     path.write_text(
         yaml.safe_dump(
@@ -145,12 +152,12 @@ def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(
 
     config = load_config(path)
     route_map_loaded = next(widget for widget in config.hud.widgets if widget.id == "route-map")
-    hero_pace_loaded = next(widget for widget in config.hud.widgets if widget.id == "hero-pace")
+    pace_chip_loaded = next(widget for widget in config.hud.widgets if widget.id == "pace-chip")
 
     assert config.hud.theme.note_text == "Custom schema HUD"
     assert route_map_loaded.visible is True
-    assert hero_pace_loaded.visible is False
-    assert hero_pace_loaded.x == 144
+    assert pace_chip_loaded.visible is False
+    assert pace_chip_loaded.x == 944
 
 
 def test_load_config_rejects_duplicate_widget_ids(tmp_path: Path) -> None:
@@ -187,7 +194,7 @@ def test_write_default_config_includes_broadcast_runner_schema(tmp_path: Path) -
     payload = yaml.safe_load(path.read_text())
     assert payload["hud"]["preset"] == "broadcast-runner"
     assert payload["hud"]["theme"]["note_text"] == "Race Day"
-    assert any(widget["id"] == "distance-progress" for widget in payload["hud"]["widgets"])
+    assert any(widget["id"] == "distance-ruler" for widget in payload["hud"]["widgets"])
 
 
 def test_resolve_override_prefers_per_video_values() -> None:
@@ -244,7 +251,7 @@ def test_project_config_defaults_to_broadcast_runner_hud() -> None:
     config = ProjectConfig(activity_file="activity_22577902433.tcx")
 
     assert config.hud.preset == "broadcast-runner"
-    assert any(widget.id == "distance-progress" for widget in config.hud.widgets)
+    assert any(widget.id == "distance-ruler" for widget in config.hud.widgets)
 
 
 def test_load_config_rejects_non_finite_style_values(tmp_path: Path) -> None:
