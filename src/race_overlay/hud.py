@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -37,8 +38,13 @@ def _scale_draw(scale: RenderScale, value: int) -> int:
     return max(int(round(value * scale.draw)), 1)
 
 
+@lru_cache(maxsize=32)
+def _load_default_font(pixel_size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.load_default(size=pixel_size)
+
+
 def _scaled_font(scale: RenderScale, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.load_default(size=max(_scale_draw(scale, size), 8))
+    return _load_default_font(max(_scale_draw(scale, size), 8))
 
 
 @dataclass(slots=True, frozen=True)

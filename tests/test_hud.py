@@ -14,6 +14,7 @@ from race_overlay.hud import (
     RenderScale,
     _draw_progress_bar,
     _metric_value,
+    _scaled_font,
     render_hud_frame,
 )
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
@@ -919,3 +920,15 @@ def test_draw_helpers_require_explicit_render_scale() -> None:
             f"{fn.__name__} has optional scale={scale_param.default!r}; "
             "should require explicit RenderScale (no internal fallback)"
         )
+
+
+def test_scaled_font_caches_object_for_same_effective_size() -> None:
+    """_scaled_font must return the identical font object for repeated calls with the
+    same effective scaled size, avoiding redundant ImageFont.load_default() work."""
+    scale = RenderScale(x=1.0, y=1.0, draw=1.0)
+    font_a = _scaled_font(scale, 18)
+    font_b = _scaled_font(scale, 18)
+    assert font_a is font_b, (
+        "_scaled_font should return a cached font object for the same effective size, "
+        "but got two distinct objects"
+    )
