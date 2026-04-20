@@ -26,7 +26,7 @@ def render(
     only: str | None = typer.Option(None, "--only"),
 ) -> None:
     """Render all configured videos with telemetry overlays."""
-    run_pipeline(config_path, only)
+    run_pipeline(config_path, only, progress=typer.echo)
     typer.echo("Render completed")
 
 

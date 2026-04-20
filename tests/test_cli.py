@@ -86,3 +86,29 @@ def test_edit_hud_rejects_non_positive_preview_dimensions(width: int, height: in
 
     assert result.exit_code != 0
     assert "must be greater than 0" in result.output
+
+
+def test_render_command_prints_pipeline_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    config_path.write_text(
+        "activity_file: activity_22577902433.tcx\n"
+        "video_globs:\n  - '*.MP4'\n"
+        "output_dir: rendered\n"
+        "cache_dir: cache\n"
+        "timeline:\n  global_offset_seconds: 0.0\n  outside_activity: no_data\n"
+        "hud:\n  fields:\n    pace: true\n    elapsed: true\n    distance: true\n    speed: true\n    heart_rate: true\n    cadence: true\n    mini_map: true\n"
+        "overrides: {}\n"
+    )
+
+    def fake_run_pipeline(config_path: Path, only: str | None, *, progress) -> None:
+        progress("Generating frame cache at cache/clip/frames")
+        progress("Finished clip.MP4")
+
+    monkeypatch.setattr("race_overlay.cli.run_pipeline", fake_run_pipeline)
+
+    result = CliRunner().invoke(app, ["render", "--config-path", str(config_path)])
+
+    assert result.exit_code == 0
+    assert "Generating frame cache at cache/clip/frames" in result.stdout
+    assert "Finished clip.MP4" in result.stdout
+    assert "Render completed" in result.stdout

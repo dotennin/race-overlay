@@ -27,7 +27,7 @@ def test_render_runs_pipeline_with_config(tmp_path: Path, monkeypatch) -> None:
 
     called = {}
 
-    def fake_run_pipeline(config_path: Path, only: str | None) -> None:
+    def fake_run_pipeline(config_path: Path, only: str | None, *, progress=None) -> None:
         called["config_path"] = config_path
         called["only"] = only
 
@@ -102,6 +102,56 @@ def test_run_pipeline_passes_total_distance_to_renderer(tmp_path: Path, monkeypa
     run_pipeline(config_path, only="clip.MP4")
 
     assert captured == [(broadcast_runner_preset(), 35.0)]
+
+
+def test_run_pipeline_reports_progress_for_cache_and_compose(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert any("Generating frame cache" in message for message in messages)
+    assert any("Building overlay cache" in message for message in messages)
+    assert any("Composing final video" in message for message in messages)
+    assert any("Finished clip.MP4" in message for message in messages)
+
+
+def test_run_pipeline_reports_skipped_outside_clips(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    outside_alignment = ClipAlignment(
+        clip=fake_clip(tmp_path / "clip.MP4"),
+        status="outside",
+        clip_start=fake_clip(tmp_path / "clip.MP4").creation_time,
+        clip_end=fake_clip(tmp_path / "clip.MP4").creation_time + timedelta(seconds=1),
+        overlay_start=None,
+        overlay_end=None,
+    )
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: outside_alignment)
+
+    config = load_config(config_path)
+    config.timeline.outside_activity = "skip"
+    save_config(config_path, config)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert any("Skipping clip.MP4" in message and "outside activity" in message for message in messages)
 
 
 def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, monkeypatch) -> None:
