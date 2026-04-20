@@ -36,6 +36,11 @@ def render_hud_frame(
     total_distance_m: float | None = None,
     layout: HudLayout | None = None,
 ) -> Image.Image:
+    """Render a HUD frame.
+
+    ``total_distance_m`` sets the progress-bar goal for configurable HUD widgets.
+    It is ignored when rendering through the legacy ``HudLayout``/``layout`` path.
+    """
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     legacy_layout = _resolve_legacy_layout(hud_config, layout)
