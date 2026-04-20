@@ -508,6 +508,25 @@ def running_editor(config_path: Path) -> str:
         _ACTIVE_THREADS.remove(thread)
 
 
+def test_editor_help_defaults_closed_in_served_html(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert 'id="help-modal"' in body
+    assert "hidden" in body.split('id="help-modal"', 1)[1]
+
+
 def test_api_config_rejects_malformed_json_with_400(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
