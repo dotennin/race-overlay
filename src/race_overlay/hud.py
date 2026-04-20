@@ -224,10 +224,8 @@ def _draw_progress_bar(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     goal_source_m = total_distance_m if total_distance_m is not None else distance_m
     goal_m = max(goal_source_m if goal_source_m is not None else 1.0, 1.0)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
@@ -258,10 +256,8 @@ def _draw_stat_block(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     binding = _require_supported_binding(widget, {"altitude_m", "distance_m", "heart_rate_bpm"})
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
@@ -308,10 +304,8 @@ def _draw_route_map(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
@@ -375,10 +369,8 @@ def _draw_hero_metric(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
@@ -386,7 +378,7 @@ def _draw_hero_metric(
     draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 18)), str(widget.style.get("label", "Pace")), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 54)), _format_pace(pace_seconds_per_km), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
-    draw.text((left + _scale_x(scale, 220), top + _scale_y(scale, 62)), "/km", fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
+    draw.text((right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)), "/km", fill=(255, 255, 255, 160), anchor="rs", font=_scaled_font(scale, 18))
 
 
 def _draw_metric_card(
@@ -397,10 +389,8 @@ def _draw_metric_card(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
@@ -427,10 +417,8 @@ def _draw_context_card(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
-    scale: RenderScale | None = None,
+    scale: RenderScale,
 ) -> None:
-    if scale is None:
-        scale = _render_scale(frame_width, frame_height)
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)

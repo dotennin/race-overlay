@@ -7,7 +7,15 @@ from PIL import Image, ImageDraw
 import pytest
 
 import race_overlay.hud as hud_module
-from race_overlay.hud import HudLayout, _draw_progress_bar, _metric_value, render_hud_frame
+import inspect
+
+from race_overlay.hud import (
+    HudLayout,
+    RenderScale,
+    _draw_progress_bar,
+    _metric_value,
+    render_hud_frame,
+)
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
@@ -689,6 +697,7 @@ def test_draw_progress_bar_treats_zero_total_distance_as_explicit_goal(monkeypat
         theme=HudThemeConfig(),
         frame_width=320,
         frame_height=96,
+        scale=RenderScale(x=1.0, y=1.0, draw=1.0),
     )
 
     assert len(line_calls) == 2
@@ -830,3 +839,83 @@ def test_render_hud_frame_context_card_uses_widget_label(monkeypatch: pytest.Mon
     )
 
     assert "Checkpoint" in labels
+
+
+def test_hero_metric_km_suffix_stays_within_narrow_widget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The /km suffix must be right-anchored relative to widget width, not placed at a hard-coded
+    absolute x offset that overflows narrow hero_metric widgets."""
+    text_calls: list[tuple[tuple[int, int], str, str | None]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        text_calls.append((xy, str(text), kwargs.get("anchor")))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    widget_width = 160
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="hero-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="hero-pace",
+                    type="hero_metric",
+                    bindings={"value": "pace_seconds_per_km"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=widget_width,
+                    height=96,
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    km_calls = [(xy, anchor) for xy, text, anchor in text_calls if text == "/km"]
+    assert km_calls, "expected /km to be drawn"
+    xy, anchor = km_calls[0]
+    widget_right = widget_width  # widget x=0, so right = widget_width
+    # Right-anchored: xy[0] is the right edge of the text; must not exceed widget boundary.
+    assert anchor in ("rs", "ra", "rm"), f"/km should use a right anchor, got {anchor!r}"
+    assert xy[0] <= widget_right, f"/km x={xy[0]} overflows widget right={widget_right}"
+
+
+def test_draw_helpers_require_explicit_render_scale() -> None:
+    """Private draw helpers must require an explicit RenderScale parameter rather than falling
+    back to computing scale internally, keeping the boundary consistent with
+    _resolve_widget_origin which already requires RenderScale unconditionally."""
+    import race_overlay.hud as hud_module
+
+    helpers = [
+        hud_module._draw_progress_bar,
+        hud_module._draw_stat_block,
+        hud_module._draw_route_map,
+        hud_module._draw_hero_metric,
+        hud_module._draw_metric_card,
+        hud_module._draw_context_card,
+    ]
+    for fn in helpers:
+        sig = inspect.signature(fn)
+        scale_param = sig.parameters.get("scale")
+        assert scale_param is not None, f"{fn.__name__} missing scale parameter"
+        assert scale_param.default is inspect.Parameter.empty, (
+            f"{fn.__name__} has optional scale={scale_param.default!r}; "
+            "should require explicit RenderScale (no internal fallback)"
+        )
