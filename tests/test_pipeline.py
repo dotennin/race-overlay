@@ -72,6 +72,7 @@ def fake_hud_sample() -> HudSample:
         timestamp=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
         latitude=36.0833,
         longitude=140.2107,
+        altitude_m=5.1,
         distance_m=12.0,
         speed_mps=3.5,
         pace_seconds_per_km=285.7,
@@ -80,11 +81,11 @@ def fake_hud_sample() -> HudSample:
     )
 
 
-def test_run_pipeline_passes_loaded_hud_config_to_renderer(tmp_path: Path, monkeypatch) -> None:
+def test_run_pipeline_passes_total_distance_to_renderer(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
-    render_calls: list[HudConfig] = []
+    captured: list[tuple[HudConfig, float | None]] = []
     monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
     monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
     monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
@@ -92,15 +93,15 @@ def test_run_pipeline_passes_loaded_hud_config_to_renderer(tmp_path: Path, monke
     monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
     monkeypatch.setattr(
         "race_overlay.pipeline.render_hud_frame",
-        lambda **kwargs: render_calls.append(kwargs["hud_config"]) or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
+        lambda **kwargs: captured.append((kwargs["hud_config"], kwargs["total_distance_m"]))
+        or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
     )
     monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
 
     run_pipeline(config_path, only="clip.MP4")
 
-    assert render_calls[0].preset == "broadcast-runner"
-    assert render_calls[0].widgets[0].id == "route-map"
+    assert captured == [(broadcast_runner_preset(), 35.0)]
 
 
 def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, monkeypatch) -> None:

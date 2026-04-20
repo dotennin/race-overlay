@@ -22,6 +22,7 @@ def sample_at(activity: ActivityTrack, when):
         timestamp=when,
         latitude=_lerp(before.latitude, after.latitude, ratio),
         longitude=_lerp(before.longitude, after.longitude, ratio),
+        altitude_m=_lerp(before.altitude_m, after.altitude_m, ratio),
         distance_m=_lerp(before.distance_m, after.distance_m, ratio),
         speed_mps=speed_mps,
         pace_seconds_per_km=(1000.0 / speed_mps) if speed_mps else None,

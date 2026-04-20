@@ -28,6 +28,7 @@ def _discover_videos(patterns: list[str]) -> list[Path]:
 def run_pipeline(config_path: Path, only: str | None = None) -> None:
     config = load_config(config_path)
     activity = load_activity(resolve_path_from_config(config_path, config.activity_file))
+    total_distance_m = activity.samples[-1].distance_m if activity.samples else None
     route_points = [
         (sample.latitude, sample.longitude)
         for sample in activity.samples
@@ -68,6 +69,7 @@ def run_pipeline(config_path: Path, only: str | None = None) -> None:
                     route_points=route_points,
                     hud_config=config.hud,
                     elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
+                    total_distance_m=total_distance_m,
                 )
             image.save(frame_dir / f"{index:06d}.png")
 

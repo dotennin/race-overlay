@@ -25,10 +25,11 @@ def _sample_hud_value() -> HudSample:
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
         latitude=36.0833,
         longitude=140.2106,
-        distance_m=24600.0,
+        altitude_m=25.0,
+        distance_m=5210.0,
         speed_mps=3.58,
         pace_seconds_per_km=278.0,
-        heart_rate_bpm=162,
+        heart_rate_bpm=133,
         cadence_spm=178,
     )
 
@@ -85,6 +86,7 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
         [(36.0832, 140.2106), (36.0834, 140.2108)],
         config.hud,
         6852,
+        total_distance_m=10000.0,
     )
     buffer = BytesIO()
     image.save(buffer, format="PNG")

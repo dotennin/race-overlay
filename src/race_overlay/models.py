@@ -46,6 +46,7 @@ class HudSample:
     timestamp: datetime
     latitude: float | None
     longitude: float | None
+    altitude_m: float | None
     distance_m: float | None
     speed_mps: float | None
     pace_seconds_per_km: float | None

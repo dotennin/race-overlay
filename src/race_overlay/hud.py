@@ -33,6 +33,7 @@ def render_hud_frame(
     hud_config: HudConfig | HudLayout | None = None,
     elapsed_seconds: int = 0,
     *,
+    total_distance_m: float | None = None,
     layout: HudLayout | None = None,
 ) -> Image.Image:
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -45,7 +46,17 @@ def render_hud_frame(
     resolved_hud_config = validate_hud_config(_resolve_hud_config(hud_config))
     widgets = sorted((widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
     for widget in widgets:
-        _render_widget(draw, widget, hud_value, route_points, elapsed_seconds, resolved_hud_config.theme, width, height)
+        _render_widget(
+            draw,
+            widget,
+            hud_value,
+            route_points,
+            elapsed_seconds,
+            resolved_hud_config.theme,
+            width,
+            height,
+            total_distance_m,
+        )
     return image
 
 
@@ -95,9 +106,10 @@ def _render_widget(
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
+    total_distance_m: float | None,
 ) -> None:
     if widget.type == "progress_bar":
-        _draw_progress_bar(draw, widget, hud_value.distance_m, theme, frame_width, frame_height)
+        _draw_progress_bar(draw, widget, hud_value.distance_m, total_distance_m, theme, frame_width, frame_height)
     elif widget.type == "route_map":
         _draw_route_map(draw, widget, route_points, hud_value, theme, frame_width, frame_height)
     elif widget.type == "hero_metric":
@@ -165,6 +177,7 @@ def _draw_progress_bar(
     draw: ImageDraw.ImageDraw,
     widget: HudWidgetConfig,
     distance_m: float | None,
+    total_distance_m: float | None,
     theme: HudThemeConfig,
     frame_width: int,
     frame_height: int,
@@ -177,7 +190,8 @@ def _draw_progress_bar(
     track_right = right - 124
     track_bottom = top + 38
     draw.rounded_rectangle((track_left, track_top, track_right, track_bottom), radius=999, fill=(255, 255, 255, 40))
-    progress = min(max((distance_m or 0.0) / 42195.0, 0.0), 1.0)
+    progress_target_m = total_distance_m or 42195.0
+    progress = min(max((distance_m or 0.0) / progress_target_m, 0.0), 1.0)
     filled = track_left + int((widget.width - 232) * progress)
     draw.rounded_rectangle((track_left, track_top, max(track_left, filled), track_bottom), radius=999, fill=tuple(theme.accent_rgba))
     draw.text((left + 22, top + 18), str(widget.style.get("label", "Distance")), fill=tuple(theme.text_rgba))
