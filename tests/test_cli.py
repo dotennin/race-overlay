@@ -100,7 +100,7 @@ def test_render_command_prints_pipeline_progress(tmp_path: Path, monkeypatch: py
         "overrides: {}\n"
     )
 
-    def fake_run_pipeline(config_path: Path, only: str | None, *, progress) -> None:
+    def fake_run_pipeline(config_path: Path, only: str | None, *, progress=None) -> None:
         progress("Generating frame cache at cache/clip/frames")
         progress("Finished clip.MP4")
 
