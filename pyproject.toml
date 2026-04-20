@@ -21,6 +21,7 @@ race-overlay = "race_overlay.cli:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 "race_overlay.editor_assets" = ["*.html", "*.css", "*.js"]
