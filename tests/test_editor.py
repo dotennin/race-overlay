@@ -13,7 +13,12 @@ import pytest
 import yaml
 
 from race_overlay.config import ProjectConfig, load_config, save_config
-from race_overlay.editor_preview import build_editor_state, load_editor_config, save_editor_payload
+from race_overlay.editor_preview import (
+    build_editor_state,
+    load_editor_config,
+    render_preview_payload,
+    save_editor_payload,
+)
 from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
@@ -471,6 +476,22 @@ def test_save_editor_payload_rejects_renderer_invalid_widgets_before_persisting(
     assert load_config(config_path).hud.preset == "broadcast-runner"
 
 
+def test_render_preview_payload_uses_unsaved_draft_without_touching_overlay_yaml(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_text = config_path.read_text()
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    distance_stat = next(widget for widget in payload["widgets"] if widget["id"] == "distance-stat")
+    distance_stat["x"] = 96
+
+    png = render_preview_payload(config_path, payload, width=1280, height=720)
+
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert config_path.read_text() == original_text
+    assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
+
+
 @contextmanager
 def running_editor(config_path: Path) -> str:
     base_url = launch_editor(config_path, width=1280, height=720)
@@ -531,6 +552,61 @@ def test_api_config_rejects_partial_payload_with_400(tmp_path: Path) -> None:
     assert response.status == 400
     assert "complete HUD document" in json.loads(body.decode("utf-8"))["error"]
     assert len(load_config(config_path).hud.widgets) == len(broadcast_runner_preset().widgets)
+
+
+def test_api_preview_rejects_invalid_draft_payload_with_400(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/preview",
+                body=json.dumps({"widgets": []}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert "complete HUD document" in json.loads(body.decode("utf-8"))["error"]
+
+
+def test_api_preview_renders_unsaved_draft_without_touching_overlay_yaml(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_text = config_path.read_text()
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    distance_stat = next(widget for widget in payload["widgets"] if widget["id"] == "distance-stat")
+    distance_stat["x"] = 96
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/preview",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "image/png"
+    assert response.getheader("Cache-Control") == "no-store"
+    assert body.startswith(b"\x89PNG\r\n\x1a\n")
+    assert config_path.read_text() == original_text
+    assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
 
 
 def test_api_config_rejects_stale_hud_save_with_409(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ from race_overlay.editor_preview import (
     _validate_preview_dimensions,
     build_editor_state,
     load_editor_config,
+    render_preview_payload,
     render_preview_png,
     save_editor_payload,
 )
@@ -79,7 +80,7 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
-            if request_path != "/api/config":
+            if request_path not in {"/api/config", "/api/preview"}:
                 self.send_response(404)
                 self.end_headers()
                 return
@@ -101,6 +102,21 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 return
             except ValueError:
                 self._write_json(400, {"error": "invalid JSON payload"})
+                return
+            if request_path == "/api/preview":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("HUD config payload must be a JSON object")
+                    preview = render_preview_payload(config_path, payload, width, height)
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(preview)
                 return
             try:
                 load_editor_config(config_path)
@@ -127,6 +143,8 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
 
 def _reject_invalid_json_constant(value: str) -> object:
     raise ValueError(f"invalid constant {value}")
+
+
 def launch_editor(config_path: Path, width: int, height: int) -> str:
     _validate_preview_dimensions(width, height)
     load_editor_config(config_path)

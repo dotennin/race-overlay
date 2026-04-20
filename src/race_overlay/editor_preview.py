@@ -93,6 +93,22 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
     return buffer.getvalue()
 
 
+def render_preview_payload(config_path: Path, payload: dict[str, object], width: int, height: int) -> bytes:
+    config = load_editor_config(config_path)
+    _validate_complete_hud_payload(config.hud, payload)
+    preview_hud = _load_hud_config(payload, require_complete=True)
+    preview_config = ProjectConfig(
+        activity_file=config.activity_file,
+        video_globs=list(config.video_globs),
+        output_dir=config.output_dir,
+        cache_dir=config.cache_dir,
+        timeline=config.timeline,
+        hud=preview_hud,
+        overrides=dict(config.overrides),
+    )
+    return render_preview_png(preview_config, width, height)
+
+
 def _validate_preview_dimensions(width: int, height: int) -> None:
     if width <= 0 or height <= 0:
         raise ValueError("preview width and height must be greater than 0")
