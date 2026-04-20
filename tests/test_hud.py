@@ -745,6 +745,68 @@ def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.Monkey
     assert "Course overview" in labels
 
 
+def test_render_hud_frame_scales_widget_regions_for_larger_frames() -> None:
+    image = render_hud_frame(
+        width=2560,
+        height=1440,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=broadcast_runner_preset(),
+        elapsed_seconds=6852,
+        total_distance_m=10000.0,
+    )
+
+    assert image.getpixel((1280, 140))[3] > 0
+    assert image.getpixel((180, 1220))[3] > 0
+    assert image.getpixel((640, 70))[3] == 0
+    assert image.getpixel((90, 610))[3] == 0
+
+
+def test_render_hud_frame_scales_font_sizes_for_larger_frames(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen_sizes: list[int] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        font = kwargs.get("font")
+        if font is not None and getattr(font, "size", None) is not None:
+            seen_sizes.append(int(font.size))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=2560,
+        height=1440,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=broadcast_runner_preset(),
+        elapsed_seconds=6852,
+        total_distance_m=10000.0,
+    )
+
+    assert max(seen_sizes) >= 20
+
+
 def test_render_hud_frame_context_card_uses_widget_label(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _rendered_text_labels(
         monkeypatch,

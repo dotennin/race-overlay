@@ -43,7 +43,7 @@ def broadcast_runner_preset() -> HudConfig:
                 {"value": "distance_m"},
                 "top-left",
                 44,
-                250,
+                320,
                 210,
                 88,
                 30,
