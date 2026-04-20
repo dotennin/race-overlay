@@ -5,6 +5,7 @@ import sys
 import time
 from contextlib import contextmanager
 from http.client import HTTPConnection
+from importlib.resources import files
 from pathlib import Path
 from threading import Event, Thread
 from urllib.parse import urlparse
@@ -873,6 +874,25 @@ def test_launch_editor_rejects_directory_config_path(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="config file"):
         launch_editor(config_path, width=1280, height=720)
+
+
+def test_editor_shell_contains_three_pane_workspace_and_hidden_help_modal() -> None:
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+
+    assert 'id="layers-panel"' in html
+    assert 'id="canvas-panel"' in html
+    assert 'id="inspector-panel"' in html
+    assert 'id="help-button"' in html
+    assert 'id="help-modal"' in html
+    assert "hidden" in html.split('id="help-modal"', 1)[1]
+
+
+def test_editor_script_uses_preview_endpoint_for_live_draft_updates() -> None:
+    script = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    assert 'fetch("/api/preview"' in script
+    assert "draftState" in script
+    assert "help-modal" in script
 
 
 def test_api_state_returns_structured_error_when_config_path_becomes_directory(tmp_path: Path) -> None:

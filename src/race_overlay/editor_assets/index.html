@@ -7,28 +7,74 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <aside id="sidebar">
-      <h1>HUD editor</h1>
-      <p id="status-message" hidden></p>
-      <label class="field">
-        <span>Preset</span>
-        <input id="preset" type="text" readonly />
-      </label>
-      <label class="field">
-        <span>Theme note</span>
-        <input id="note-text" type="text" />
-      </label>
-      <section>
-        <h2>Widgets</h2>
-        <div id="widget-list"></div>
-      </section>
-    </aside>
-    <main>
-      <div class="preview-frame">
-        <img id="preview" alt="HUD preview" />
-      </div>
-      <button id="save-button" type="button">Save YAML</button>
-    </main>
+    <div id="app-shell">
+      <aside id="layers-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Canvas-first designer</p>
+          <h1>HUD workspace</h1>
+          <p class="panel-copy">Arrange overlays in layers, tune details in the inspector, and keep YAML writes for explicit saves only.</p>
+        </div>
+
+        <p id="status-message" hidden></p>
+
+        <section class="panel-section">
+          <h2>Document</h2>
+          <label class="field">
+            <span>Preset</span>
+            <input id="preset" type="text" readonly />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Layers</h2>
+            <span class="section-meta">Top → bottom</span>
+          </div>
+          <div id="widget-list"></div>
+        </section>
+      </aside>
+
+      <main id="canvas-panel">
+        <header id="toolbar">
+          <div>
+            <p class="eyebrow">Live preview</p>
+            <h2>Canvas</h2>
+          </div>
+          <div class="toolbar-actions">
+            <button id="help-button" type="button" aria-controls="help-modal" aria-expanded="false">?</button>
+            <button id="save-button" type="button">Save YAML</button>
+          </div>
+        </header>
+
+        <section id="canvas-stage">
+          <img id="preview" alt="HUD preview" />
+          <div id="widget-overlays" aria-hidden="true"></div>
+        </section>
+      </main>
+
+      <aside id="inspector-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Inspector</p>
+          <h2>Widget details</h2>
+        </div>
+
+        <section class="panel-section">
+          <label class="field">
+            <span>Theme note</span>
+            <input id="note-text" type="text" />
+          </label>
+        </section>
+
+        <div id="inspector-content"></div>
+      </aside>
+    </div>
+
+    <dialog id="help-modal" hidden>
+      <h2>Help</h2>
+      <p>Drag on canvas to move HUD blocks. Use handles to resize. Save YAML to persist.</p>
+      <button id="help-close-button" type="button">Close</button>
+    </dialog>
+
     <script src="/app.js" type="module"></script>
   </body>
 </html>
