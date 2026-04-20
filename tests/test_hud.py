@@ -493,6 +493,57 @@ def test_render_hud_frame_route_map_marker_tracks_current_sample_position() -> N
     assert list(first_image.getdata()) != list(later_image.getdata())
 
 
+def test_render_hud_frame_route_map_skips_marker_when_gps_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ellipse_calls: list[tuple[object, object]] = []
+    original_ellipse = ImageDraw.ImageDraw.ellipse
+
+    def record_ellipse(self, xy, *args, **kwargs):
+        ellipse_calls.append((xy, kwargs.get("fill")))
+        return original_ellipse(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "ellipse", record_ellipse)
+
+    hud_config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=120,
+                height=120,
+            )
+        ],
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=None,
+        longitude=None,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=hud_value,
+        route_points=[(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    assert ellipse_calls == []
+
+
 def test_metric_value_returns_placeholder_for_missing_speed() -> None:
     widget = HudWidgetConfig(
         id="metric-speed",

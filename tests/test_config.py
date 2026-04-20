@@ -72,6 +72,41 @@ def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: P
     assert visibility["metric-heart-rate"] is True
 
 
+def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": {
+                    "fields": {
+                        "pace": False,
+                        "elapsed": False,
+                        "distance": False,
+                        "speed": False,
+                        "heart_rate": False,
+                        "cadence": False,
+                        "mini_map": False,
+                    }
+                },
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    visibility = {widget.id: widget.visible for widget in config.hud.widgets}
+
+    assert config.hud.preset == "broadcast-runner"
+    assert all(is_visible is False for is_visible in visibility.values())
+    assert visibility["context-card"] is False
+
+
 def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(tmp_path: Path) -> None:
     path = tmp_path / "overlay.yaml"
     schema_hud = broadcast_runner_preset()

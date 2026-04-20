@@ -29,6 +29,7 @@ def apply_legacy_field_visibility(config: HudConfig, fields: dict[str, bool]) ->
         "metric-cadence": fields.get("cadence", True),
         "metric-elapsed": fields.get("elapsed", True),
         "metric-speed": fields.get("speed", True),
+        "context-card": False,
     }
     for widget in updated.widgets:
         if widget.id in visibility_map:

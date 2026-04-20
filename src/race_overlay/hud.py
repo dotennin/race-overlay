@@ -219,8 +219,10 @@ def _draw_route_map(
 
     projected = [project(point) for point in route_points]
     draw.line(projected, fill=tuple(theme.accent_rgba), width=4)
-    x, y = project(_resolve_current_route_point(route_points, hud_value))
-    draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
+    current_point = _resolve_current_route_point(route_points, hud_value)
+    if current_point is not None:
+        x, y = project(current_point)
+        draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
 
 
 def _draw_hero_metric(
@@ -334,9 +336,11 @@ def _format_pace(pace_seconds_per_km: float | None) -> str:
     return f"{minutes:02d}:{seconds:02d}"
 
 
-def _resolve_current_route_point(route_points: list[tuple[float, float]], hud_value: HudSample) -> tuple[float, float]:
+def _resolve_current_route_point(
+    route_points: list[tuple[float, float]], hud_value: HudSample
+) -> tuple[float, float] | None:
     if hud_value.latitude is None or hud_value.longitude is None:
-        return route_points[-1]
+        return None
 
     current = (hud_value.latitude, hud_value.longitude)
     closest_point = route_points[-1]
