@@ -1,4 +1,6 @@
-from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
+import pytest
+
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, deserialize_hud_config, serialize_hud_config
 from race_overlay.hud_presets import apply_legacy_field_visibility
 
 
@@ -51,3 +53,37 @@ def test_apply_legacy_field_visibility_does_not_mutate_input() -> None:
     assert updated is not config
     assert updated.widgets[0].visible is False
     assert config.widgets[0].visible is True
+
+
+def test_deserialize_hud_config_rejects_duplicate_widget_ids() -> None:
+    payload = serialize_hud_config(
+        HudConfig(
+            preset="broadcast-runner",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="hero-pace",
+                    type="hero_metric",
+                    bindings={"value": "pace_seconds_per_km"},
+                    anchor="top-left",
+                    x=24,
+                    y=172,
+                    width=336,
+                    height=116,
+                ),
+                HudWidgetConfig(
+                    id="hero-pace",
+                    type="metric_card",
+                    bindings={"value": "heart_rate_bpm"},
+                    anchor="top-right",
+                    x=980,
+                    y=32,
+                    width=160,
+                    height=108,
+                ),
+            ],
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicate HUD widget id"):
+        deserialize_hud_config(payload)

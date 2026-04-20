@@ -118,6 +118,32 @@ def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(
     assert hero_pace_loaded.x == 144
 
 
+def test_load_config_rejects_duplicate_widget_ids(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    hud_payload = serialize_hud_config(broadcast_runner_preset())
+    duplicated_widget = dict(hud_payload["widgets"][0])
+    duplicated_widget["bindings"] = dict(duplicated_widget["bindings"])
+    duplicated_widget["style"] = dict(duplicated_widget["style"])
+    hud_payload["widgets"].append(duplicated_widget)
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": hud_payload,
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicate HUD widget id"):
+        load_config(path)
+
+
 def test_write_default_config_includes_broadcast_runner_schema(tmp_path: Path) -> None:
     path = tmp_path / "overlay.yaml"
 

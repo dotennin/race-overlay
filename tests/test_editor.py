@@ -137,6 +137,31 @@ def test_save_editor_payload_allows_missing_widget_label(tmp_path: Path) -> None
     assert reloaded.hud.widgets[0].style == {"label": ""}
 
 
+def test_save_editor_payload_allows_empty_widget_list_when_existing_hud_is_empty(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=HudConfig(
+                preset="empty",
+                theme=HudThemeConfig(),
+                widgets=[],
+            ),
+        ),
+    )
+
+    payload = serialize_hud_config(load_config(config_path).hud)
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    payload["theme"]["note_text"] = "No widgets"
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    assert reloaded.hud.theme.note_text == "No widgets"
+    assert reloaded.hud.widgets == []
+
+
 def test_save_editor_payload_does_not_run_two_load_modify_write_cycles_concurrently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))

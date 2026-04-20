@@ -54,13 +54,14 @@ def deserialize_hud_config(payload: dict[str, object], *, require_complete: bool
         raise TypeError("hud.theme must be a mapping")
     if not isinstance(widgets_payload, list):
         raise TypeError("hud.widgets must be a list")
-    if require_complete and not widgets_payload:
-        raise ValueError("editor save requires a complete HUD document with at least one widget")
+
+    widgets = [_deserialize_widget(widget_payload) for widget_payload in widgets_payload]
+    _require_unique_widget_ids(widgets)
 
     return HudConfig(
         preset=_require_string(payload.get("preset", "broadcast-runner"), "hud.preset"),
         theme=_deserialize_theme(theme_payload),
-        widgets=[_deserialize_widget(widget_payload) for widget_payload in widgets_payload],
+        widgets=widgets,
     )
 
 
@@ -98,6 +99,19 @@ def _deserialize_theme(payload: object) -> HudThemeConfig:
         text_rgba=_require_rgba_list(payload.get("text_rgba", defaults.text_rgba), "text_rgba"),
         note_text=_require_text(payload.get("note_text", defaults.note_text), "note_text"),
     )
+
+
+def _require_unique_widget_ids(widgets: list[HudWidgetConfig]) -> None:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for widget in widgets:
+        if widget.id in seen and widget.id not in duplicates:
+            duplicates.append(widget.id)
+            continue
+        seen.add(widget.id)
+    if duplicates:
+        suffix = "s" if len(duplicates) != 1 else ""
+        raise ValueError(f"duplicate HUD widget id{suffix}: {', '.join(duplicates)}")
 
 
 def _require_string(value: object, field_name: str) -> str:

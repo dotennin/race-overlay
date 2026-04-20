@@ -3,7 +3,7 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw
 
-from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, _require_unique_widget_ids
 from race_overlay.models import HudSample
 
 HUD_REFERENCE_WIDTH = 1280
@@ -64,6 +64,7 @@ def _resolve_hud_config(hud_config: HudConfig | HudLayout | None) -> HudConfig:
 
 
 def validate_hud_config(hud_config: HudConfig) -> HudConfig:
+    _require_unique_widget_ids(hud_config.widgets)
     for widget in hud_config.widgets:
         _validate_widget(widget)
     return hud_config
