@@ -107,8 +107,8 @@ def test_render_hud_frame_draws_hud_v2_regions(monkeypatch: pytest.MonkeyPatch) 
     assert "Heart rate" in labels
     assert image.getpixel((640, 70))[3] > 0
     assert image.getpixel((90, 610))[3] > 0
-    assert image.getpixel((80, 210))[3] > 0
-    assert image.getpixel((1150, 170))[3] > 0
+    assert image.getpixel((58, 167))[3] > 0
+    assert image.getpixel((1145, 155))[3] > 0
 
 
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
@@ -132,7 +132,7 @@ def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frame
         elapsed_seconds=6852,
     )
 
-    assert image.getpixel((950, 170))[3] > 0
+    assert image.getpixel((965, 155))[3] > 0
     assert image.getpixel((1090, 170))[3] == 0
 
 
@@ -920,6 +920,130 @@ def test_draw_helpers_require_explicit_render_scale() -> None:
             f"{fn.__name__} has optional scale={scale_param.default!r}; "
             "should require explicit RenderScale (no internal fallback)"
         )
+
+
+def test_render_hud_frame_defaults_non_map_widgets_to_transparent_panels(monkeypatch: pytest.MonkeyPatch) -> None:
+    panel_fills: list[tuple[int, int, int, int]] = []
+    original_rounded_rectangle = ImageDraw.ImageDraw.rounded_rectangle
+
+    def record_rounded_rectangle(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            panel_fills.append(fill)
+        return original_rounded_rectangle(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "rounded_rectangle", record_rounded_rectangle)
+
+    preset = broadcast_runner_preset()
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=preset,
+        elapsed_seconds=6852,
+        total_distance_m=10000.0,
+    )
+
+    assert tuple(preset.theme.panel_rgba) not in panel_fills
+
+
+def test_render_hud_frame_keeps_route_map_panel_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    ellipse_fills: list[tuple[int, int, int, int]] = []
+    original_ellipse = ImageDraw.ImageDraw.ellipse
+
+    def record_ellipse(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            ellipse_fills.append(fill)
+        return original_ellipse(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "ellipse", record_ellipse)
+
+    preset = broadcast_runner_preset()
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=preset,
+        elapsed_seconds=6852,
+        total_distance_m=10000.0,
+    )
+
+    assert tuple(preset.theme.panel_rgba) in ellipse_fills
+
+
+def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    panel_fills: list[tuple[int, int, int, int]] = []
+    original_rounded_rectangle = ImageDraw.ImageDraw.rounded_rectangle
+
+    def record_rounded_rectangle(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            panel_fills.append(fill)
+        return original_rounded_rectangle(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "rounded_rectangle", record_rounded_rectangle)
+
+    hud_config = HudConfig(
+        preset="panel-opt-in",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="pace-chip",
+                type="metric_card",
+                bindings={"value": "pace_seconds_per_km"},
+                anchor="top-left",
+                x=24,
+                y=24,
+                width=160,
+                height=96,
+                style={"label": "Pace", "show_panel": True},
+            )
+        ],
+    )
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=133,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    assert tuple(hud_config.theme.panel_rgba) in panel_fills
 
 
 def test_scaled_font_caches_object_for_same_effective_size() -> None:

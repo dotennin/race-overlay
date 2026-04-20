@@ -22,7 +22,7 @@ def broadcast_runner_preset() -> HudConfig:
                 56,
                 40,
                 True,
-                {"label": "Distance", "variant": "ruler", "transparent_panel": True},
+                {"label": "Distance", "variant": "ruler"},
             ),
             HudWidgetConfig(
                 "elevation-stat",
@@ -126,7 +126,7 @@ def broadcast_runner_preset() -> HudConfig:
                 180,
                 20,
                 True,
-                {"label": "", "shape": "circle"},
+                {"label": "", "shape": "circle", "show_panel": True},
             ),
         ],
     )

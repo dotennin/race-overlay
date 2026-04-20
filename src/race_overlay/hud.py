@@ -222,6 +222,15 @@ def _resolve_widget_origin(widget: HudWidgetConfig, frame_width: int, frame_heig
     return (max(left, 0), max(top, 0))
 
 
+def _widget_panel_enabled(widget: HudWidgetConfig) -> bool:
+    show_panel = widget.style.get("show_panel")
+    if isinstance(show_panel, bool):
+        return show_panel
+    if bool(widget.style.get("transparent_panel", False)):
+        return False
+    return widget.type == "route_map"
+
+
 def _draw_progress_bar(
     draw: ImageDraw.ImageDraw,
     widget: HudWidgetConfig,
@@ -237,7 +246,7 @@ def _draw_progress_bar(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
-    if not bool(widget.style.get("transparent_panel", False)):
+    if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
     track_left = left + _scale_x(scale, 16)
     track_right = left + w - _scale_x(scale, 16)
@@ -268,11 +277,12 @@ def _draw_stat_block(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
-    draw.rounded_rectangle(
-        (left, top, left + w, top + h),
-        radius=_scale_draw(scale, 20),
-        fill=tuple(theme.panel_rgba),
-    )
+    if _widget_panel_enabled(widget):
+        draw.rounded_rectangle(
+            (left, top, left + w, top + h),
+            radius=_scale_draw(scale, 20),
+            fill=tuple(theme.panel_rgba),
+        )
     label = str(widget.style.get("label", "Metric"))
     unit = str(widget.style.get("unit", ""))
     align = str(widget.style.get("align", "left"))
@@ -319,14 +329,16 @@ def _draw_route_map(
     widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     widget_draw = ImageDraw.Draw(widget_image)
     if shape == "circle":
-        widget_draw.ellipse((0, 0, w, h), fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
+        if _widget_panel_enabled(widget):
+            widget_draw.ellipse((0, 0, w, h), fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
     else:
-        widget_draw.rounded_rectangle(
-            (0, 0, w, h),
-            radius=_scale_draw(scale, 16),
-            fill=tuple(theme.panel_rgba),
-            outline=(255, 255, 255, 120),
-        )
+        if _widget_panel_enabled(widget):
+            widget_draw.rounded_rectangle(
+                (0, 0, w, h),
+                radius=_scale_draw(scale, 16),
+                fill=tuple(theme.panel_rgba),
+                outline=(255, 255, 255, 120),
+            )
     label = str(widget.style.get("label", "Route map"))
     if label:
         widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)), label, fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
@@ -381,7 +393,8 @@ def _draw_hero_metric(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
+    if _widget_panel_enabled(widget):
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 18)), str(widget.style.get("label", "Pace")), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 54)), _format_pace(pace_seconds_per_km), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
     draw.text((right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)), "/km", fill=(255, 255, 255, 160), anchor="rs", font=_scaled_font(scale, 18))
@@ -402,14 +415,16 @@ def _draw_metric_card(
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
     if widget.style.get("variant") == "compact":
-        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=tuple(theme.panel_rgba))
+        if _widget_panel_enabled(widget):
+            draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=tuple(theme.panel_rgba))
         label = str(widget.style.get("label", "Metric"))
         draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
         draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 34)), _metric_value(widget, hud_value, elapsed_seconds), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
         draw.text((right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)), _metric_suffix(widget), fill=(255, 255, 255, 160), anchor="rs", font=_scaled_font(scale, 18))
         return
 
-    draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
+    if _widget_panel_enabled(widget):
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
     label = str(widget.style.get("label", "Metric"))
     draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
     draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 52)), _metric_value(widget, hud_value, elapsed_seconds), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
@@ -429,7 +444,8 @@ def _draw_context_card(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
+    if _widget_panel_enabled(widget):
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 20)), str(widget.style.get("label", "Context")), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
     draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 70)), context_timestamp.strftime("%H:%M"), fill=tuple(theme.text_rgba), font=_scaled_font(scale, 18))
