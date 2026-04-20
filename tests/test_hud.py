@@ -15,6 +15,7 @@ from race_overlay.hud import (
     _draw_progress_bar,
     _metric_value,
     _scaled_font,
+    _widget_panel_enabled,
     render_hud_frame,
 )
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
@@ -1044,6 +1045,38 @@ def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytes
     )
 
     assert tuple(hud_config.theme.panel_rgba) in panel_fills
+
+
+def test_widget_panel_enabled_legacy_transparent_panel_disables_panel() -> None:
+    """transparent_panel: True is the legacy opt-out; the panel must be suppressed."""
+    widget = HudWidgetConfig(
+        id="pace-chip",
+        type="metric_card",
+        bindings={"value": "pace_seconds_per_km"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=160,
+        height=96,
+        style={"label": "Pace", "transparent_panel": True},
+    )
+    assert _widget_panel_enabled(widget) is False
+
+
+def test_widget_panel_enabled_show_panel_overrides_transparent_panel() -> None:
+    """Explicit show_panel: True must win over the legacy transparent_panel: True flag."""
+    widget = HudWidgetConfig(
+        id="pace-chip",
+        type="metric_card",
+        bindings={"value": "pace_seconds_per_km"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=160,
+        height=96,
+        style={"label": "Pace", "transparent_panel": True, "show_panel": True},
+    )
+    assert _widget_panel_enabled(widget) is True
 
 
 def test_scaled_font_caches_object_for_same_effective_size() -> None:
