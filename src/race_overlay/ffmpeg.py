@@ -16,6 +16,9 @@ DEFAULT_PIXEL_FORMATS = {
     "libx265": "yuv420p",
     "prores_ks": "yuv422p10le",
 }
+SAFE_AUDIO_COPY_CODECS = {"aac"}
+FALLBACK_AUDIO_CODEC = "aac"
+DEFAULT_AUDIO_BITRATE = 192_000
 SUPPORTED_PIXEL_FORMATS = {
     "libx264": {"nv12", "yuv420p", "yuv422p", "yuv444p", "yuvj420p", "yuvj422p", "yuvj444p"},
     "libx265": {"yuv420p", "yuv420p10le", "yuv422p", "yuv422p10le", "yuv444p", "yuv444p10le"},
@@ -187,6 +190,20 @@ def _resolve_color_metadata(
     return resolved["color_space"], resolved["color_transfer"], resolved["color_primaries"]
 
 
+def _resolve_audio_args(audio_codec: str | None, audio_bitrate: int | None, warnings: list[str]) -> tuple[str, ...]:
+    if audio_codec is None:
+        return ()
+    if audio_codec in SAFE_AUDIO_COPY_CODECS:
+        return ("-c:a", "copy")
+
+    resolved_audio_bitrate = audio_bitrate if audio_bitrate is not None and audio_bitrate > 0 else DEFAULT_AUDIO_BITRATE
+    warnings.append(
+        f"Audio codec '{audio_codec}' is not safe to stream-copy after compositing; re-encoding audio as "
+        f"'{FALLBACK_AUDIO_CODEC}' at {resolved_audio_bitrate} bps."
+    )
+    return ("-c:a", FALLBACK_AUDIO_CODEC, "-b:a", str(resolved_audio_bitrate))
+
+
 def build_overlay_video(frame_dir: Path, fps: float, output_path: Path) -> None:
     subprocess.run(
         [
@@ -271,7 +288,7 @@ def resolve_output_encoding_plan(clip: VideoClip) -> OutputEncodingPlan:
         warnings=warnings,
     )
 
-    audio_args: tuple[str, ...] = ("-c:a", "copy") if clip.audio_codec else ()
+    audio_args = _resolve_audio_args(clip.audio_codec, clip.audio_bitrate, warnings)
 
     return OutputEncodingPlan(
         video_codec=video_codec,

@@ -167,6 +167,24 @@ def test_resolve_output_encoding_plan_drops_only_incompatible_color_field() -> N
     )
 
 
+def test_resolve_output_encoding_plan_reencodes_unsafe_audio_copy_codecs() -> None:
+    plan = resolve_output_encoding_plan(make_clip(audio_codec="mp3", audio_bitrate=128_000))
+
+    assert plan.audio_args == ("-c:a", "aac", "-b:a", "128000")
+    assert plan.warnings == (
+        "Audio codec 'mp3' is not safe to stream-copy after compositing; re-encoding audio as 'aac' at 128000 bps.",
+    )
+
+
+def test_resolve_output_encoding_plan_uses_default_audio_bitrate_for_unsafe_audio_copy_codecs() -> None:
+    plan = resolve_output_encoding_plan(make_clip(audio_codec="pcm_s16le", audio_bitrate=None))
+
+    assert plan.audio_args == ("-c:a", "aac", "-b:a", "192000")
+    assert plan.warnings == (
+        "Audio codec 'pcm_s16le' is not safe to stream-copy after compositing; re-encoding audio as 'aac' at 192000 bps.",
+    )
+
+
 def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
     clip = make_clip()
     plan = resolve_output_encoding_plan(clip)
@@ -217,6 +235,20 @@ def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
         "copy",
         "output.MP4",
     ]
+
+
+def test_build_stream_compose_command_uses_audio_fallback_args() -> None:
+    clip = make_clip(audio_codec="mp3", audio_bitrate=128_000)
+    plan = resolve_output_encoding_plan(clip)
+
+    command = build_stream_compose_command(
+        source_path=Path("source.MP4"),
+        clip=clip,
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+
+    assert command[-5:] == ["-c:a", "aac", "-b:a", "128000", "output.MP4"]
 
 
 def test_build_stream_compose_command_omits_non_positive_bitrate() -> None:
