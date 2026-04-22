@@ -82,6 +82,174 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert pace_chip_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
 
 
+def test_build_editor_state_exposes_navigation_timestamp_and_typography_role_schema() -> None:
+    config = ProjectConfig(
+        activity_file="activity_22577902433.tcx",
+        hud=HudConfig(
+            preset="custom",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": "", "shape": "circle", "show_panel": True},
+                ),
+                HudWidgetConfig(
+                    id="time-card",
+                    type="context_card",
+                    bindings={"value": "timestamp"},
+                    anchor="top-right",
+                    x=24,
+                    y=24,
+                    width=240,
+                    height=128,
+                    style={"label": "Context"},
+                ),
+            ],
+        ),
+    )
+
+    state = build_editor_state(config=config, width=1280, height=720)
+
+    assert state["schema"]["theme"]["title_font_family"] == {
+        "kind": "enum",
+        "label": "Title font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert state["schema"]["theme"]["title_font_weight"] == {
+        "kind": "enum",
+        "label": "Title font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert state["schema"]["theme"]["title_font_size_px"] == {
+        "kind": "integer",
+        "label": "Title font size",
+        "min": 8,
+    }
+    assert state["schema"]["theme"]["value_font_family"] == {
+        "kind": "enum",
+        "label": "Value font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert state["schema"]["theme"]["value_font_weight"] == {
+        "kind": "enum",
+        "label": "Value font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert state["schema"]["theme"]["value_font_size_px"] == {
+        "kind": "integer",
+        "label": "Value font size",
+        "min": 8,
+    }
+    assert state["schema"]["theme"]["unit_font_family"] == {
+        "kind": "enum",
+        "label": "Unit font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert state["schema"]["theme"]["unit_font_weight"] == {
+        "kind": "enum",
+        "label": "Unit font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert state["schema"]["theme"]["unit_font_size_px"] == {
+        "kind": "integer",
+        "label": "Unit font size",
+        "min": 8,
+    }
+
+    route_map_style = state["schema"]["widgets"]["route-map"]["style"]
+    assert route_map_style["show_north_marker"] == {"kind": "boolean", "label": "Show north marker"}
+    assert route_map_style["show_bearing_label"] == {"kind": "boolean", "label": "Show bearing label"}
+    assert route_map_style["show_heading_arrow"] == {"kind": "boolean", "label": "Show heading arrow"}
+
+    time_card_style = state["schema"]["widgets"]["time-card"]["style"]
+    assert time_card_style["variant"] == {"kind": "text", "label": "Variant"}
+    assert time_card_style["format"] == {"kind": "text", "label": "Format"}
+
+
+def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=HudConfig(
+                preset="custom",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=24,
+                        y=24,
+                        width=176,
+                        height=128,
+                        style={"label": "", "shape": "circle", "show_panel": True},
+                    ),
+                    HudWidgetConfig(
+                        id="time-card",
+                        type="context_card",
+                        bindings={"value": "timestamp"},
+                        anchor="top-right",
+                        x=24,
+                        y=24,
+                        width=240,
+                        height=128,
+                        style={"label": "Context"},
+                    ),
+                ],
+            ),
+        ),
+    )
+
+    payload = serialize_hud_config(load_config(config_path).hud)
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    payload["theme"].update(
+        title_font_family="serif",
+        title_font_weight="bold",
+        title_font_size_px=20,
+        value_font_family="mono",
+        value_font_weight="regular",
+        value_font_size_px=28,
+        unit_font_family="sans",
+        unit_font_weight="bold",
+        unit_font_size_px=14,
+    )
+    route_map = next(widget for widget in payload["widgets"] if widget["id"] == "route-map")
+    route_map["style"].update(show_north_marker=True, show_bearing_label=False, show_heading_arrow=True)
+    time_card = next(widget for widget in payload["widgets"] if widget["id"] == "time-card")
+    time_card["style"].update(variant="timestamp_chip", format="%H:%M")
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    route_map_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "route-map")
+    time_card_reloaded = next(widget for widget in reloaded.hud.widgets if widget.id == "time-card")
+
+    assert reloaded.hud.theme.title_font_family == "serif"
+    assert reloaded.hud.theme.title_font_weight == "bold"
+    assert reloaded.hud.theme.title_font_size_px == 20
+    assert reloaded.hud.theme.value_font_family == "mono"
+    assert reloaded.hud.theme.value_font_weight == "regular"
+    assert reloaded.hud.theme.value_font_size_px == 28
+    assert reloaded.hud.theme.unit_font_family == "sans"
+    assert reloaded.hud.theme.unit_font_weight == "bold"
+    assert reloaded.hud.theme.unit_font_size_px == 14
+    assert route_map_reloaded.style["show_north_marker"] is True
+    assert route_map_reloaded.style["show_bearing_label"] is False
+    assert route_map_reloaded.style["show_heading_arrow"] is True
+    assert time_card_reloaded.style["variant"] == "timestamp_chip"
+    assert time_card_reloaded.style["format"] == "%H:%M"
+
+
 def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))

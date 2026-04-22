@@ -11,6 +11,15 @@ class HudThemeConfig:
     font_family: str = "sans"
     font_weight: str = "regular"
     font_size_px: int = 18
+    title_font_family: str = "sans"
+    title_font_weight: str = "regular"
+    title_font_size_px: int = 18
+    value_font_family: str = "sans"
+    value_font_weight: str = "regular"
+    value_font_size_px: int = 18
+    unit_font_family: str = "sans"
+    unit_font_weight: str = "regular"
+    unit_font_size_px: int = 18
     show_units: bool = True
 
 
@@ -112,6 +121,45 @@ def _deserialize_theme(payload: object) -> HudThemeConfig:
                 payload.get("font_weight", defaults.font_weight), "font_weight", HUD_FONT_WEIGHT_OPTIONS
             ),
             font_size_px=_require_min_int(payload.get("font_size_px", defaults.font_size_px), "font_size_px", 8),
+            title_font_family=_require_enum_string(
+                payload.get("title_font_family", defaults.title_font_family),
+                "title_font_family",
+                HUD_FONT_FAMILY_OPTIONS,
+            ),
+            title_font_weight=_require_enum_string(
+                payload.get("title_font_weight", defaults.title_font_weight),
+                "title_font_weight",
+                HUD_FONT_WEIGHT_OPTIONS,
+            ),
+            title_font_size_px=_require_min_int(
+                payload.get("title_font_size_px", defaults.title_font_size_px), "title_font_size_px", 8
+            ),
+            value_font_family=_require_enum_string(
+                payload.get("value_font_family", defaults.value_font_family),
+                "value_font_family",
+                HUD_FONT_FAMILY_OPTIONS,
+            ),
+            value_font_weight=_require_enum_string(
+                payload.get("value_font_weight", defaults.value_font_weight),
+                "value_font_weight",
+                HUD_FONT_WEIGHT_OPTIONS,
+            ),
+            value_font_size_px=_require_min_int(
+                payload.get("value_font_size_px", defaults.value_font_size_px), "value_font_size_px", 8
+            ),
+            unit_font_family=_require_enum_string(
+                payload.get("unit_font_family", defaults.unit_font_family),
+                "unit_font_family",
+                HUD_FONT_FAMILY_OPTIONS,
+            ),
+            unit_font_weight=_require_enum_string(
+                payload.get("unit_font_weight", defaults.unit_font_weight),
+                "unit_font_weight",
+                HUD_FONT_WEIGHT_OPTIONS,
+            ),
+            unit_font_size_px=_require_min_int(
+                payload.get("unit_font_size_px", defaults.unit_font_size_px), "unit_font_size_px", 8
+            ),
             show_units=_coerce_bool(payload.get("show_units", defaults.show_units), "show_units"),
         )
     )
@@ -121,6 +169,23 @@ def validate_hud_theme_config(theme: HudThemeConfig) -> HudThemeConfig:
     theme.font_family = _require_enum_string(theme.font_family, "font_family", HUD_FONT_FAMILY_OPTIONS)
     theme.font_weight = _require_enum_string(theme.font_weight, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
     theme.font_size_px = _require_min_int(theme.font_size_px, "font_size_px", 8)
+    theme.title_font_family = _require_enum_string(
+        theme.title_font_family, "title_font_family", HUD_FONT_FAMILY_OPTIONS
+    )
+    theme.title_font_weight = _require_enum_string(
+        theme.title_font_weight, "title_font_weight", HUD_FONT_WEIGHT_OPTIONS
+    )
+    theme.title_font_size_px = _require_min_int(theme.title_font_size_px, "title_font_size_px", 8)
+    theme.value_font_family = _require_enum_string(
+        theme.value_font_family, "value_font_family", HUD_FONT_FAMILY_OPTIONS
+    )
+    theme.value_font_weight = _require_enum_string(
+        theme.value_font_weight, "value_font_weight", HUD_FONT_WEIGHT_OPTIONS
+    )
+    theme.value_font_size_px = _require_min_int(theme.value_font_size_px, "value_font_size_px", 8)
+    theme.unit_font_family = _require_enum_string(theme.unit_font_family, "unit_font_family", HUD_FONT_FAMILY_OPTIONS)
+    theme.unit_font_weight = _require_enum_string(theme.unit_font_weight, "unit_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+    theme.unit_font_size_px = _require_min_int(theme.unit_font_size_px, "unit_font_size_px", 8)
     theme.show_units = _coerce_bool(theme.show_units, "show_units")
     return theme
 

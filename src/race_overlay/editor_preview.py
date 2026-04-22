@@ -22,6 +22,15 @@ _THEME_FIELD_SCHEMA = {
     "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
     "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
     "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+    "title_font_family": {"kind": "enum", "label": "Title font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+    "title_font_weight": {"kind": "enum", "label": "Title font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+    "title_font_size_px": {"kind": "integer", "label": "Title font size", "min": 8},
+    "value_font_family": {"kind": "enum", "label": "Value font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+    "value_font_weight": {"kind": "enum", "label": "Value font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+    "value_font_size_px": {"kind": "integer", "label": "Value font size", "min": 8},
+    "unit_font_family": {"kind": "enum", "label": "Unit font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+    "unit_font_weight": {"kind": "enum", "label": "Unit font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+    "unit_font_size_px": {"kind": "integer", "label": "Unit font size", "min": 8},
     "show_units": {"kind": "boolean", "label": "Show units"},
 }
 _WIDGET_STYLE_SCHEMA_BY_TYPE = {
@@ -66,6 +75,8 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     },
     "context_card": {
         "label": {"kind": "text", "label": "Label"},
+        "variant": {"kind": "text", "label": "Variant"},
+        "format": {"kind": "text", "label": "Format"},
         "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
         "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
         "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
@@ -75,6 +86,9 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "label": {"kind": "text", "label": "Label"},
         "shape": {"kind": "text", "label": "Shape"},
         "show_panel": {"kind": "boolean", "label": "Show panel"},
+        "show_north_marker": {"kind": "boolean", "label": "Show north marker"},
+        "show_bearing_label": {"kind": "boolean", "label": "Show bearing label"},
+        "show_heading_arrow": {"kind": "boolean", "label": "Show heading arrow"},
     },
 }
 
