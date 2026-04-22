@@ -10,9 +10,18 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _parse_optional_int(value: str | None) -> int | None:
+    if value is None or value == "N/A":
+        return None
+    return int(value)
+
+
 def _parse_rate(value: str) -> float:
     numerator, denominator = value.split("/")
-    return float(numerator) / float(denominator)
+    denominator_value = float(denominator)
+    if denominator_value == 0:
+        return 0.0
+    return float(numerator) / denominator_value
 
 
 def probe_video(path: Path) -> VideoClip:
@@ -46,10 +55,10 @@ def probe_video(path: Path) -> VideoClip:
         fps=_parse_rate(video_stream["avg_frame_rate"]),
         video_codec=video_stream.get("codec_name"),
         pixel_format=video_stream.get("pix_fmt"),
-        video_bitrate=int(video_stream["bit_rate"]) if video_stream.get("bit_rate") is not None else None,
+        video_bitrate=_parse_optional_int(video_stream.get("bit_rate")),
         color_space=video_stream.get("color_space"),
         color_primaries=video_stream.get("color_primaries"),
         color_transfer=video_stream.get("color_transfer"),
         audio_codec=audio_stream.get("codec_name"),
-        audio_bitrate=int(audio_stream["bit_rate"]) if audio_stream.get("bit_rate") is not None else None,
+        audio_bitrate=_parse_optional_int(audio_stream.get("bit_rate")),
     )

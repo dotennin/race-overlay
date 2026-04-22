@@ -97,3 +97,93 @@ def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Pa
     assert clip.color_primaries == "bt709"
     assert clip.audio_codec == "aac"
     assert clip.audio_bitrate == 192_000
+
+
+def test_probe_video_treats_na_bitrate_as_missing(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": 1280,
+                "height": 720,
+                "avg_frame_rate": "30000/1001",
+                "bit_rate": "N/A",
+            }
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    clip = probe_video(tmp_path / "clip.MP4")
+
+    assert clip.video_bitrate is None
+
+
+def test_probe_video_handles_missing_optional_metadata(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "width": 1280,
+                "height": 720,
+                "avg_frame_rate": "30000/1001",
+            },
+            {
+                "codec_type": "audio",
+            },
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    clip = probe_video(tmp_path / "clip.MP4")
+
+    assert clip.video_codec is None
+    assert clip.pixel_format is None
+    assert clip.video_bitrate is None
+    assert clip.color_space is None
+    assert clip.color_transfer is None
+    assert clip.color_primaries is None
+    assert clip.audio_codec is None
+    assert clip.audio_bitrate is None
+
+
+def test_probe_video_handles_zero_zero_avg_frame_rate(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "width": 1280,
+                "height": 720,
+                "avg_frame_rate": "0/0",
+            }
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    clip = probe_video(tmp_path / "clip.MP4")
+
+    assert clip.fps == 0.0
