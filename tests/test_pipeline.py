@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
 from PIL import Image
 from typer.testing import CliRunner
 
@@ -82,23 +83,46 @@ def fake_hud_sample() -> HudSample:
 
 
 class FakeStreamingPipe:
-    def __init__(self, writes: list[bytes]) -> None:
+    def __init__(self, writes: list[bytes], *, write_error: Exception | None = None) -> None:
         self._writes = writes
+        self.write_error = write_error
+        self.closed = False
 
     def write(self, data: bytes) -> int:
+        if self.write_error is not None:
+            raise self.write_error
         self._writes.append(data)
         return len(data)
 
     def close(self) -> None:
+        self.closed = True
         return None
 
 
 class FakeStreamingProcess:
-    def __init__(self, writes: list[bytes], *, returncode: int = 0) -> None:
-        self.stdin = FakeStreamingPipe(writes)
+    def __init__(self, writes: list[bytes], *, returncode: int | None = 0, write_error: Exception | None = None) -> None:
+        self.stdin = FakeStreamingPipe(writes, write_error=write_error)
         self.returncode = returncode
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.wait_calls = 0
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        if self.returncode is None:
+            self.returncode = -15
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        self.returncode = -9
 
     def wait(self) -> int:
+        self.wait_calls += 1
+        if self.returncode is None:
+            self.returncode = 0
         return self.returncode
 
 
@@ -216,6 +240,80 @@ def test_run_pipeline_falls_back_to_cache_when_stream_process_exits_nonzero(tmp_
 
     assert fallback_called["value"] is True
     assert any("falling back to cache" in message for message in messages)
+
+
+def test_run_pipeline_cleans_up_stream_process_before_cache_fallback(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    fallback_called = {"value": False}
+    process = FakeStreamingProcess([], returncode=None, write_error=BrokenPipeError("broken pipe"))
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: process,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.build_overlay_video",
+        lambda *args, **kwargs: fallback_called.__setitem__("value", True),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert fallback_called["value"] is True
+    assert process.stdin.closed is True
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.wait_calls >= 1
+    assert any("falling back to cache" in message for message in messages)
+
+
+def test_run_pipeline_does_not_fall_back_for_render_oserror(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    fallback_called = {"value": False}
+    process = FakeStreamingProcess([], returncode=None)
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: (_ for _ in ()).throw(OSError("hud asset missing")),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: process,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.build_overlay_video",
+        lambda *args, **kwargs: fallback_called.__setitem__("value", True),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    with pytest.raises(OSError, match="hud asset missing"):
+        run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert fallback_called["value"] is False
+    assert process.stdin.closed is True
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.wait_calls >= 1
+    assert all("Streaming unavailable" not in message for message in messages)
 
 
 def test_run_pipeline_reports_skipped_outside_clips(tmp_path: Path, monkeypatch) -> None:

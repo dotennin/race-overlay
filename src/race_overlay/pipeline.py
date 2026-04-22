@@ -27,6 +27,10 @@ from race_overlay.video_probe import probe_video
 ProgressReporter = Callable[[str], None]
 
 
+class StreamingComposeError(OSError):
+    """Transport/process failure while streaming overlay frames into ffmpeg."""
+
+
 def _emit(progress: ProgressReporter | None, message: str) -> None:
     if progress is not None:
         progress(message)
@@ -79,6 +83,53 @@ def _emit_encoding_plan(progress: ProgressReporter | None, clip, plan) -> None:
         _emit(progress, f"Encoding fallback for {clip.path.name}: {warning}")
 
 
+def _wait_for_process_exit(process: subprocess.Popen[bytes], timeout: float | None = None) -> int:
+    if timeout is None:
+        return process.wait()
+    try:
+        return process.wait(timeout=timeout)
+    except TypeError:
+        return process.wait()
+
+
+def _cleanup_stream_process(process: subprocess.Popen[bytes]) -> None:
+    stdin = process.stdin
+    if stdin is not None:
+        try:
+            stdin.close()
+        except OSError:
+            pass
+
+    try:
+        if process.poll() is not None:
+            return
+    except (AttributeError, OSError, subprocess.SubprocessError):
+        pass
+
+    try:
+        process.terminate()
+    except (AttributeError, OSError, subprocess.SubprocessError):
+        return
+
+    try:
+        _wait_for_process_exit(process, timeout=5)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except (OSError, subprocess.SubprocessError):
+        return
+
+    try:
+        process.kill()
+    except (AttributeError, OSError, subprocess.SubprocessError):
+        return
+
+    try:
+        _wait_for_process_exit(process, timeout=5)
+    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+        pass
+
+
 def _render_clip_streaming(
     *,
     activity,
@@ -90,26 +141,48 @@ def _render_clip_streaming(
     output_path: Path,
     plan,
 ) -> None:
-    process = open_stream_compose_process(source_path=clip.path, clip=clip, output_path=output_path, plan=plan)
+    try:
+        process = open_stream_compose_process(source_path=clip.path, clip=clip, output_path=output_path, plan=plan)
+    except OSError as exc:
+        raise StreamingComposeError(f"ffmpeg streaming setup failed: {exc}") from exc
+
     if process.stdin is None:
-        raise OSError("ffmpeg stdin pipe unavailable")
+        _cleanup_stream_process(process)
+        raise StreamingComposeError("ffmpeg stdin pipe unavailable")
 
-    for index in range(_frame_count(clip)):
-        image = _render_overlay_frame(
-            activity=activity,
-            clip=clip,
-            alignment=alignment,
-            index=index,
-            route_points=route_points,
-            hud_config=hud_config,
-            total_distance_m=total_distance_m,
-        )
-        process.stdin.write(image.tobytes())
+    try:
+        for index in range(_frame_count(clip)):
+            image = _render_overlay_frame(
+                activity=activity,
+                clip=clip,
+                alignment=alignment,
+                index=index,
+                route_points=route_points,
+                hud_config=hud_config,
+                total_distance_m=total_distance_m,
+            )
+            try:
+                process.stdin.write(image.tobytes())
+            except OSError as exc:
+                raise StreamingComposeError(f"ffmpeg stdin write failed: {exc}") from exc
 
-    process.stdin.close()
-    return_code = process.wait()
-    if return_code != 0:
-        raise subprocess.CalledProcessError(return_code, "ffmpeg")
+        try:
+            process.stdin.close()
+        except OSError as exc:
+            raise StreamingComposeError(f"ffmpeg stdin close failed: {exc}") from exc
+
+        try:
+            return_code = process.wait()
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise StreamingComposeError(f"ffmpeg process wait failed: {exc}") from exc
+
+        if return_code != 0:
+            raise StreamingComposeError(
+                f"ffmpeg exited with non-zero status {return_code}"
+            ) from subprocess.CalledProcessError(return_code, "ffmpeg")
+    except Exception:
+        _cleanup_stream_process(process)
+        raise
 
 
 def _render_clip_via_cache(
@@ -197,7 +270,7 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
                 output_path=output_path,
                 plan=plan,
             )
-        except (OSError, subprocess.SubprocessError) as exc:
+        except StreamingComposeError as exc:
             _emit(progress, f"Streaming unavailable for {clip.path.name}; falling back to cache: {exc}")
             _emit(progress, f"Render path: cache for {clip.path.name}")
             _render_clip_via_cache(
