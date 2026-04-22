@@ -712,7 +712,7 @@ def _draw_context_card(
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
-    if widget.style.get("variant") == "compact":
+    if _is_compact_context_variant(widget):
         draw.text(
             (left + _scale_x(scale, 20), top + _scale_y(scale, 20)),
             _format_context_timestamp(widget, context_timestamp),
@@ -801,6 +801,11 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if binding == "speed_mps":
         return "km/h"
     raise AssertionError(f"unreachable metric binding '{binding}'")
+
+
+def _is_compact_context_variant(widget: HudWidgetConfig) -> bool:
+    variant = widget.style.get("variant")
+    return isinstance(variant, str) and variant in {"compact", "timestamp_chip"}
 
 
 def _format_context_timestamp(widget: HudWidgetConfig, timestamp: datetime) -> str:

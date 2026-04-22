@@ -1190,6 +1190,33 @@ def test_render_hud_frame_context_card_compact_variant_uses_default_time_chip_fo
     assert "2026/04/19 09:48:10" in labels
 
 
+def test_render_hud_frame_context_card_timestamp_chip_variant_renders_compact_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="context-only",
+            theme=HudThemeConfig(note_text="Kasumigaura"),
+            widgets=[
+                HudWidgetConfig(
+                    id="context-card",
+                    type="context_card",
+                    bindings={"value": "timestamp"},
+                    anchor="top-right",
+                    x=996,
+                    y=120,
+                    width=260,
+                    height=72,
+                    style={"label": "Checkpoint", "variant": "timestamp_chip"},
+                )
+            ],
+        ),
+    )
+
+    assert labels == ["2026/04/19 09:48:10"]
+
+
 def test_metric_suffix_omits_elapsed_unit_by_default() -> None:
     widget = HudWidgetConfig(
         id="elapsed",
