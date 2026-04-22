@@ -168,3 +168,30 @@ def test_deserialize_hud_config_supports_typography_roles_and_extended_widget_st
     assert serialized["widgets"][0]["style"]["show_heading_arrow"] is True
     assert serialized["widgets"][1]["style"]["variant"] == "timestamp_chip"
     assert serialized["widgets"][1]["style"]["format"] == "%H:%M"
+
+
+def test_deserialize_hud_config_leaves_unset_typography_roles_as_none() -> None:
+    config = deserialize_hud_config(
+        {
+            "preset": "custom",
+            "theme": {
+                "panel_rgba": [12, 18, 28, 168],
+                "accent_rgba": [255, 196, 92, 255],
+                "text_rgba": [255, 255, 255, 255],
+                "note_text": "Race Day",
+                "font_family": "mono",
+                "font_weight": "bold",
+                "font_size_px": 30,
+                "show_units": True,
+            },
+            "widgets": [],
+        }
+    )
+
+    serialized = serialize_hud_config(config)
+
+    assert config.theme.title_font_family is None
+    assert config.theme.value_font_size_px is None
+    assert config.theme.unit_font_weight is None
+    assert serialized["theme"]["title_font_family"] is None
+    assert serialized["theme"]["value_font_size_px"] is None

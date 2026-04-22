@@ -342,15 +342,10 @@ def _style_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderSca
 
 
 def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> str | int:
-    defaults = HudThemeConfig()
     role_value = getattr(theme, role_key)
-    if role_value != getattr(defaults, role_key):
+    if role_value is not None:
         return role_value
-
-    legacy_value = getattr(theme, legacy_key)
-    if legacy_value != getattr(defaults, legacy_key):
-        return legacy_value
-    return role_value
+    return getattr(theme, legacy_key)
 
 
 def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale, *, role: str) -> ImageFont.FreeTypeFont:
@@ -837,11 +832,16 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
     for segment_start, segment_end in zip(route_points, route_points[1:]):
         candidate = _project_point_onto_segment(current, segment_start, segment_end)
         distance_sq = _distance_squared(current, candidate)
-        if distance_sq < closest_distance_sq:
+        candidate_tangent = (segment_end[0] - segment_start[0], segment_end[1] - segment_start[1])
+        if distance_sq < closest_distance_sq or (
+            math.isclose(distance_sq, closest_distance_sq, abs_tol=1e-12)
+            and _is_zero_vector(closest_tangent)
+            and not _is_zero_vector(candidate_tangent)
+        ):
             closest_point = candidate
             closest_segment_start = segment_start
             closest_segment_end = segment_end
-            closest_tangent = (segment_end[0] - segment_start[0], segment_end[1] - segment_start[1])
+            closest_tangent = candidate_tangent
             closest_distance_sq = distance_sq
 
     return RouteProjection(
@@ -861,6 +861,10 @@ def _projected_route_vector(
     return (end_x - start_x, end_y - start_y)
 
 
+def _is_zero_vector(vector: tuple[float, float]) -> bool:
+    return abs(vector[0]) <= 1e-12 and abs(vector[1]) <= 1e-12
+
+
 def _format_bearing_label(tangent: tuple[float, float]) -> str:
     bearing = _bearing_from_tangent(tangent)
     if bearing is None:
@@ -870,7 +874,7 @@ def _format_bearing_label(tangent: tuple[float, float]) -> str:
 
 def _bearing_from_tangent(tangent: tuple[float, float]) -> int | None:
     delta_lat, delta_lon = tangent
-    if abs(delta_lat) <= 1e-12 and abs(delta_lon) <= 1e-12:
+    if _is_zero_vector(tangent):
         return None
     return int(round((math.degrees(math.atan2(delta_lon, delta_lat)) + 360.0) % 360.0)) % 360
 

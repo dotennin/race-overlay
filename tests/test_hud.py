@@ -1027,6 +1027,55 @@ def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: p
     assert abs(vector_y / vector_x) < 1.0
 
 
+def test_render_hud_frame_route_map_prefers_non_degenerate_segment_for_navigation_overlays(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polygon_calls: list[object] = []
+    original_polygon = ImageDraw.ImageDraw.polygon
+
+    def record_polygon(self, xy, *args, **kwargs):
+        polygon_calls.append(xy)
+        return original_polygon(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
+
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=180,
+                    style={"label": ""},
+                )
+            ],
+        ),
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=0.0,
+            longitude=0.0,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(0.0, 0.0), (0.0, 0.0), (0.0, 1.0)],
+    )
+
+    assert "090°E" in labels
+    assert polygon_calls, "expected a heading arrow polygon for the non-degenerate segment"
+
+
 def test_render_hud_frame_scales_widget_regions_for_larger_frames() -> None:
     image = render_hud_frame(
         width=2560,
@@ -1181,6 +1230,33 @@ def test_render_hud_frame_metric_card_respects_legacy_theme_font_overrides_for_r
     )
 
     assert calls == [("Heart", 30), ("162", 30), ("bpm", 30)]
+
+
+def test_render_hud_frame_metric_card_allows_explicit_default_role_sizes_with_legacy_theme_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rendered_text_calls(
+        monkeypatch,
+        HudConfig(
+            preset="metric-only",
+            theme=HudThemeConfig(font_size_px=30, title_font_size_px=18, value_font_size_px=18, unit_font_size_px=18),
+            widgets=[
+                HudWidgetConfig(
+                    id="heart",
+                    type="metric_card",
+                    bindings={"value": "heart_rate_bpm"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Heart"},
+                )
+            ],
+        ),
+    )
+
+    assert calls == [("Heart", 18), ("162", 18), ("bpm", 18)]
 
 
 def test_render_hud_frame_metric_card_respects_widget_font_override_for_role_fonts(
