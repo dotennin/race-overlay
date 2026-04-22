@@ -154,6 +154,14 @@ def test_validate_hud_config_rejects_non_integer_widget_font_size() -> None:
         validate_hud_config(preset)
 
 
+def test_validate_hud_config_rejects_medium_font_weight() -> None:
+    preset = broadcast_runner_preset()
+    preset.theme.font_weight = "medium"
+
+    with pytest.raises(ValueError, match="font_weight"):
+        validate_hud_config(preset)
+
+
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),

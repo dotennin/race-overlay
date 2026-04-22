@@ -40,7 +40,7 @@ _HUD_KEYS = frozenset(HudConfig.__dataclass_fields__)
 _HUD_THEME_KEYS = frozenset(HudThemeConfig.__dataclass_fields__)
 _HUD_WIDGET_KEYS = frozenset(HudWidgetConfig.__dataclass_fields__)
 HUD_FONT_FAMILY_OPTIONS = ("sans", "serif", "mono")
-HUD_FONT_WEIGHT_OPTIONS = ("regular", "medium", "bold")
+HUD_FONT_WEIGHT_OPTIONS = ("regular", "bold")
 
 
 def deserialize_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:

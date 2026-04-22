@@ -21,13 +21,9 @@ HUD_REFERENCE_HEIGHT = 720
 PROGRESS_BAR_MIN_WIDTH = 232
 SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 _FONT_FILES = {
-    "sans": {"regular": "DejaVuSans.ttf", "medium": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
-    "serif": {"regular": "DejaVuSerif.ttf", "medium": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
-    "mono": {
-        "regular": "DejaVuSansMono.ttf",
-        "medium": "DejaVuSansMono.ttf",
-        "bold": "DejaVuSansMono-Bold.ttf",
-    },
+    "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
+    "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
+    "mono": {"regular": "DejaVuSansMono.ttf", "bold": "DejaVuSansMono-Bold.ttf"},
 }
 
 
