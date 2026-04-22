@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -276,11 +277,7 @@ def _validate_optional_enum_style(widget: HudWidgetConfig, key: str, allowed: tu
 def _validate_optional_font_size_style(widget: HudWidgetConfig, key: str) -> None:
     if key not in widget.style:
         return
-    value = widget.style[key]
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"widget '{widget.id}' style.{key} must be a number")
-    if int(value) < 8:
-        raise ValueError(f"widget '{widget.id}' style.{key} must be at least 8")
+    _require_font_size_style(widget, widget.style[key], key)
 
 
 def _validate_optional_bool_style(widget: HudWidgetConfig, key: str) -> None:
@@ -297,9 +294,7 @@ def _style_bool(widget: HudWidgetConfig, key: str, default: bool) -> bool:
 
 def _style_font_size(widget: HudWidgetConfig, theme: HudThemeConfig, fallback: int) -> int:
     value = widget.style.get("font_size_px", theme.font_size_px or fallback)
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"widget '{widget.id}' style.font_size_px must be a number")
-    return max(int(value), 8)
+    return _require_font_size_style(widget, value, "font_size_px")
 
 
 def _style_font_family(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
@@ -308,6 +303,18 @@ def _style_font_family(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
         allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
         raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
     return value
+
+
+def _require_font_size_style(widget: HudWidgetConfig, value: object, key: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"widget '{widget.id}' style.{key} must be a number")
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"widget '{widget.id}' style.{key} must be a finite integer")
+        value = int(value)
+    if value < 8:
+        raise ValueError(f"widget '{widget.id}' style.{key} must be at least 8")
+    return int(value)
 
 
 def _style_font_weight(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:

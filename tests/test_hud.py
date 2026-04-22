@@ -146,6 +146,14 @@ def test_validate_hud_config_rejects_unknown_font_family() -> None:
         validate_hud_config(preset)
 
 
+def test_validate_hud_config_rejects_non_integer_widget_font_size() -> None:
+    preset = broadcast_runner_preset()
+    preset.widgets[0].style["font_size_px"] = 8.5
+
+    with pytest.raises(ValueError, match="font_size_px"):
+        validate_hud_config(preset)
+
+
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
