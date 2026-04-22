@@ -103,6 +103,21 @@ def _rendered_text_calls(
     return calls
 
 
+def _widget_bounds(widget: HudWidgetConfig, frame_width: int, frame_height: int) -> tuple[int, int, int, int]:
+    left = widget.x + (frame_width - 1280 if "right" in widget.anchor else 0)
+    top = widget.y + (frame_height - 720 if "bottom" in widget.anchor else 0)
+    return (left, top, left + widget.width, top + widget.height)
+
+
+def _region_has_alpha(image: Image.Image, bounds: tuple[int, int, int, int]) -> bool:
+    left, top, right, bottom = bounds
+    for y in range(max(top, 0), min(bottom, image.height)):
+        for x in range(max(left, 0), min(right, image.width)):
+            if image.getpixel((x, y))[3] > 0:
+                return True
+    return False
+
+
 def test_render_hud_frame_creates_transparent_rgba_image(tmp_path: Path) -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 0, 45, 10, tzinfo=timezone.utc),
@@ -132,6 +147,7 @@ def test_render_hud_frame_creates_transparent_rgba_image(tmp_path: Path) -> None
 
 
 def test_render_hud_frame_draws_hud_v2_regions(monkeypatch: pytest.MonkeyPatch) -> None:
+    preset = broadcast_runner_preset()
     labels = _rendered_text_labels(monkeypatch, broadcast_runner_preset())
     image = render_hud_frame(
         width=1280,
@@ -148,18 +164,20 @@ def test_render_hud_frame_draws_hud_v2_regions(monkeypatch: pytest.MonkeyPatch) 
             cadence_spm=178,
         ),
         route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
-        hud_config=broadcast_runner_preset(),
+        hud_config=preset,
         elapsed_seconds=6852,
         total_distance_m=10000.0,
     )
+    elevation = next(widget for widget in preset.widgets if widget.id == "elevation-stat")
+    heart_rate = next(widget for widget in preset.widgets if widget.id == "heart-rate-stat")
 
     assert "Elevation" in labels
     assert "Distance" in labels
     assert "Heart rate" in labels
     assert image.getpixel((640, 70))[3] > 0
     assert image.getpixel((90, 610))[3] > 0
-    assert image.getpixel((58, 167))[3] > 0
-    assert image.getpixel((1145, 155))[3] > 0
+    assert _region_has_alpha(image, _widget_bounds(elevation, 1280, 720))
+    assert _region_has_alpha(image, _widget_bounds(heart_rate, 1280, 720))
 
 
 def test_render_hud_frame_hides_metric_units_when_theme_disables_units(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,6 +416,7 @@ def test_validate_hud_config_rejects_non_integer_widget_dimensions() -> None:
 
 
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
+    preset = broadcast_runner_preset()
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
         latitude=36.0833,
@@ -414,11 +433,12 @@ def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frame
         height=720,
         hud_value=hud_value,
         route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
-        hud_config=broadcast_runner_preset(),
+        hud_config=preset,
         elapsed_seconds=6852,
     )
+    heart_rate = next(widget for widget in preset.widgets if widget.id == "heart-rate-stat")
 
-    assert image.getpixel((965, 155))[3] > 0
+    assert _region_has_alpha(image, _widget_bounds(heart_rate, 1100, 720))
     assert image.getpixel((1090, 170))[3] == 0
 
 
