@@ -23,7 +23,11 @@ def probe_video(path: Path) -> VideoClip:
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration:stream=width,height,r_frame_rate:format_tags=creation_time",
+                (
+                    "format=duration:format_tags=creation_time:"
+                    "stream=codec_type,codec_name,width,height,avg_frame_rate,"
+                    "pix_fmt,bit_rate,color_space,color_transfer,color_primaries"
+                ),
                 "-of",
                 "json",
                 str(path),
@@ -31,12 +35,21 @@ def probe_video(path: Path) -> VideoClip:
             text=True,
         )
     )
-    stream = payload["streams"][0]
+    video_stream = next(stream for stream in payload["streams"] if stream["codec_type"] == "video")
+    audio_stream = next((stream for stream in payload["streams"] if stream["codec_type"] == "audio"), {})
     return VideoClip(
         path=path,
         creation_time=_parse_time(payload["format"]["tags"]["creation_time"]),
         duration_seconds=float(payload["format"]["duration"]),
-        width=int(stream["width"]),
-        height=int(stream["height"]),
-        fps=_parse_rate(stream["r_frame_rate"]),
+        width=int(video_stream["width"]),
+        height=int(video_stream["height"]),
+        fps=_parse_rate(video_stream["avg_frame_rate"]),
+        video_codec=video_stream.get("codec_name"),
+        pixel_format=video_stream.get("pix_fmt"),
+        video_bitrate=int(video_stream["bit_rate"]) if video_stream.get("bit_rate") is not None else None,
+        color_space=video_stream.get("color_space"),
+        color_primaries=video_stream.get("color_primaries"),
+        color_transfer=video_stream.get("color_transfer"),
+        audio_codec=audio_stream.get("codec_name"),
+        audio_bitrate=int(audio_stream["bit_rate"]) if audio_stream.get("bit_rate") is not None else None,
     )

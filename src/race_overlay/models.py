@@ -29,6 +29,14 @@ class VideoClip:
     width: int
     height: int
     fps: float
+    video_codec: str | None = None
+    pixel_format: str | None = None
+    video_bitrate: int | None = None
+    color_space: str | None = None
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    audio_codec: str | None = None
+    audio_bitrate: int | None = None
 
 
 @dataclass(slots=True, frozen=True)
