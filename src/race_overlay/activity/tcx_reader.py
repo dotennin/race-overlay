@@ -24,6 +24,14 @@ def _find_int(point: ET.Element, query: str) -> int | None:
     return int(value) if value is not None else None
 
 
+def _normalize_run_cadence(value: int | None, sport: str) -> int | None:
+    if value is None:
+        return None
+    if sport.lower() != "running":
+        return value
+    return value * 2
+
+
 def read_tcx(path: Path) -> ActivityTrack:
     root = ET.parse(path).getroot()
     activity = root.find(".//tcx:Activity", NS)
@@ -39,7 +47,10 @@ def read_tcx(path: Path) -> ActivityTrack:
                 distance_m=_find_float(point, "tcx:DistanceMeters"),
                 speed_mps=_find_float(point, "tcx:Extensions/ns3:TPX/ns3:Speed"),
                 heart_rate_bpm=_find_int(point, "tcx:HeartRateBpm/tcx:Value"),
-                cadence_spm=_find_int(point, "tcx:Extensions/ns3:TPX/ns3:RunCadence"),
+                cadence_spm=_normalize_run_cadence(
+                    _find_int(point, "tcx:Extensions/ns3:TPX/ns3:RunCadence"),
+                    sport,
+                ),
             )
         )
     return ActivityTrack(sport=sport, samples=samples)
