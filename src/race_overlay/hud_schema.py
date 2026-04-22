@@ -184,6 +184,10 @@ def _deserialize_theme(payload: object) -> HudThemeConfig:
 
 
 def validate_hud_theme_config(theme: HudThemeConfig) -> HudThemeConfig:
+    theme.panel_rgba = _require_rgba_list(theme.panel_rgba, "panel_rgba")
+    theme.accent_rgba = _require_rgba_list(theme.accent_rgba, "accent_rgba")
+    theme.text_rgba = _require_rgba_list(theme.text_rgba, "text_rgba")
+    theme.note_text = _require_text(theme.note_text, "note_text")
     theme.font_family = _require_enum_string(theme.font_family, "font_family", HUD_FONT_FAMILY_OPTIONS)
     theme.font_weight = _require_enum_string(theme.font_weight, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
     theme.font_size_px = _require_min_int(theme.font_size_px, "font_size_px", 8)

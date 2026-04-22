@@ -192,6 +192,50 @@ def test_validate_hud_config_rejects_unknown_font_family() -> None:
         validate_hud_config(preset)
 
 
+def test_validate_hud_config_rejects_invalid_theme_text_rgba() -> None:
+    config = HudConfig(
+        preset="metric-only",
+        theme=HudThemeConfig(text_rgba=["x", 255, 255, 255]),
+        widgets=[
+            HudWidgetConfig(
+                id="heart",
+                type="metric_card",
+                bindings={"value": "heart_rate_bpm"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=180,
+                height=96,
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="text_rgba"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_string_theme_note_text() -> None:
+    config = HudConfig(
+        preset="metric-only",
+        theme=HudThemeConfig(note_text=123),
+        widgets=[
+            HudWidgetConfig(
+                id="heart",
+                type="metric_card",
+                bindings={"value": "heart_rate_bpm"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=180,
+                height=96,
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="note_text"):
+        validate_hud_config(config)
+
+
 def test_validate_hud_config_rejects_non_integer_widget_font_size() -> None:
     preset = broadcast_runner_preset()
     preset.widgets[0].style["font_size_px"] = 8.5
@@ -284,6 +328,28 @@ def test_validate_hud_config_rejects_medium_font_weight() -> None:
 
     with pytest.raises(ValueError, match="font_weight"):
         validate_hud_config(preset)
+
+
+def test_validate_hud_config_rejects_non_positive_widget_dimensions() -> None:
+    config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=-10,
+                height=50,
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="width"):
+        validate_hud_config(config)
 
 
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:

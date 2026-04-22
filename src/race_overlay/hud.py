@@ -204,6 +204,10 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
             f"unsupported anchor '{widget.anchor}' for widget '{widget.id}' of type '{widget.type}'; "
             f"supported anchors: {supported}"
         )
+    if widget.width <= 0:
+        raise ValueError(f"widget '{widget.id}' width must be greater than 0")
+    if widget.height <= 0:
+        raise ValueError(f"widget '{widget.id}' height must be greater than 0")
     if widget.type == "progress_bar":
         _require_supported_binding(widget, {"distance_m"})
         _validate_progress_bar_widget(widget)
