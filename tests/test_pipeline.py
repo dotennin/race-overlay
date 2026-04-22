@@ -81,6 +81,27 @@ def fake_hud_sample() -> HudSample:
     )
 
 
+class FakeStreamingPipe:
+    def __init__(self, writes: list[bytes]) -> None:
+        self._writes = writes
+
+    def write(self, data: bytes) -> int:
+        self._writes.append(data)
+        return len(data)
+
+    def close(self) -> None:
+        return None
+
+
+class FakeStreamingProcess:
+    def __init__(self, writes: list[bytes], *, returncode: int = 0) -> None:
+        self.stdin = FakeStreamingPipe(writes)
+        self.returncode = returncode
+
+    def wait(self) -> int:
+        return self.returncode
+
+
 def test_run_pipeline_passes_total_distance_to_renderer(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -96,6 +117,11 @@ def test_run_pipeline_passes_total_distance_to_renderer(tmp_path: Path, monkeypa
         lambda **kwargs: captured.append((kwargs["hud_config"], kwargs["total_distance_m"]))
         or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
     )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess([]),
+        raising=False,
+    )
     monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
 
@@ -104,26 +130,92 @@ def test_run_pipeline_passes_total_distance_to_renderer(tmp_path: Path, monkeypa
     assert captured == [(broadcast_runner_preset(), 35.0)]
 
 
-def test_run_pipeline_reports_progress_for_cache_and_compose(tmp_path: Path, monkeypatch) -> None:
+def test_run_pipeline_prefers_streaming_and_reports_encoding_plan(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
     messages: list[str] = []
+    writes: list[bytes] = []
     monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
     monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
     monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
     monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
     monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
     monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
     monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
 
     run_pipeline(config_path, only="clip.MP4", progress=messages.append)
 
-    assert any("Generating frame cache" in message for message in messages)
-    assert any("Building overlay cache" in message for message in messages)
-    assert any("Composing final video" in message for message in messages)
+    assert any("Encoding plan:" in message for message in messages)
+    assert any("Render path: streaming" in message for message in messages)
+    assert writes
     assert any("Finished clip.MP4" in message for message in messages)
+
+
+def test_run_pipeline_falls_back_to_cache_when_streaming_fails(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    fallback_called = {"value": False}
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: (_ for _ in ()).throw(OSError("stdin pipe unavailable")),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.build_overlay_video",
+        lambda *args, **kwargs: fallback_called.__setitem__("value", True),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert fallback_called["value"] is True
+    assert any("falling back to cache" in message for message in messages)
+
+
+def test_run_pipeline_falls_back_to_cache_when_stream_process_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    fallback_called = {"value": False}
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess([], returncode=1),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.build_overlay_video",
+        lambda *args, **kwargs: fallback_called.__setitem__("value", True),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert fallback_called["value"] is True
+    assert any("falling back to cache" in message for message in messages)
 
 
 def test_run_pipeline_reports_skipped_outside_clips(tmp_path: Path, monkeypatch) -> None:
@@ -173,6 +265,11 @@ def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, mo
         "race_overlay.pipeline.render_hud_frame",
         lambda **kwargs: captured.append(kwargs["hud_config"].theme.note_text)
         or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess([]),
+        raising=False,
     )
     monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)

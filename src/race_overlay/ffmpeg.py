@@ -342,3 +342,12 @@ def build_stream_compose_command(
     command.extend(plan.audio_args)
     command.append(str(output_path))
     return command
+
+
+def open_stream_compose_process(
+    *, source_path: Path, clip: VideoClip, output_path: Path, plan: OutputEncodingPlan
+) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        build_stream_compose_command(source_path=source_path, clip=clip, output_path=output_path, plan=plan),
+        stdin=subprocess.PIPE,
+    )

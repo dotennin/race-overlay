@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from glob import glob
 from pathlib import Path
+import subprocess
 
 from PIL import Image
 
@@ -13,7 +14,12 @@ from race_overlay.config import (
     resolve_path_from_config,
     resolve_video_globs_from_config,
 )
-from race_overlay.ffmpeg import build_overlay_video, compose_video
+from race_overlay.ffmpeg import (
+    build_overlay_video,
+    compose_video,
+    open_stream_compose_process,
+    resolve_output_encoding_plan,
+)
 from race_overlay.hud import render_hud_frame
 from race_overlay.sampling import sample_at
 from race_overlay.video_probe import probe_video
@@ -31,6 +37,114 @@ def _discover_videos(patterns: list[str]) -> list[Path]:
     for pattern in patterns:
         paths.extend(Path(match) for match in glob(pattern))
     return sorted(set(paths))
+
+
+def _render_overlay_frame(
+    *,
+    activity,
+    clip,
+    alignment,
+    index: int,
+    route_points: list[tuple[float, float]],
+    hud_config,
+    total_distance_m: float | None,
+) -> Image.Image:
+    when = alignment.clip_start + timedelta(seconds=index / clip.fps)
+    if alignment.overlay_start is None or when < alignment.overlay_start or when > alignment.overlay_end:
+        return Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
+
+    hud_value = sample_at(activity, when)
+    return render_hud_frame(
+        width=clip.width,
+        height=clip.height,
+        hud_value=hud_value,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
+        total_distance_m=total_distance_m,
+    )
+
+
+def _frame_count(clip) -> int:
+    return int(clip.duration_seconds * clip.fps)
+
+
+def _emit_encoding_plan(progress: ProgressReporter | None, clip, plan) -> None:
+    audio_description = " ".join(plan.audio_args) if plan.audio_args else "none"
+    _emit(
+        progress,
+        f"Encoding plan: {clip.path.name} video={plan.video_codec} pix_fmt={plan.pixel_format} audio={audio_description}",
+    )
+    for warning in plan.warnings:
+        _emit(progress, f"Encoding fallback for {clip.path.name}: {warning}")
+
+
+def _render_clip_streaming(
+    *,
+    activity,
+    clip,
+    alignment,
+    route_points: list[tuple[float, float]],
+    hud_config,
+    total_distance_m: float | None,
+    output_path: Path,
+    plan,
+) -> None:
+    process = open_stream_compose_process(source_path=clip.path, clip=clip, output_path=output_path, plan=plan)
+    if process.stdin is None:
+        raise OSError("ffmpeg stdin pipe unavailable")
+
+    for index in range(_frame_count(clip)):
+        image = _render_overlay_frame(
+            activity=activity,
+            clip=clip,
+            alignment=alignment,
+            index=index,
+            route_points=route_points,
+            hud_config=hud_config,
+            total_distance_m=total_distance_m,
+        )
+        process.stdin.write(image.tobytes())
+
+    process.stdin.close()
+    return_code = process.wait()
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, "ffmpeg")
+
+
+def _render_clip_via_cache(
+    *,
+    activity,
+    clip,
+    alignment,
+    route_points: list[tuple[float, float]],
+    hud_config,
+    total_distance_m: float | None,
+    cache_dir: Path,
+    output_dir: Path,
+    progress: ProgressReporter | None,
+) -> None:
+    frame_dir = cache_dir / clip.path.stem / "frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    _emit(progress, f"Generating frame cache at {frame_dir}")
+    for index in range(_frame_count(clip)):
+        image = _render_overlay_frame(
+            activity=activity,
+            clip=clip,
+            alignment=alignment,
+            index=index,
+            route_points=route_points,
+            hud_config=hud_config,
+            total_distance_m=total_distance_m,
+        )
+        image.save(frame_dir / f"{index:06d}.png")
+
+    overlay_path = cache_dir / clip.path.stem / "overlay.mov"
+    output_path = output_dir / clip.path.name
+    _emit(progress, f"Building overlay cache at {overlay_path}")
+    build_overlay_video(frame_dir, clip.fps, overlay_path)
+    _emit(progress, f"Composing final video at {output_path}")
+    compose_video(clip.path, overlay_path, output_path)
 
 
 def run_pipeline(config_path: Path, only: str | None = None, *, progress: ProgressReporter | None = None) -> None:
@@ -67,30 +181,34 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
             _emit(progress, f"Skipping {clip.path.name}: outside activity window and policy=skip")
             continue
 
-        frame_dir = cache_dir / clip.path.stem / "frames"
-        frame_dir.mkdir(parents=True, exist_ok=True)
-        _emit(progress, f"Generating frame cache at {frame_dir}")
-        for index in range(int(clip.duration_seconds * clip.fps)):
-            when = alignment.clip_start + timedelta(seconds=index / clip.fps)
-            if alignment.overlay_start is None or when < alignment.overlay_start or when > alignment.overlay_end:
-                image = Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
-            else:
-                hud_value = sample_at(activity, when)
-                image = render_hud_frame(
-                    width=clip.width,
-                    height=clip.height,
-                    hud_value=hud_value,
-                    route_points=route_points,
-                    hud_config=config.hud,
-                    elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
-                    total_distance_m=total_distance_m,
-                )
-            image.save(frame_dir / f"{index:06d}.png")
-
-        overlay_path = cache_dir / clip.path.stem / "overlay.mov"
         output_path = output_dir / clip.path.name
-        _emit(progress, f"Building overlay cache at {overlay_path}")
-        build_overlay_video(frame_dir, clip.fps, overlay_path)
-        _emit(progress, f"Composing final video at {output_path}")
-        compose_video(clip.path, overlay_path, output_path)
+        plan = resolve_output_encoding_plan(clip)
+        _emit_encoding_plan(progress, clip, plan)
+
+        try:
+            _emit(progress, f"Render path: streaming for {clip.path.name}")
+            _render_clip_streaming(
+                activity=activity,
+                clip=clip,
+                alignment=alignment,
+                route_points=route_points,
+                hud_config=config.hud,
+                total_distance_m=total_distance_m,
+                output_path=output_path,
+                plan=plan,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            _emit(progress, f"Streaming unavailable for {clip.path.name}; falling back to cache: {exc}")
+            _emit(progress, f"Render path: cache for {clip.path.name}")
+            _render_clip_via_cache(
+                activity=activity,
+                clip=clip,
+                alignment=alignment,
+                route_points=route_points,
+                hud_config=config.hud,
+                total_distance_m=total_distance_m,
+                cache_dir=cache_dir,
+                output_dir=output_dir,
+                progress=progress,
+            )
         _emit(progress, f"Finished {clip.path.name}")
