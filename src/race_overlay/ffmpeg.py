@@ -221,21 +221,56 @@ def build_overlay_video(frame_dir: Path, fps: float, output_path: Path) -> None:
     )
 
 
-def compose_video(source_path: Path, overlay_path: Path, output_path: Path) -> None:
-    subprocess.run(
+def _append_output_encoding_args(command: list[str], plan: OutputEncodingPlan) -> None:
+    command.extend(
         [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(source_path),
-            "-i",
-            str(overlay_path),
-            "-filter_complex",
-            "[0:v][1:v]overlay=0:0",
-            "-c:a",
-            "copy",
-            str(output_path),
-        ],
+            "-c:v",
+            plan.video_codec,
+            "-pix_fmt",
+            plan.pixel_format,
+        ]
+    )
+    if plan.video_bitrate is not None and plan.video_bitrate > 0:
+        command.extend(["-b:v", str(plan.video_bitrate)])
+    if plan.color_space is not None:
+        command.extend(["-colorspace", plan.color_space])
+    if plan.color_transfer is not None:
+        command.extend(["-color_trc", plan.color_transfer])
+    if plan.color_primaries is not None:
+        command.extend(["-color_primaries", plan.color_primaries])
+    command.extend(plan.audio_args)
+
+
+def build_cache_compose_command(
+    *, source_path: Path, overlay_path: Path, output_path: Path, plan: OutputEncodingPlan
+) -> list[str]:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_path),
+        "-i",
+        str(overlay_path),
+        "-filter_complex",
+        "[0:v][1:v]overlay=0:0[video]",
+        "-map",
+        "[video]",
+        "-map",
+        "0:a?",
+    ]
+    _append_output_encoding_args(command, plan)
+    command.append(str(output_path))
+    return command
+
+
+def compose_video(source_path: Path, overlay_path: Path, output_path: Path, *, plan: OutputEncodingPlan) -> None:
+    subprocess.run(
+        build_cache_compose_command(
+            source_path=source_path,
+            overlay_path=overlay_path,
+            output_path=output_path,
+            plan=plan,
+        ),
         check=True,
     )
 
@@ -326,20 +361,8 @@ def build_stream_compose_command(
         "[video]",
         "-map",
         "0:a?",
-        "-c:v",
-        plan.video_codec,
-        "-pix_fmt",
-        plan.pixel_format,
     ]
-    if plan.video_bitrate is not None and plan.video_bitrate > 0:
-        command.extend(["-b:v", str(plan.video_bitrate)])
-    if plan.color_space is not None:
-        command.extend(["-colorspace", plan.color_space])
-    if plan.color_transfer is not None:
-        command.extend(["-color_trc", plan.color_transfer])
-    if plan.color_primaries is not None:
-        command.extend(["-color_primaries", plan.color_primaries])
-    command.extend(plan.audio_args)
+    _append_output_encoding_args(command, plan)
     command.append(str(output_path))
     return command
 

@@ -11,7 +11,7 @@ from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, serialize_hud_config
 from race_overlay.models import ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
-from race_overlay.pipeline import run_pipeline
+from race_overlay.pipeline import FatalStreamingComposeError, run_pipeline
 
 
 def test_render_runs_pipeline_with_config(tmp_path: Path, monkeypatch) -> None:
@@ -51,9 +51,17 @@ def fake_activity() -> ActivityTrack:
     )
 
 
-def fake_clip(path: Path) -> VideoClip:
+def fake_clip(path: Path, **overrides) -> VideoClip:
     start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
-    return VideoClip(path=path, creation_time=start, duration_seconds=1.0, width=1280, height=720, fps=1.0)
+    return VideoClip(
+        path=path,
+        creation_time=start,
+        duration_seconds=1.0,
+        width=1280,
+        height=720,
+        fps=1.0,
+        **overrides,
+    )
 
 
 def fake_alignment() -> ClipAlignment:
@@ -182,7 +190,55 @@ def test_run_pipeline_prefers_streaming_and_reports_encoding_plan(tmp_path: Path
     assert any("Finished clip.MP4" in message for message in messages)
 
 
-def test_run_pipeline_falls_back_to_cache_when_streaming_fails(tmp_path: Path, monkeypatch) -> None:
+def test_run_pipeline_passes_encoding_plan_to_cache_compose(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    captured_plan = {}
+    process = FakeStreamingProcess([], returncode=None, write_error=BrokenPipeError("broken pipe"))
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: fake_clip(
+            path,
+            video_codec="hevc",
+            pixel_format="yuv420p10le",
+            video_bitrate=4_000_000,
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt2020",
+            audio_codec="mp3",
+            audio_bitrate=128_000,
+        ),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: process,
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+
+    def fake_compose_video(source_path: Path, overlay_path: Path, output_path: Path, *, plan) -> None:
+        captured_plan["plan"] = plan
+
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", fake_compose_video)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert captured_plan["plan"].video_codec == "libx265"
+    assert captured_plan["plan"].pixel_format == "yuv420p10le"
+    assert captured_plan["plan"].video_bitrate == 4_000_000
+    assert captured_plan["plan"].audio_args == ("-c:a", "aac", "-b:a", "128000")
+    assert any("falling back to cache" in message for message in messages)
+
+
+def test_run_pipeline_does_not_fall_back_when_streaming_setup_fails(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
@@ -197,7 +253,7 @@ def test_run_pipeline_falls_back_to_cache_when_streaming_fails(tmp_path: Path, m
     monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
     monkeypatch.setattr(
         "race_overlay.pipeline.open_stream_compose_process",
-        lambda **kwargs: (_ for _ in ()).throw(OSError("stdin pipe unavailable")),
+        lambda **kwargs: (_ for _ in ()).throw(FileNotFoundError("ffmpeg")),
         raising=False,
     )
     monkeypatch.setattr(
@@ -206,13 +262,14 @@ def test_run_pipeline_falls_back_to_cache_when_streaming_fails(tmp_path: Path, m
     )
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
 
-    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+    with pytest.raises(FatalStreamingComposeError, match="ffmpeg streaming setup failed: ffmpeg"):
+        run_pipeline(config_path, only="clip.MP4", progress=messages.append)
 
-    assert fallback_called["value"] is True
-    assert any("falling back to cache" in message for message in messages)
+    assert fallback_called["value"] is False
+    assert all("falling back to cache" not in message for message in messages)
 
 
-def test_run_pipeline_falls_back_to_cache_when_stream_process_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
+def test_run_pipeline_does_not_fall_back_when_stream_process_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
 
@@ -236,10 +293,11 @@ def test_run_pipeline_falls_back_to_cache_when_stream_process_exits_nonzero(tmp_
     )
     monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
 
-    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+    with pytest.raises(FatalStreamingComposeError, match="non-zero status 1"):
+        run_pipeline(config_path, only="clip.MP4", progress=messages.append)
 
-    assert fallback_called["value"] is True
-    assert any("falling back to cache" in message for message in messages)
+    assert fallback_called["value"] is False
+    assert all("falling back to cache" not in message for message in messages)
 
 
 def test_run_pipeline_cleans_up_stream_process_before_cache_fallback(tmp_path: Path, monkeypatch) -> None:

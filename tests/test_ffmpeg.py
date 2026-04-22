@@ -1,8 +1,9 @@
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+import subprocess
 
-from race_overlay.ffmpeg import build_stream_compose_command, resolve_output_encoding_plan
+from race_overlay.ffmpeg import build_stream_compose_command, compose_video, resolve_output_encoding_plan
 from race_overlay.models import VideoClip
 
 
@@ -285,3 +286,64 @@ def test_build_stream_compose_command_omits_dropped_color_metadata() -> None:
     assert "-colorspace" not in command
     assert "-color_trc" not in command
     assert "-color_primaries" not in command
+
+
+def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
+    clip = make_clip(
+        video_codec="hevc",
+        pixel_format="yuv420p10le",
+        color_space="bt2020nc",
+        color_transfer="smpte2084",
+        color_primaries="bt2020",
+        audio_codec="mp3",
+        audio_bitrate=128_000,
+    )
+    plan = resolve_output_encoding_plan(clip)
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[bytes]:
+        captured["command"] = command
+        captured["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr("race_overlay.ffmpeg.subprocess.run", fake_run)
+
+    compose_video(
+        source_path=Path("source.MP4"),
+        overlay_path=Path("overlay.mov"),
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+
+    assert captured["check"] is True
+    assert captured["command"] == [
+        "ffmpeg",
+        "-y",
+        "-i",
+        "source.MP4",
+        "-i",
+        "overlay.mov",
+        "-filter_complex",
+        "[0:v][1:v]overlay=0:0[video]",
+        "-map",
+        "[video]",
+        "-map",
+        "0:a?",
+        "-c:v",
+        "libx265",
+        "-pix_fmt",
+        "yuv420p10le",
+        "-b:v",
+        "16000000",
+        "-colorspace",
+        "bt2020nc",
+        "-color_trc",
+        "smpte2084",
+        "-color_primaries",
+        "bt2020",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128000",
+        "output.MP4",
+    ]
