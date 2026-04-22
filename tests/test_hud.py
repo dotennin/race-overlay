@@ -352,6 +352,51 @@ def test_validate_hud_config_rejects_non_positive_widget_dimensions() -> None:
         validate_hud_config(config)
 
 
+def test_validate_hud_config_rejects_non_boolean_widget_visibility() -> None:
+    config = HudConfig(
+        preset="metric-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="heart",
+                type="metric_card",
+                bindings={"value": "heart_rate_bpm"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=180,
+                height=96,
+                visible="false",
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="visible"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_integer_widget_dimensions() -> None:
+    config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width="180",
+                height=50,
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="width"):
+        validate_hud_config(config)
+
+
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),

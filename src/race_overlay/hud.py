@@ -198,6 +198,7 @@ def _render_widget(
 
 
 def _validate_widget(widget: HudWidgetConfig) -> None:
+    _validate_widget_core_fields(widget)
     if widget.anchor not in SUPPORTED_WIDGET_ANCHORS:
         supported = ", ".join(sorted(SUPPORTED_WIDGET_ANCHORS))
         raise ValueError(
@@ -224,6 +225,26 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
     else:
         raise ValueError(f"unknown widget type '{widget.type}' for widget '{widget.id}'")
     _validate_widget_style(widget)
+
+
+def _validate_widget_core_fields(widget: HudWidgetConfig) -> None:
+    if not isinstance(widget.visible, bool):
+        raise ValueError(f"widget '{widget.id}' visible must be a boolean")
+    _require_widget_int(widget, "x")
+    _require_widget_int(widget, "y")
+    _require_widget_int(widget, "z_index")
+    _require_widget_int(widget, "width", minimum=1)
+    _require_widget_int(widget, "height", minimum=1)
+
+
+def _require_widget_int(widget: HudWidgetConfig, field_name: str, *, minimum: int | None = None) -> int:
+    value = getattr(widget, field_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"widget '{widget.id}' {field_name} must be a finite integer")
+    if minimum is not None and value < minimum:
+        qualifier = f"at least {minimum}" if minimum != 1 else "greater than 0"
+        raise ValueError(f"widget '{widget.id}' {field_name} must be {qualifier}")
+    return value
 
 
 def _validate_widget_style(widget: HudWidgetConfig) -> None:
