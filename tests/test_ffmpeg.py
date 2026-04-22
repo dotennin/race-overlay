@@ -53,13 +53,117 @@ def test_resolve_output_encoding_plan_downgrades_unsupported_source_settings() -
 
     assert plan.video_codec == "libx264"
     assert plan.pixel_format == "yuv420p"
-    assert plan.color_space == "bt2020nc"
-    assert plan.color_transfer == "smpte2084"
-    assert plan.color_primaries == "bt2020"
+    assert plan.color_space is None
+    assert plan.color_transfer is None
+    assert plan.color_primaries is None
     assert plan.audio_args == ("-c:a", "copy")
     assert plan.warnings == (
         "Unsupported source video codec 'vp9'; using 'libx264' instead.",
         "Pixel format 'yuv444p12le' is incompatible with 'libx264'; using 'yuv420p' instead.",
+        "Color space 'bt2020nc' is incompatible with output plan 'libx264/yuv420p'; dropping it.",
+        "Color transfer 'smpte2084' is incompatible with output plan 'libx264/yuv420p'; dropping it.",
+        "Color primaries 'bt2020' are incompatible with output plan 'libx264/yuv420p'; dropping them.",
+    )
+
+
+def test_resolve_output_encoding_plan_preserves_supported_hdr10_metadata_for_hevc_10bit() -> None:
+    plan = resolve_output_encoding_plan(
+        make_clip(
+            video_codec="hevc",
+            pixel_format="yuv420p10le",
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt2020",
+        )
+    )
+
+    assert plan.video_codec == "libx265"
+    assert plan.pixel_format == "yuv420p10le"
+    assert plan.color_space == "bt2020nc"
+    assert plan.color_transfer == "smpte2084"
+    assert plan.color_primaries == "bt2020"
+    assert plan.warnings == ()
+
+
+def test_resolve_output_encoding_plan_chooses_hdr_compatible_pixel_format_when_needed() -> None:
+    plan = resolve_output_encoding_plan(
+        make_clip(
+            video_codec="hevc",
+            pixel_format="yuv444p12le",
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt2020",
+        )
+    )
+
+    assert plan.video_codec == "libx265"
+    assert plan.pixel_format == "yuv420p10le"
+    assert plan.color_space == "bt2020nc"
+    assert plan.color_transfer == "smpte2084"
+    assert plan.color_primaries == "bt2020"
+    assert plan.warnings == (
+        "Pixel format 'yuv444p12le' cannot preserve HDR10 color metadata with 'libx265'; using 'yuv420p10le' instead.",
+    )
+
+
+def test_resolve_output_encoding_plan_upgrades_supported_hevc_pixel_format_for_hdr10() -> None:
+    plan = resolve_output_encoding_plan(
+        make_clip(
+            video_codec="hevc",
+            pixel_format="yuv420p",
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt2020",
+        )
+    )
+
+    assert plan.video_codec == "libx265"
+    assert plan.pixel_format == "yuv420p10le"
+    assert plan.color_space == "bt2020nc"
+    assert plan.color_transfer == "smpte2084"
+    assert plan.color_primaries == "bt2020"
+    assert plan.warnings == (
+        "Pixel format 'yuv420p' cannot preserve HDR10 color metadata with 'libx265'; using 'yuv420p10le' instead.",
+    )
+
+
+def test_resolve_output_encoding_plan_preserves_supported_hdr10_hevc_pixel_format() -> None:
+    plan = resolve_output_encoding_plan(
+        make_clip(
+            video_codec="hevc",
+            pixel_format="yuv444p10le",
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt2020",
+        )
+    )
+
+    assert plan.video_codec == "libx265"
+    assert plan.pixel_format == "yuv444p10le"
+    assert plan.color_space == "bt2020nc"
+    assert plan.color_transfer == "smpte2084"
+    assert plan.color_primaries == "bt2020"
+    assert plan.warnings == ()
+
+
+def test_resolve_output_encoding_plan_drops_only_incompatible_color_field() -> None:
+    plan = resolve_output_encoding_plan(
+        make_clip(
+            video_codec="hevc",
+            pixel_format="yuv420p10le",
+            color_space="bt2020nc",
+            color_transfer="smpte2084",
+            color_primaries="bt709",
+        )
+    )
+
+    assert plan.video_codec == "libx265"
+    assert plan.pixel_format == "yuv420p10le"
+    assert plan.color_space == "bt2020nc"
+    assert plan.color_transfer == "smpte2084"
+    assert plan.color_primaries is None
+    assert plan.warnings == (
+        "Color primaries 'bt709' are incompatible with color metadata profile for 'libx265/yuv420p10le'; dropping them.",
     )
 
 
@@ -127,3 +231,25 @@ def test_build_stream_compose_command_omits_non_positive_bitrate() -> None:
     )
 
     assert "-b:v" not in command
+
+
+def test_build_stream_compose_command_omits_dropped_color_metadata() -> None:
+    clip = make_clip(
+        video_codec="vp9",
+        pixel_format="yuv444p12le",
+        color_space="bt2020nc",
+        color_transfer="smpte2084",
+        color_primaries="bt2020",
+    )
+    plan = resolve_output_encoding_plan(clip)
+
+    command = build_stream_compose_command(
+        source_path=Path("source.MP4"),
+        clip=clip,
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+
+    assert "-colorspace" not in command
+    assert "-color_trc" not in command
+    assert "-color_primaries" not in command
