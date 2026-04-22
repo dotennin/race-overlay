@@ -70,6 +70,7 @@ select {
 
 .panel-header,
 .panel-section,
+#theme-controls,
 #inspector-content {
   display: grid;
   gap: 12px;
@@ -388,6 +389,22 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.rgba-input {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.rgba-input__channel {
+  display: grid;
+  gap: 6px;
+}
+
+.rgba-input__channel > span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .toggle-field {
   display: flex;
   align-items: center;
@@ -443,5 +460,9 @@ button:disabled {
 
   .toolbar-actions {
     justify-content: flex-end;
+  }
+
+  .rgba-input {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

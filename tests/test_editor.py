@@ -22,7 +22,14 @@ from race_overlay.editor_preview import (
 )
 from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
 from race_overlay.hud_presets import broadcast_runner_preset
-from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
+from race_overlay.hud_schema import (
+    HUD_FONT_FAMILY_OPTIONS,
+    HUD_FONT_WEIGHT_OPTIONS,
+    HudConfig,
+    HudThemeConfig,
+    HudWidgetConfig,
+    serialize_hud_config,
+)
 
 
 def test_build_editor_state_exposes_widgets_for_preview() -> None:
@@ -37,6 +44,42 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     assert state["preview"]["width"] == 1280
     assert isinstance(state["revision"], str)
     assert state["revision"]
+
+
+def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    assert state["schema"]["theme"]["panel_rgba"] == {"kind": "rgba", "label": "Panel RGBA"}
+    assert state["schema"]["theme"]["font_family"] == {
+        "kind": "enum",
+        "label": "Font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert state["schema"]["theme"]["font_weight"] == {
+        "kind": "enum",
+        "label": "Font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert state["schema"]["theme"]["font_size_px"] == {"kind": "integer", "label": "Font size", "min": 8}
+    assert state["schema"]["theme"]["show_units"] == {"kind": "boolean", "label": "Show units"}
+
+    ruler_style = state["schema"]["widgets"]["distance-ruler"]["style"]
+    assert ruler_style["font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
+    assert ruler_style["font_weight"]["options"] == list(HUD_FONT_WEIGHT_OPTIONS)
+    assert ruler_style["font_size_px"]["min"] == 8
+    assert ruler_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
+    assert ruler_style["show_current_value"] == {"kind": "boolean", "label": "Show current value"}
+    assert ruler_style["show_total_value"] == {"kind": "boolean", "label": "Show total value"}
+
+    pace_chip_style = state["schema"]["widgets"]["pace-chip"]["style"]
+    assert pace_chip_style["font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
+    assert pace_chip_style["font_weight"]["options"] == list(HUD_FONT_WEIGHT_OPTIONS)
+    assert pace_chip_style["font_size_px"]["min"] == 8
+    assert pace_chip_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
 
 
 def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
@@ -56,6 +99,47 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     pace_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
     assert pace_widget.x == 48
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
+
+
+def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    payload["theme"].update(
+        panel_rgba=[10, 20, 30, 140],
+        accent_rgba=[40, 50, 60, 255],
+        text_rgba=[70, 80, 90, 255],
+        font_family="serif",
+        font_weight="bold",
+        font_size_px=24,
+        show_units=False,
+    )
+    pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
+    pace_chip["style"].update(font_family="mono", font_weight="medium", font_size_px=26, show_unit=False)
+    distance_ruler = next(widget for widget in payload["widgets"] if widget["id"] == "distance-ruler")
+    distance_ruler["style"].update(show_current_value=False, show_total_value=False)
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    reloaded_pace_chip = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
+    reloaded_ruler = next(widget for widget in reloaded.hud.widgets if widget.id == "distance-ruler")
+
+    assert reloaded.hud.theme.panel_rgba == [10, 20, 30, 140]
+    assert reloaded.hud.theme.accent_rgba == [40, 50, 60, 255]
+    assert reloaded.hud.theme.text_rgba == [70, 80, 90, 255]
+    assert reloaded.hud.theme.font_family == "serif"
+    assert reloaded.hud.theme.font_weight == "bold"
+    assert reloaded.hud.theme.font_size_px == 24
+    assert reloaded.hud.theme.show_units is False
+    assert reloaded_pace_chip.style["font_family"] == "mono"
+    assert reloaded_pace_chip.style["font_weight"] == "medium"
+    assert reloaded_pace_chip.style["font_size_px"] == 26
+    assert reloaded_pace_chip.style["show_unit"] is False
+    assert reloaded_ruler.style["show_current_value"] is False
+    assert reloaded_ruler.style["show_total_value"] is False
 
 
 def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_present(tmp_path: Path) -> None:
@@ -525,6 +609,45 @@ def test_editor_help_defaults_closed_in_served_html(tmp_path: Path) -> None:
     assert response.status == 200
     assert 'id="help-modal"' in body
     assert "hidden" in body.split('id="help-modal"', 1)[1]
+
+
+def test_editor_shell_exposes_theme_controls_container(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert "Theme defaults" in body
+    assert 'id="theme-controls"' in body
+
+
+def test_editor_app_asset_uses_schema_driven_theme_controls(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/app.js")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert "themeControls" in body
+    assert "savedState.schema" in body
+    assert "font_size_px" in body
 
 
 def test_api_config_rejects_malformed_json_with_400(tmp_path: Path) -> None:

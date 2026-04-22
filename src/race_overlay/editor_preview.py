@@ -9,11 +9,74 @@ import yaml
 
 from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_save, load_config, save_config
 from race_overlay.hud import render_hud_frame
-from race_overlay.hud_schema import HudConfig, serialize_hud_config
+from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, serialize_hud_config
 from race_overlay.models import HudSample
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
+_THEME_FIELD_SCHEMA = {
+    "panel_rgba": {"kind": "rgba", "label": "Panel RGBA"},
+    "accent_rgba": {"kind": "rgba", "label": "Accent RGBA"},
+    "text_rgba": {"kind": "rgba", "label": "Text RGBA"},
+    "note_text": {"kind": "text", "label": "Theme note"},
+    "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+    "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+    "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+    "show_units": {"kind": "boolean", "label": "Show units"},
+}
+_WIDGET_STYLE_SCHEMA_BY_TYPE = {
+    "progress_bar": {
+        "label": {"kind": "text", "label": "Label"},
+        "variant": {"kind": "text", "label": "Variant"},
+        "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
+        "show_current_value": {"kind": "boolean", "label": "Show current value"},
+        "show_total_value": {"kind": "boolean", "label": "Show total value"},
+        "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
+    },
+    "stat_block": {
+        "label": {"kind": "text", "label": "Label"},
+        "unit": {"kind": "text", "label": "Unit"},
+        "align": {"kind": "text", "label": "Align"},
+        "decimals": {"kind": "integer", "label": "Decimals", "min": 0},
+        "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
+        "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
+    },
+    "metric_card": {
+        "label": {"kind": "text", "label": "Label"},
+        "variant": {"kind": "text", "label": "Variant"},
+        "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
+        "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
+    },
+    "hero_metric": {
+        "label": {"kind": "text", "label": "Label"},
+        "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
+        "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
+    },
+    "context_card": {
+        "label": {"kind": "text", "label": "Label"},
+        "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
+    },
+    "route_map": {
+        "label": {"kind": "text", "label": "Label"},
+        "shape": {"kind": "text", "label": "Shape"},
+        "show_panel": {"kind": "boolean", "label": "Show panel"},
+    },
+}
 
 
 class StaleHudSaveError(ValueError):
@@ -37,6 +100,7 @@ def _sample_hud_value() -> HudSample:
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
+        "schema": _build_editor_schema(config.hud),
         "revision": _hud_revision(config.hud),
         "preview": {
             "width": width,
@@ -151,10 +215,10 @@ def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, o
             or set(widget_payload["bindings"]) != set(expected_widget["bindings"])
             or not isinstance(payload_style, dict)
             or (
-                set(payload_style) != expected_style_keys
+                not expected_style_keys.issubset(set(payload_style))
                 and not (
                     "label" not in expected_style_keys
-                    and set(payload_style) == expected_style_keys | {"label"}
+                    and expected_style_keys | {"label"} <= set(payload_style)
                 )
             )
         ):
@@ -175,3 +239,35 @@ def _editor_payload_revision(payload: dict[str, object]) -> str:
 def _hud_revision(hud: HudConfig) -> str:
     payload = json.dumps(serialize_hud_config(hud), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _build_editor_schema(hud: HudConfig) -> dict[str, object]:
+    return {
+        "theme": json.loads(json.dumps(_THEME_FIELD_SCHEMA)),
+        "widgets": {
+            widget.id: {
+                "type": widget.type,
+                "style": _widget_style_schema(widget),
+            }
+            for widget in hud.widgets
+        },
+    }
+
+
+def _widget_style_schema(widget) -> dict[str, object]:
+    schema = dict(_WIDGET_STYLE_SCHEMA_BY_TYPE.get(widget.type, {}))
+    for key, value in widget.style.items():
+        schema.setdefault(key, _infer_style_field_schema(key, value))
+    return json.loads(json.dumps(schema))
+
+
+def _infer_style_field_schema(key: str, value: object) -> dict[str, object]:
+    if isinstance(value, bool):
+        return {"kind": "boolean", "label": _humanize_field_name(key)}
+    if isinstance(value, int):
+        return {"kind": "integer", "label": _humanize_field_name(key)}
+    return {"kind": "text", "label": _humanize_field_name(key)}
+
+
+def _humanize_field_name(key: str) -> str:
+    return key.replace("_", " ").strip().capitalize()

@@ -3,11 +3,17 @@ const HUD_REFERENCE_HEIGHT = 720;
 const MIN_WIDGET_SIZE = 24;
 const PREVIEW_DEBOUNCE_MS = 120;
 const SUPPORTED_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+const STYLE_THEME_FALLBACKS = {
+  font_family: "font_family",
+  font_weight: "font_weight",
+  font_size_px: "font_size_px",
+  show_unit: "show_units",
+};
 
 const elements = {
   statusMessage: document.getElementById("status-message"),
   preset: document.getElementById("preset"),
-  noteText: document.getElementById("note-text"),
+  themeControls: document.getElementById("theme-controls"),
   widgetList: document.getElementById("widget-list"),
   inspectorContent: document.getElementById("inspector-content"),
   saveButton: document.getElementById("save-button"),
@@ -80,6 +86,13 @@ function getWidgetsInLayerOrder() {
 
 function getWidget(widgetId) {
   return draftState?.widgets.find((widget) => widget.id === widgetId) ?? null;
+}
+
+function getWidgetSchema(widgetId) {
+  if (!savedState || !savedState.schema || !savedState.schema.widgets) {
+    return null;
+  }
+  return savedState.schema.widgets[widgetId] ?? null;
 }
 
 function ensureSelection() {
@@ -312,16 +325,22 @@ function appendField(parent, labelText, control, fullWidth = false) {
 function buildTextInput(value, onChange, type = "text") {
   const input = document.createElement("input");
   input.type = type;
-  input.value = value;
+  input.value = value ?? "";
   input.addEventListener("change", () => onChange(input.value));
   return input;
 }
 
-function buildNumberInput(value, onChange) {
+function buildNumberInput(value, onChange, options = {}) {
   const input = document.createElement("input");
   input.type = "number";
   input.value = String(value);
-  input.step = "1";
+  input.step = String(options.step ?? 1);
+  if (options.min !== undefined) {
+    input.min = String(options.min);
+  }
+  if (options.max !== undefined) {
+    input.max = String(options.max);
+  }
   input.addEventListener("change", () => {
     if (input.value.trim() === "") {
       input.value = String(value);
@@ -345,6 +364,108 @@ function buildCheckbox(value, onChange) {
   return input;
 }
 
+function buildSelectInput(value, options, onChange) {
+  const select = document.createElement("select");
+  options.forEach((optionValue) => {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    option.selected = optionValue === value;
+    select.appendChild(option);
+  });
+  select.addEventListener("change", () => onChange(select.value));
+  return select;
+}
+
+function buildRgbaInput(value, onChange) {
+  const values = Array.isArray(value) && value.length === 4 ? value : [0, 0, 0, 255];
+  const wrapper = document.createElement("div");
+  wrapper.className = "rgba-input";
+  ["R", "G", "B", "A"].forEach((channelLabel, index) => {
+    const channel = document.createElement("label");
+    channel.className = "rgba-input__channel";
+    const text = document.createElement("span");
+    text.textContent = channelLabel;
+    channel.appendChild(text);
+    channel.appendChild(
+      buildNumberInput(values[index], (nextValue) => {
+        const nextChannels = [...values];
+        nextChannels[index] = nextValue;
+        onChange(nextChannels);
+      }, { min: 0, max: 255 }),
+    );
+    wrapper.appendChild(channel);
+  });
+  return wrapper;
+}
+
+function renderFieldControl(parent, key, metadata, value, onChange) {
+  const fieldLabel = metadata?.label ?? key;
+  if (metadata?.kind === "boolean" || typeof value === "boolean") {
+    const toggle = document.createElement("label");
+    toggle.className = "toggle-field";
+    const text = document.createElement("span");
+    text.textContent = fieldLabel;
+    toggle.appendChild(text);
+    toggle.appendChild(buildCheckbox(Boolean(value), onChange));
+    parent.appendChild(toggle);
+    return;
+  }
+  if (metadata?.kind === "rgba") {
+    appendField(parent, fieldLabel, buildRgbaInput(value, onChange), true);
+    return;
+  }
+  if (metadata?.kind === "enum") {
+    appendField(parent, fieldLabel, buildSelectInput(value, metadata.options ?? [], onChange), true);
+    return;
+  }
+  if (metadata?.kind === "integer" || typeof value === "number") {
+    appendField(parent, fieldLabel, buildNumberInput(value, onChange, { min: metadata?.min }), false);
+    return;
+  }
+  appendField(parent, fieldLabel, buildTextInput(String(value ?? ""), onChange), true);
+}
+
+function renderThemeControls() {
+  if (!elements.themeControls) {
+    return;
+  }
+  elements.themeControls.innerHTML = "";
+  if (!draftState) {
+    return;
+  }
+  const themeSchema = savedState && savedState.schema ? savedState.schema.theme ?? {} : {};
+  const themeCard = document.createElement("section");
+  themeCard.className = "inspector-card";
+  const themeGrid = document.createElement("div");
+  themeGrid.className = "inspector-grid";
+  Object.entries(themeSchema).forEach(([key, metadata]) => {
+    renderFieldControl(themeGrid, key, metadata, draftState.theme[key], (nextValue) => {
+      if (!draftState) {
+        return;
+      }
+      draftState.theme = Object.assign({}, draftState.theme, { [key]: nextValue });
+      renderThemeControls();
+      renderInspector();
+      schedulePreviewRefresh();
+      updateSaveButtonState();
+    });
+  });
+  themeCard.appendChild(themeGrid);
+  elements.themeControls.appendChild(themeCard);
+}
+
+function getStyleFieldValue(widget, key) {
+  if (Object.prototype.hasOwnProperty.call(widget.style, key)) {
+    return widget.style[key];
+  }
+  const themeKey = STYLE_THEME_FALLBACKS[key];
+  if (themeKey && draftState?.theme) {
+    return draftState.theme[themeKey];
+  }
+  return "";
+}
+
 function renderInspector() {
   if (!elements.inspectorContent) {
     return;
@@ -361,9 +482,7 @@ function renderInspector() {
   if (elements.preset) {
     elements.preset.value = draftState.preset;
   }
-  if (elements.noteText && elements.noteText !== document.activeElement) {
-    elements.noteText.value = draftState.theme.note_text ?? "";
-  }
+  renderThemeControls();
 
   const widget = getWidget(selectedWidgetId);
   if (!widget) {
@@ -423,30 +542,19 @@ function renderInspector() {
 
   const styleGrid = document.createElement("div");
   styleGrid.className = "inspector-grid";
-  const styleEntries = Object.entries(widget.style);
-  if (styleEntries.length === 0) {
+  const widgetSchema = getWidgetSchema(widget.id);
+  const styleSchema = widgetSchema?.style ?? {};
+  const styleKeys = Array.from(new Set([...Object.keys(styleSchema), ...Object.keys(widget.style)]));
+  if (styleKeys.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = "This widget does not expose extra style controls.";
     styleCard.appendChild(empty);
   } else {
-    styleEntries.forEach(([key, value]) => {
-      const fullWidth = typeof value === "string" && value.length > 14;
-      if (typeof value === "boolean") {
-        const toggle = document.createElement("label");
-        toggle.className = "toggle-field";
-        const text = document.createElement("span");
-        text.textContent = key;
-        toggle.appendChild(text);
-        toggle.appendChild(buildCheckbox(value, (nextValue) => updateWidgetStyle(widget.id, key, nextValue)));
-        styleGrid.appendChild(toggle);
-        return;
-      }
-      if (typeof value === "number") {
-        appendField(styleGrid, key, buildNumberInput(value, (nextValue) => updateWidgetStyle(widget.id, key, nextValue)), fullWidth);
-        return;
-      }
-      appendField(styleGrid, key, buildTextInput(String(value), (nextValue) => updateWidgetStyle(widget.id, key, nextValue)), fullWidth);
+    styleKeys.forEach((key) => {
+      renderFieldControl(styleGrid, key, styleSchema[key], getStyleFieldValue(widget, key), (nextValue) => {
+        updateWidgetStyle(widget.id, key, nextValue);
+      });
     });
     styleCard.appendChild(styleGrid);
   }
@@ -670,10 +778,6 @@ async function loadState() {
     if (elements.preview) {
       elements.preview.style.aspectRatio = `${savedState.preview.width} / ${savedState.preview.height}`;
     }
-    if (elements.noteText) {
-      elements.noteText.disabled = false;
-      elements.noteText.value = draftState.theme.note_text ?? "";
-    }
     updateSaveButtonState();
     renderLayers();
     renderInspector();
@@ -688,9 +792,8 @@ async function loadState() {
     if (elements.preset) {
       elements.preset.value = "";
     }
-    if (elements.noteText) {
-      elements.noteText.value = "";
-      elements.noteText.disabled = true;
+    if (elements.themeControls) {
+      elements.themeControls.innerHTML = "";
     }
     if (elements.preview) {
       elements.preview.removeAttribute("src");
@@ -749,16 +852,6 @@ if (elements.helpModal) {
 }
 if (elements.saveButton) {
   elements.saveButton.addEventListener("click", saveState);
-}
-if (elements.noteText) {
-  elements.noteText.addEventListener("input", () => {
-    if (!draftState) {
-      return;
-    }
-    draftState.theme.note_text = elements.noteText.value;
-    renderInspector();
-    schedulePreviewRefresh();
-  });
 }
 if (elements.preview) {
   elements.preview.addEventListener("load", () => {
