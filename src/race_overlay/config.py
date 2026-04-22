@@ -9,7 +9,7 @@ from uuid import uuid4
 import yaml
 
 from race_overlay.hud import validate_hud_config
-from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
+from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset, migrate_broadcast_runner_config
 from race_overlay.hud_schema import HudConfig, deserialize_hud_config, serialize_hud_config
 
 
@@ -54,9 +54,11 @@ def write_default_config(path: Path, activity_file: str) -> None:
 def _load_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
     if "fields" in payload:
         if any(key != "fields" for key in payload):
-            return deserialize_hud_config(
-                {key: value for key, value in payload.items() if key != "fields"},
-                require_complete=require_complete,
+            return migrate_broadcast_runner_config(
+                deserialize_hud_config(
+                    {key: value for key, value in payload.items() if key != "fields"},
+                    require_complete=require_complete,
+                )
             )
         if require_complete:
             raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
@@ -64,7 +66,7 @@ def _load_hud_config(payload: dict[str, object], *, require_complete: bool = Fal
         if not isinstance(fields, dict):
             raise TypeError("hud.fields must be a mapping")
         return apply_legacy_field_visibility(broadcast_runner_preset(), fields)
-    return deserialize_hud_config(payload, require_complete=require_complete)
+    return migrate_broadcast_runner_config(deserialize_hud_config(payload, require_complete=require_complete))
 
 
 def load_config(path: Path) -> ProjectConfig:

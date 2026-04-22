@@ -14,7 +14,7 @@ from race_overlay.config import (
     save_config,
     write_default_config,
 )
-from race_overlay.hud_presets import broadcast_runner_preset
+from race_overlay.hud_presets import _legacy_broadcast_runner_preset, broadcast_runner_preset
 from race_overlay.hud_schema import serialize_hud_config
 
 
@@ -67,6 +67,7 @@ def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: P
     visibility = {widget.id: widget.visible for widget in config.hud.widgets}
 
     assert config.hud.preset == "broadcast-runner"
+    assert visibility["time-chip"] is True
     assert visibility["pace-chip"] is True
     assert visibility["route-map"] is False
     assert visibility["heart-rate-stat"] is True
@@ -106,6 +107,7 @@ def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> 
     assert visibility["elevation-stat"] is False
     assert visibility["distance-ruler"] is False
     assert visibility["distance-stat"] is False
+    assert visibility["time-chip"] is False
     assert visibility["heart-rate-stat"] is False
     assert visibility["pace-chip"] is False
     assert visibility["cadence-chip"] is False
@@ -158,6 +160,108 @@ def test_load_config_prefers_schema_widgets_when_legacy_fields_are_also_present(
     assert route_map_loaded.visible is True
     assert pace_chip_loaded.visible is False
     assert pace_chip_loaded.x == 944
+
+
+def test_load_config_migrates_legacy_broadcast_runner_schema_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    legacy_payload = serialize_hud_config(_legacy_broadcast_runner_preset())
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": legacy_payload,
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    widget_ids = [widget.id for widget in config.hud.widgets]
+    time_chip = next(widget for widget in config.hud.widgets if widget.id == "time-chip")
+    route_map = next(widget for widget in config.hud.widgets if widget.id == "route-map")
+    elevation = next(widget for widget in config.hud.widgets if widget.id == "elevation-stat")
+
+    assert "time-chip" in widget_ids
+    assert config.hud.theme.title_font_size_px == 14
+    assert config.hud.theme.value_font_family == "serif"
+    assert time_chip.style["variant"] == "timestamp_chip"
+    assert route_map.style["show_north_marker"] is True
+    assert route_map.style["show_bearing_label"] is True
+    assert route_map.style["show_heading_arrow"] is True
+    assert route_map.x == 22
+    assert route_map.y == 488
+    assert elevation.y == 122
+
+
+def test_load_config_preserves_customized_broadcast_runner_geometry_and_legacy_theme(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    legacy_hud = _legacy_broadcast_runner_preset()
+    legacy_hud.theme.font_family = "mono"
+    legacy_hud.theme.font_size_px = 24
+    pace_chip = next(widget for widget in legacy_hud.widgets if widget.id == "pace-chip")
+    pace_chip.x = 990
+    pace_chip.z_index = 999
+    route_map = next(widget for widget in legacy_hud.widgets if widget.id == "route-map")
+    route_map.style["shape"] = "rect"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": serialize_hud_config(legacy_hud),
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    loaded_pace_chip = next(widget for widget in config.hud.widgets if widget.id == "pace-chip")
+    loaded_route_map = next(widget for widget in config.hud.widgets if widget.id == "route-map")
+
+    assert config.hud.theme.font_family == "mono"
+    assert config.hud.theme.font_size_px == 24
+    assert config.hud.theme.title_font_family is None
+    assert config.hud.theme.value_font_size_px is None
+    assert loaded_pace_chip.x == 990
+    assert loaded_pace_chip.z_index == 999
+    assert loaded_route_map.style["shape"] == "rect"
+    assert loaded_route_map.style["show_north_marker"] is True
+
+
+def test_load_config_does_not_reintroduce_removed_legacy_widgets(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    legacy_hud = _legacy_broadcast_runner_preset()
+    legacy_hud.widgets = [widget for widget in legacy_hud.widgets if widget.id not in {"route-map", "pace-chip"}]
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": serialize_hud_config(legacy_hud),
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    widget_ids = [widget.id for widget in config.hud.widgets]
+
+    assert "time-chip" in widget_ids
+    assert "route-map" not in widget_ids
+    assert "pace-chip" not in widget_ids
 
 
 def test_load_config_rejects_duplicate_widget_ids(tmp_path: Path) -> None:

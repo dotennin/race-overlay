@@ -3,7 +3,7 @@ from copy import deepcopy
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 
 
-def broadcast_runner_preset() -> HudConfig:
+def _legacy_broadcast_runner_preset() -> HudConfig:
     return HudConfig(
         theme=HudThemeConfig(
             panel_rgba=[12, 18, 28, 148],
@@ -136,9 +136,265 @@ def broadcast_runner_preset() -> HudConfig:
     )
 
 
+def broadcast_runner_preset() -> HudConfig:
+    return HudConfig(
+        theme=HudThemeConfig(
+            panel_rgba=[12, 18, 28, 148],
+            accent_rgba=[26, 230, 198, 255],
+            text_rgba=[247, 251, 255, 255],
+            font_family="sans",
+            font_weight="regular",
+            font_size_px=18,
+            title_font_family="sans",
+            title_font_weight="regular",
+            title_font_size_px=14,
+            value_font_family="serif",
+            value_font_weight="bold",
+            value_font_size_px=32,
+            unit_font_family="sans",
+            unit_font_weight="regular",
+            unit_font_size_px=12,
+            show_units=True,
+        ),
+        widgets=[
+            HudWidgetConfig(
+                "time-chip",
+                "context_card",
+                {"value": "timestamp"},
+                "top-left",
+                44,
+                40,
+                292,
+                56,
+                36,
+                True,
+                {"variant": "timestamp_chip", "format": "%Y/%m/%d %H:%M:%S"},
+            ),
+            HudWidgetConfig(
+                "distance-ruler",
+                "progress_bar",
+                {"value": "distance_m"},
+                "top-left",
+                360,
+                28,
+                560,
+                56,
+                40,
+                True,
+                {"label": "Distance", "variant": "ruler", "show_current_value": True, "show_total_value": True},
+            ),
+            HudWidgetConfig(
+                "elevation-stat",
+                "stat_block",
+                {"value": "altitude_m"},
+                "top-left",
+                44,
+                122,
+                152,
+                82,
+                30,
+                True,
+                {"label": "Elevation", "unit": "M"},
+            ),
+            HudWidgetConfig(
+                "distance-stat",
+                "stat_block",
+                {"value": "distance_m"},
+                "top-left",
+                44,
+                208,
+                196,
+                84,
+                30,
+                True,
+                {"label": "Distance", "unit": "KM", "decimals": 2},
+            ),
+            HudWidgetConfig(
+                "heart-rate-stat",
+                "stat_block",
+                {"value": "heart_rate_bpm"},
+                "top-right",
+                1092,
+                118,
+                152,
+                82,
+                30,
+                True,
+                {"label": "Heart rate", "unit": "BPM", "align": "right"},
+            ),
+            HudWidgetConfig(
+                "pace-chip",
+                "metric_card",
+                {"value": "pace_seconds_per_km"},
+                "bottom-right",
+                978,
+                552,
+                126,
+                76,
+                20,
+                True,
+                {"label": "Pace", "variant": "compact"},
+            ),
+            HudWidgetConfig(
+                "cadence-chip",
+                "metric_card",
+                {"value": "cadence_spm"},
+                "bottom-right",
+                1110,
+                552,
+                126,
+                76,
+                20,
+                True,
+                {"label": "Cadence", "variant": "compact"},
+            ),
+            HudWidgetConfig(
+                "elapsed-chip",
+                "metric_card",
+                {"value": "elapsed_seconds"},
+                "bottom-right",
+                978,
+                636,
+                126,
+                76,
+                20,
+                True,
+                {"label": "Elapsed", "variant": "compact"},
+            ),
+            HudWidgetConfig(
+                "speed-chip",
+                "metric_card",
+                {"value": "speed_mps"},
+                "bottom-right",
+                1110,
+                636,
+                126,
+                76,
+                20,
+                True,
+                {"label": "Speed", "variant": "compact"},
+            ),
+            HudWidgetConfig(
+                "route-map",
+                "route_map",
+                {"value": "route_points"},
+                "top-left",
+                22,
+                488,
+                196,
+                196,
+                20,
+                True,
+                {
+                    "label": "",
+                    "shape": "circle",
+                    "show_panel": True,
+                    "show_north_marker": True,
+                    "show_bearing_label": True,
+                    "show_heading_arrow": True,
+                },
+            ),
+        ],
+    )
+
+
+def migrate_broadcast_runner_config(config: HudConfig) -> HudConfig:
+    if config.preset != "broadcast-runner":
+        return config
+
+    migrated = deepcopy(config)
+    legacy = _legacy_broadcast_runner_preset()
+    refreshed = broadcast_runner_preset()
+
+    _migrate_broadcast_runner_theme(migrated.theme, legacy.theme, refreshed.theme)
+
+    legacy_by_id = {widget.id: widget for widget in legacy.widgets}
+    refreshed_by_id = {widget.id: widget for widget in refreshed.widgets}
+    existing_by_id = {widget.id: widget for widget in migrated.widgets}
+
+    for widget_id, default_widget in refreshed_by_id.items():
+        existing = existing_by_id.get(widget_id)
+        if existing is None:
+            if widget_id == "time-chip":
+                migrated.widgets.append(deepcopy(default_widget))
+            continue
+
+        legacy_widget = legacy_by_id.get(widget_id)
+        if legacy_widget is not None and _geometry_nearly_matches(existing, legacy_widget):
+            existing.x = default_widget.x
+            existing.y = default_widget.y
+            existing.width = default_widget.width
+            existing.height = default_widget.height
+            existing.z_index = default_widget.z_index
+
+        _migrate_widget_style(existing, legacy_widget, default_widget)
+
+    return migrated
+
+
+def _migrate_broadcast_runner_theme(
+    theme: HudThemeConfig,
+    legacy_theme: HudThemeConfig,
+    refreshed_theme: HudThemeConfig,
+) -> None:
+    if theme.title_font_family is None and theme.font_family == legacy_theme.font_family:
+        theme.title_font_family = refreshed_theme.title_font_family
+    if theme.title_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+        theme.title_font_weight = refreshed_theme.title_font_weight
+    if theme.title_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+        theme.title_font_size_px = refreshed_theme.title_font_size_px
+
+    if theme.value_font_family is None and theme.font_family == legacy_theme.font_family:
+        theme.value_font_family = refreshed_theme.value_font_family
+    if theme.value_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+        theme.value_font_weight = refreshed_theme.value_font_weight
+    if theme.value_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+        theme.value_font_size_px = refreshed_theme.value_font_size_px
+
+    if theme.unit_font_family is None and theme.font_family == legacy_theme.font_family:
+        theme.unit_font_family = refreshed_theme.unit_font_family
+    if theme.unit_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+        theme.unit_font_weight = refreshed_theme.unit_font_weight
+    if theme.unit_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+        theme.unit_font_size_px = refreshed_theme.unit_font_size_px
+
+
+def _geometry_nearly_matches(widget: HudWidgetConfig, reference: HudWidgetConfig) -> bool:
+    return (
+        widget.x,
+        widget.y,
+        widget.width,
+        widget.height,
+        widget.z_index,
+    ) == (
+        reference.x,
+        reference.y,
+        reference.width,
+        reference.height,
+        reference.z_index,
+    )
+
+
+def _migrate_widget_style(
+    widget: HudWidgetConfig,
+    legacy_widget: HudWidgetConfig | None,
+    default_widget: HudWidgetConfig,
+) -> None:
+    legacy_style = legacy_widget.style if legacy_widget is not None else {}
+    for key, value in default_widget.style.items():
+        if key not in widget.style:
+            widget.style[key] = deepcopy(value)
+            continue
+        if key in legacy_style and widget.style[key] == legacy_style[key]:
+            widget.style[key] = deepcopy(value)
+
+
 def apply_legacy_field_visibility(config: HudConfig, fields: dict[str, bool]) -> HudConfig:
     updated = deepcopy(config)
+    legacy_field_keys = ("pace", "elapsed", "distance", "speed", "heart_rate", "cadence", "mini_map")
+    show_any_field = any(fields.get(key, True) for key in legacy_field_keys)
     visibility_map = {
+        "time-chip": show_any_field,
         "distance-ruler": fields.get("distance", True),
         "elevation-stat": fields.get("distance", True),
         "distance-stat": fields.get("distance", True),
