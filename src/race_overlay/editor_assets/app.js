@@ -2,6 +2,7 @@ const HUD_REFERENCE_WIDTH = 1280;
 const HUD_REFERENCE_HEIGHT = 720;
 const MIN_WIDGET_SIZE = 24;
 const PREVIEW_DEBOUNCE_MS = 120;
+const PREVIEW_DRAG_THROTTLE_MS = 90;
 const SUPPORTED_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 const STYLE_THEME_FALLBACKS = {
   font_family: "font_family",
@@ -31,6 +32,9 @@ let selectedWidgetId = null;
 let previewRequest = 0;
 let previewObjectUrl = "";
 let previewRefreshTimer = null;
+let dragPreviewTimer = null;
+let lastPreviewRefreshAt = 0;
+let dragPreviewDirty = false;
 let activeInteraction = null;
 
 function cloneHud(hud) {
@@ -177,19 +181,61 @@ function updateSaveButtonState() {
   elements.saveButton.disabled = !savedState || !draftState;
 }
 
-function schedulePreviewRefresh() {
+function schedulePreviewRefresh({ immediate = false, drag = false } = {}) {
   if (!draftState) {
     return;
   }
-  if (previewRefreshTimer) {
-    clearTimeout(previewRefreshTimer);
-  }
-  previewRefreshTimer = setTimeout(() => {
-    previewRefreshTimer = null;
+  const now = Date.now();
+  if (immediate) {
+    if (dragPreviewTimer) {
+      clearTimeout(dragPreviewTimer);
+      dragPreviewTimer = null;
+    }
+    lastPreviewRefreshAt = now;
+    dragPreviewDirty = false;
     void refreshPreview().catch((error) => {
       setStatusMessage(readErrorMessage(error, "Failed to render preview"));
     });
-  }, PREVIEW_DEBOUNCE_MS);
+    return;
+  }
+
+  if (!drag) {
+    if (previewRefreshTimer) {
+      clearTimeout(previewRefreshTimer);
+    }
+    previewRefreshTimer = setTimeout(() => {
+      previewRefreshTimer = null;
+      lastPreviewRefreshAt = Date.now();
+      dragPreviewDirty = false;
+      void refreshPreview().catch((error) => {
+        setStatusMessage(readErrorMessage(error, "Failed to render preview"));
+      });
+    }, PREVIEW_DEBOUNCE_MS);
+    return;
+  }
+
+  dragPreviewDirty = true;
+  if (dragPreviewTimer) {
+    clearTimeout(dragPreviewTimer);
+    dragPreviewTimer = null;
+  }
+  if (now - lastPreviewRefreshAt >= PREVIEW_DRAG_THROTTLE_MS) {
+    lastPreviewRefreshAt = now;
+    dragPreviewDirty = false;
+    void refreshPreview().catch((error) => {
+      setStatusMessage(readErrorMessage(error, "Failed to render preview"));
+    });
+    return;
+  }
+
+  dragPreviewTimer = setTimeout(() => {
+    dragPreviewTimer = null;
+    lastPreviewRefreshAt = Date.now();
+    dragPreviewDirty = false;
+    void refreshPreview().catch((error) => {
+      setStatusMessage(readErrorMessage(error, "Failed to render preview"));
+    });
+  }, Math.max(PREVIEW_DRAG_THROTTLE_MS - (now - lastPreviewRefreshAt), 0));
 }
 
 async function refreshPreview() {
@@ -670,6 +716,7 @@ function beginInteraction(event, widgetId, handle) {
     startX: event.clientX,
     startY: event.clientY,
     startRect: rect,
+    moved: false,
   };
   renderLayers();
   renderInspector();
@@ -730,17 +777,35 @@ function handlePointerMove(event) {
     nextRect.top += dy;
   }
   nextRect = clampRect(nextRect, getPreviewDimensions());
-  Object.assign(widget, rectToWidgetPatch(widget, nextRect));
+  const nextPatch = rectToWidgetPatch(widget, nextRect);
+  if (
+    widget.x === nextPatch.x
+    && widget.y === nextPatch.y
+    && widget.width === nextPatch.width
+    && widget.height === nextPatch.height
+  ) {
+    return;
+  }
+  Object.assign(widget, nextPatch);
+  activeInteraction.moved = true;
+  if (previewRefreshTimer) {
+    clearTimeout(previewRefreshTimer);
+    previewRefreshTimer = null;
+  }
   renderInspector();
   renderCanvasOverlays();
-  schedulePreviewRefresh();
+  schedulePreviewRefresh({ drag: true });
 }
 
 function endInteraction() {
   if (!activeInteraction) {
     return;
   }
+  const interaction = activeInteraction;
   activeInteraction = null;
+  if (interaction.moved && (dragPreviewTimer || dragPreviewDirty)) {
+    schedulePreviewRefresh({ immediate: true });
+  }
   renderLayers();
   renderInspector();
   renderCanvasOverlays();

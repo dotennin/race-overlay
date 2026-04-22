@@ -40,6 +40,7 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     )
 
     assert state["hud"]["preset"] == "broadcast-runner"
+    assert any(widget["id"] == "time-chip" for widget in state["hud"]["widgets"])
     assert any(widget["id"] == "pace-chip" for widget in state["hud"]["widgets"])
     assert state["preview"]["width"] == 1280
     assert isinstance(state["revision"], str)
@@ -171,6 +172,21 @@ def test_build_editor_state_exposes_navigation_timestamp_and_typography_role_sch
     time_card_style = state["schema"]["widgets"]["time-card"]["style"]
     assert time_card_style["variant"] == {"kind": "text", "label": "Variant"}
     assert time_card_style["format"] == {"kind": "text", "label": "Format"}
+
+
+def test_build_editor_state_exposes_time_chip_and_navigation_schema_for_broadcast_runner() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    assert "time-chip" in state["schema"]["widgets"]
+    assert state["schema"]["widgets"]["route-map"]["style"]["show_north_marker"] == {
+        "kind": "boolean",
+        "label": "Show north marker",
+    }
+    assert state["schema"]["widgets"]["time-chip"]["style"]["format"] == {"kind": "text", "label": "Format"}
 
 
 def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fields(tmp_path: Path) -> None:
@@ -616,7 +632,8 @@ def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Pat
         save_editor_payload(config_path, payload)
 
     pace_widget = next(widget for widget in load_config(config_path).hud.widgets if widget.id == "pace-chip")
-    assert pace_widget.x == 980
+    expected_pace_widget = next(widget for widget in broadcast_runner_preset().widgets if widget.id == "pace-chip")
+    assert pace_widget.x == expected_pace_widget.x
 
 
 @pytest.mark.parametrize(
@@ -1203,6 +1220,23 @@ def test_editor_script_uses_preview_endpoint_for_live_draft_updates() -> None:
     assert 'fetch("/api/preview"' in script
     assert "draftState" in script
     assert "help-modal" in script
+
+
+def test_editor_script_throttles_preview_during_drag_and_flushes_on_pointerup() -> None:
+    script = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    assert "const PREVIEW_DRAG_THROTTLE_MS = 90;" in script
+    assert "let dragPreviewTimer = null;" in script
+    assert "let lastPreviewRefreshAt = 0;" in script
+    assert "let dragPreviewDirty = false;" in script
+    assert "function schedulePreviewRefresh({ immediate = false, drag = false } = {})" in script
+    assert "lastPreviewRefreshAt = Date.now();" in script
+    assert "schedulePreviewRefresh({ drag: true });" in script
+    assert "widget.x === nextPatch.x" in script
+    assert "moved: false," in script
+    assert "if (interaction.moved && (dragPreviewTimer || dragPreviewDirty)) {" in script
+    assert "Math.max(PREVIEW_DRAG_THROTTLE_MS - (now - lastPreviewRefreshAt), 0)" in script
+    assert "schedulePreviewRefresh({ immediate: true });" in script
 
 
 def test_api_state_returns_structured_error_when_config_path_becomes_directory(tmp_path: Path) -> None:
