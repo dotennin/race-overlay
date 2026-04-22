@@ -14,6 +14,7 @@ from race_overlay.hud import (
     RenderScale,
     _draw_progress_bar,
     _metric_value,
+    _metric_suffix,
     _scaled_font,
     _widget_panel_enabled,
     render_hud_frame,
@@ -25,7 +26,12 @@ from race_overlay.models import HudSample
 
 
 def _rendered_text_labels(
-    monkeypatch: pytest.MonkeyPatch, hud_config: HudConfig, *, total_distance_m: float | None = None
+    monkeypatch: pytest.MonkeyPatch,
+    hud_config: HudConfig,
+    *,
+    total_distance_m: float | None = None,
+    hud_value: HudSample | None = None,
+    route_points: list[tuple[float, float]] | None = None,
 ) -> list[str]:
     labels: list[str] = []
     original_text = ImageDraw.ImageDraw.text
@@ -38,7 +44,8 @@ def _rendered_text_labels(
     render_hud_frame(
         width=1280,
         height=720,
-        hud_value=HudSample(
+        hud_value=hud_value
+        or HudSample(
             timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
             latitude=36.0833,
             longitude=140.2106,
@@ -49,7 +56,7 @@ def _rendered_text_labels(
             heart_rate_bpm=162,
             cadence_spm=178,
         ),
-        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        route_points=route_points or [(36.0832, 140.2106), (36.0834, 140.2108)],
         hud_config=hud_config,
         elapsed_seconds=6852,
         total_distance_m=total_distance_m,
@@ -806,6 +813,130 @@ def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.Monkey
     assert "Course overview" in labels
 
 
+def test_render_hud_frame_route_map_renders_navigation_overlays_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": ""},
+                )
+            ],
+        ),
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0, 140.0), (35.0, 139.0)],
+    )
+
+    assert "N" in labels
+    assert "225°SW" in labels
+
+
+def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: pytest.MonkeyPatch) -> None:
+    polygon_calls: list[object] = []
+    original_polygon = ImageDraw.ImageDraw.polygon
+
+    def record_polygon(self, xy, *args, **kwargs):
+        polygon_calls.append(xy)
+        return original_polygon(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0, 140.0), (35.0, 139.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": ""},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert polygon_calls, "expected a heading arrow polygon by default"
+    polygon_calls.clear()
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0, 140.0), (35.0, 139.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": "", "show_heading_arrow": False},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert polygon_calls == []
+
+
 def test_render_hud_frame_scales_widget_regions_for_larger_frames() -> None:
     image = render_hud_frame(
         width=2560,
@@ -891,6 +1022,107 @@ def test_render_hud_frame_context_card_uses_widget_label(monkeypatch: pytest.Mon
     )
 
     assert "Checkpoint" in labels
+
+
+def test_render_hud_frame_context_card_compact_variant_uses_default_time_chip_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="context-only",
+            theme=HudThemeConfig(note_text="Kasumigaura"),
+            widgets=[
+                HudWidgetConfig(
+                    id="context-card",
+                    type="context_card",
+                    bindings={"value": "timestamp"},
+                    anchor="top-right",
+                    x=996,
+                    y=120,
+                    width=260,
+                    height=72,
+                    style={"label": "Checkpoint", "variant": "compact"},
+                )
+            ],
+        ),
+    )
+
+    assert "2026/04/19 09:48:10" in labels
+
+
+def test_metric_suffix_omits_elapsed_unit_by_default() -> None:
+    widget = HudWidgetConfig(
+        id="elapsed",
+        type="metric_card",
+        bindings={"value": "elapsed_seconds"},
+        anchor="top-left",
+        x=0,
+        y=0,
+        width=160,
+        height=96,
+    )
+
+    assert _metric_suffix(widget, HudThemeConfig()) == ""
+
+
+def test_render_hud_frame_stat_block_uses_thematic_typography_roles_and_tighter_unit_spacing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text_calls: list[tuple[str, tuple[int, int], str | None, int | None]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        font = kwargs.get("font")
+        text_calls.append((str(text), xy, kwargs.get("anchor"), getattr(font, "size", None)))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="stat-only",
+            theme=HudThemeConfig(title_font_size_px=12, value_font_size_px=30, unit_font_size_px=9),
+            widgets=[
+                HudWidgetConfig(
+                    id="elevation",
+                    type="stat_block",
+                    bindings={"value": "altitude_m"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Elevation", "unit": "M"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    label_call = next(call for call in text_calls if call[0] == "Elevation")
+    value_call = next(call for call in text_calls if call[0] == "25")
+    unit_call = next(call for call in text_calls if call[0] == "M")
+
+    assert label_call[3] == 12
+    assert value_call[3] == 30
+    assert unit_call[3] == 9
+    assert unit_call[1][0] > value_call[1][0]
+    assert unit_call[1][0] < 100
 
 
 def test_hero_metric_km_suffix_stays_within_narrow_widget(monkeypatch: pytest.MonkeyPatch) -> None:

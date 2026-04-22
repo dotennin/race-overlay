@@ -34,6 +34,12 @@ class RenderScale:
     draw: float
 
 
+@dataclass(slots=True, frozen=True)
+class RouteProjection:
+    point: tuple[float, float]
+    tangent: tuple[float, float]
+
+
 def _render_scale(frame_width: int, frame_height: int) -> RenderScale:
     x_scale = max(frame_width / HUD_REFERENCE_WIDTH, 1.0)
     y_scale = max(frame_height / HUD_REFERENCE_HEIGHT, 1.0)
@@ -221,6 +227,9 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_bool_style(widget, "show_unit")
     _validate_optional_bool_style(widget, "show_current_value")
     _validate_optional_bool_style(widget, "show_total_value")
+    _validate_optional_bool_style(widget, "show_north_marker")
+    _validate_optional_bool_style(widget, "show_bearing_label")
+    _validate_optional_bool_style(widget, "show_heading_arrow")
 
 
 def _validate_progress_bar_widget(widget: HudWidgetConfig) -> None:
@@ -330,6 +339,47 @@ def _style_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderSca
     )
 
 
+def _theme_role_font(
+    theme: HudThemeConfig,
+    scale: RenderScale,
+    *,
+    family: str,
+    weight: str,
+    size: int,
+) -> ImageFont.FreeTypeFont:
+    return _scaled_font(scale, size, family, weight)
+
+
+def _title_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _theme_role_font(
+        theme,
+        scale,
+        family=theme.title_font_family,
+        weight=theme.title_font_weight,
+        size=theme.title_font_size_px,
+    )
+
+
+def _value_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _theme_role_font(
+        theme,
+        scale,
+        family=theme.value_font_family,
+        weight=theme.value_font_weight,
+        size=theme.value_font_size_px,
+    )
+
+
+def _unit_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _theme_role_font(
+        theme,
+        scale,
+        family=theme.unit_font_family,
+        weight=theme.unit_font_weight,
+        size=theme.unit_font_size_px,
+    )
+
+
 def _distance_label(distance_m: float, show_units: bool) -> str:
     suffix = " KM" if show_units else ""
     return f"{distance_m / 1000:.2f}{suffix}"
@@ -407,23 +457,48 @@ def _draw_stat_block(
             radius=_scale_draw(scale, 20),
             fill=tuple(theme.panel_rgba),
         )
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(theme, scale)
+    value_font = _value_font(theme, scale)
+    unit_font = _unit_font(theme, scale)
     label = str(widget.style.get("label", "Metric"))
     unit = str(widget.style.get("unit", "")) if _style_bool(widget, "show_unit", theme.show_units) else ""
     align = str(widget.style.get("align", "left"))
     value_text = _stat_block_value(binding, hud_value, decimals=int(widget.style.get("decimals", 0)))
     if align == "right":
         value_right = left + w - _scale_x(scale, 12)
-        draw.text((value_right, top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), anchor="ra", font=font)
-        draw.text((value_right, top + _scale_y(scale, 38)), value_text, fill=tuple(theme.text_rgba), anchor="ra", font=font)
+        draw.text(
+            (value_right, top + _scale_y(scale, 12)),
+            label,
+            fill=tuple(theme.text_rgba),
+            anchor="ra",
+            font=title_font,
+        )
+        draw.text(
+            (value_right, top + _scale_y(scale, 34)),
+            value_text,
+            fill=tuple(theme.text_rgba),
+            anchor="ra",
+            font=value_font,
+        )
         if unit:
-            draw.text((value_right, top + _scale_y(scale, 58)), unit, fill=tuple(theme.text_rgba), anchor="ra", font=font)
+            draw.text(
+                (value_right, top + _scale_y(scale, 62)),
+                unit,
+                fill=tuple(theme.text_rgba),
+                anchor="ra",
+                font=unit_font,
+            )
         return
 
-    draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=font)
-    draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 38)), value_text, fill=tuple(theme.text_rgba), font=font)
+    value_x = left + _scale_x(scale, 12)
+    value_y = top + _scale_y(scale, 34)
+    draw.text((value_x, top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
+    draw.text((value_x, value_y), value_text, fill=tuple(theme.text_rgba), font=value_font)
     if unit:
-        draw.text((left + w - _scale_x(scale, 12), top + _scale_y(scale, 58)), unit, fill=tuple(theme.text_rgba), anchor="ra", font=font)
+        value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font)
+        unit_x = value_bbox[2] + _scale_x(scale, 6)
+        unit_y = value_y + max(value_font.size - unit_font.size - _scale_y(scale, 2), 0)
+        draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), font=unit_font)
 
 
 def _stat_block_value(binding: str, hud_value: HudSample, decimals: int) -> str:
@@ -467,18 +542,24 @@ def _draw_route_map(
                 outline=(255, 255, 255, 120),
             )
     label = str(widget.style.get("label", "Route map"))
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(theme, scale)
+    value_font = _value_font(theme, scale)
+    unit_font = _unit_font(theme, scale)
     if label:
-        widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)), label, fill=tuple(theme.text_rgba), font=font)
+        widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)), label, fill=tuple(theme.text_rgba), font=title_font)
     if len(route_points) < 2:
         image.alpha_composite(widget_image, (left, top))
         return
 
+    show_north_marker = _style_bool(widget, "show_north_marker", True)
+    show_bearing_label = _style_bool(widget, "show_bearing_label", True)
+    show_heading_arrow = _style_bool(widget, "show_heading_arrow", True)
+    show_top_overlays = label or show_north_marker or show_bearing_label
     map_left = _scale_x(scale, 12)
-    map_top = _scale_y(scale, 36) if label else _scale_y(scale, 12)
+    map_top = _scale_y(scale, 36) if show_top_overlays else _scale_y(scale, 12)
     map_bottom = h - _scale_y(scale, 12)
     inner_width = max(w - _scale_x(scale, 24), 1)
-    inner_height = max(h - (_scale_y(scale, 48) if label else _scale_y(scale, 24)), 1)
+    inner_height = max(map_bottom - map_top, 1)
     latitudes = [point[0] for point in route_points]
     longitudes = [point[1] for point in route_points]
     lat_min, lat_max = min(latitudes), max(latitudes)
@@ -492,11 +573,25 @@ def _draw_route_map(
 
     projected = [project(point) for point in route_points]
     widget_draw.line(projected, fill=tuple(theme.accent_rgba), width=_scale_draw(scale, 4))
-    current_point = _resolve_current_route_point(route_points, hud_value)
-    if current_point is not None:
-        x, y = project(current_point)
+    route_projection = _resolve_route_projection(route_points, hud_value)
+    if show_north_marker:
+        widget_draw.text((w - _scale_x(scale, 12), _scale_y(scale, 10)), "N", fill=tuple(theme.text_rgba), anchor="ra", font=unit_font)
+    if route_projection is not None:
+        if show_bearing_label:
+            bearing_label = _format_bearing_label(route_projection.tangent)
+            if bearing_label:
+                widget_draw.text(
+                    (w - _scale_x(scale, 12), _scale_y(scale, 28)),
+                    bearing_label,
+                    fill=tuple(theme.text_rgba),
+                    anchor="ra",
+                    font=value_font,
+                )
+        x, y = project(route_projection.point)
         r = _scale_draw(scale, 6)
         widget_draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 90, 90, 255))
+        if show_heading_arrow:
+            _draw_heading_arrow(widget_draw, (x, y), route_projection.tangent, theme, scale)
 
     if shape == "circle":
         mask = Image.new("L", (w, h), 0)
@@ -521,13 +616,31 @@ def _draw_hero_metric(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(theme, scale)
+    value_font = _value_font(theme, scale)
+    unit_font = _unit_font(theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
-    draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 18)), str(widget.style.get("label", "Pace")), fill=tuple(theme.text_rgba), font=font)
-    draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 54)), _format_pace(pace_seconds_per_km), fill=tuple(theme.text_rgba), font=font)
+    draw.text(
+        (left + _scale_x(scale, 20), top + _scale_y(scale, 18)),
+        str(widget.style.get("label", "Pace")),
+        fill=tuple(theme.text_rgba),
+        font=title_font,
+    )
+    draw.text(
+        (left + _scale_x(scale, 20), top + _scale_y(scale, 50)),
+        _format_pace(pace_seconds_per_km),
+        fill=tuple(theme.text_rgba),
+        font=value_font,
+    )
     if _style_bool(widget, "show_unit", theme.show_units):
-        draw.text((right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)), "/km", fill=(255, 255, 255, 160), anchor="rs", font=font)
+        draw.text(
+            (right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)),
+            "/km",
+            fill=(255, 255, 255, 160),
+            anchor="rs",
+            font=unit_font,
+        )
 
 
 def _draw_metric_card(
@@ -544,26 +657,44 @@ def _draw_metric_card(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(theme, scale)
+    value_font = _value_font(theme, scale)
+    unit_font = _unit_font(theme, scale)
     if widget.style.get("variant") == "compact":
         if _widget_panel_enabled(widget):
             draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=tuple(theme.panel_rgba))
         label = str(widget.style.get("label", "Metric"))
-        draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=font)
-        draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 34)), _metric_value(widget, hud_value, elapsed_seconds), fill=tuple(theme.text_rgba), font=font)
+        draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
+        draw.text(
+            (left + _scale_x(scale, 12), top + _scale_y(scale, 30)),
+            _metric_value(widget, hud_value, elapsed_seconds),
+            fill=tuple(theme.text_rgba),
+            font=value_font,
+        )
         suffix = _metric_suffix(widget, theme)
         if suffix:
-            draw.text((right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)), suffix, fill=(255, 255, 255, 160), anchor="rs", font=font)
+            draw.text(
+                (right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)),
+                suffix,
+                fill=(255, 255, 255, 160),
+                anchor="rs",
+                font=unit_font,
+            )
         return
 
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
     label = str(widget.style.get("label", "Metric"))
-    draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=font)
-    draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 52)), _metric_value(widget, hud_value, elapsed_seconds), fill=tuple(theme.text_rgba), font=font)
+    draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=title_font)
+    draw.text(
+        (left + _scale_x(scale, 16), top + _scale_y(scale, 48)),
+        _metric_value(widget, hud_value, elapsed_seconds),
+        fill=tuple(theme.text_rgba),
+        font=value_font,
+    )
     suffix = _metric_suffix(widget, theme)
     if suffix:
-        draw.text((left + _scale_x(scale, 16), bottom - _scale_y(scale, 24)), suffix, fill=(255, 255, 255, 160), font=font)
+        draw.text((left + _scale_x(scale, 16), bottom - _scale_y(scale, 20)), suffix, fill=(255, 255, 255, 160), font=unit_font)
 
 
 def _draw_context_card(
@@ -579,14 +710,44 @@ def _draw_context_card(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(theme, scale)
+    value_font = _value_font(theme, scale)
+    unit_font = _unit_font(theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
-    draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 20)), str(widget.style.get("label", "Context")), fill=tuple(theme.text_rgba), font=font)
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
-    draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 70)), context_timestamp.strftime("%H:%M"), fill=tuple(theme.text_rgba), font=font)
-    draw.text((left + _scale_x(scale, 20), top + _scale_y(scale, 122)), context_timestamp.strftime("%Y.%m.%d"), fill=tuple(theme.text_rgba), font=font)
-    draw.text((left + _scale_x(scale, 140), top + _scale_y(scale, 70)), theme.note_text, fill=tuple(theme.text_rgba), font=font)
+    if widget.style.get("variant") == "compact":
+        draw.text(
+            (left + _scale_x(scale, 20), top + _scale_y(scale, 20)),
+            _format_context_timestamp(widget, context_timestamp),
+            fill=tuple(theme.text_rgba),
+            font=value_font,
+        )
+        return
+    draw.text(
+        (left + _scale_x(scale, 20), top + _scale_y(scale, 20)),
+        str(widget.style.get("label", "Context")),
+        fill=tuple(theme.text_rgba),
+        font=title_font,
+    )
+    draw.text(
+        (left + _scale_x(scale, 20), top + _scale_y(scale, 70)),
+        context_timestamp.strftime("%H:%M"),
+        fill=tuple(theme.text_rgba),
+        font=value_font,
+    )
+    draw.text(
+        (left + _scale_x(scale, 20), top + _scale_y(scale, 122)),
+        context_timestamp.strftime("%Y.%m.%d"),
+        fill=tuple(theme.text_rgba),
+        font=unit_font,
+    )
+    draw.text(
+        (left + _scale_x(scale, 140), top + _scale_y(scale, 70)),
+        theme.note_text,
+        fill=tuple(theme.text_rgba),
+        font=unit_font,
+    )
 
 
 def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[float, float]], map_box: tuple[int, int, int, int]) -> None:
@@ -640,10 +801,17 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if binding == "cadence_spm":
         return "spm"
     if binding == "elapsed_seconds":
-        return "hh:mm:ss"
+        return ""
     if binding == "speed_mps":
         return "km/h"
     raise AssertionError(f"unreachable metric binding '{binding}'")
+
+
+def _format_context_timestamp(widget: HudWidgetConfig, timestamp: datetime) -> str:
+    timestamp_format = widget.style.get("format", "%Y/%m/%d %H:%M:%S")
+    if not isinstance(timestamp_format, str):
+        raise ValueError(f"widget '{widget.id}' style.format must be a string")
+    return timestamp.strftime(timestamp_format)
 
 
 def _format_pace(pace_seconds_per_km: float | None) -> str:
@@ -654,14 +822,13 @@ def _format_pace(pace_seconds_per_km: float | None) -> str:
     return f"{minutes:02d}:{seconds:02d}"
 
 
-def _resolve_current_route_point(
-    route_points: list[tuple[float, float]], hud_value: HudSample
-) -> tuple[float, float] | None:
+def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value: HudSample) -> RouteProjection | None:
     if hud_value.latitude is None or hud_value.longitude is None:
         return None
 
     current = (hud_value.latitude, hud_value.longitude)
     closest_point = route_points[-1]
+    closest_tangent = (0.0, 0.0)
     closest_distance_sq = float("inf")
 
     for segment_start, segment_end in zip(route_points, route_points[1:]):
@@ -669,9 +836,66 @@ def _resolve_current_route_point(
         distance_sq = _distance_squared(current, candidate)
         if distance_sq < closest_distance_sq:
             closest_point = candidate
+            closest_tangent = (segment_end[0] - segment_start[0], segment_end[1] - segment_start[1])
             closest_distance_sq = distance_sq
 
-    return closest_point
+    return RouteProjection(point=closest_point, tangent=closest_tangent)
+
+
+def _format_bearing_label(tangent: tuple[float, float]) -> str:
+    bearing = _bearing_from_tangent(tangent)
+    if bearing is None:
+        return ""
+    return f"{bearing:03d}°{_bearing_cardinal(bearing)}"
+
+
+def _bearing_from_tangent(tangent: tuple[float, float]) -> int | None:
+    delta_lat, delta_lon = tangent
+    if abs(delta_lat) <= 1e-12 and abs(delta_lon) <= 1e-12:
+        return None
+    return int(round((math.degrees(math.atan2(delta_lon, delta_lat)) + 360.0) % 360.0)) % 360
+
+
+def _bearing_cardinal(bearing: int) -> str:
+    cardinals = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+    return cardinals[int(((bearing + 22.5) % 360) // 45)]
+
+
+def _draw_heading_arrow(
+    draw: ImageDraw.ImageDraw,
+    center: tuple[float, float],
+    tangent: tuple[float, float],
+    theme: HudThemeConfig,
+    scale: RenderScale,
+) -> None:
+    delta_lat, delta_lon = tangent
+    dx = delta_lon
+    dy = -delta_lat
+    length = math.hypot(dx, dy)
+    if length <= 1e-12:
+        return
+    unit_x = dx / length
+    unit_y = dy / length
+    center_x, center_y = center
+    arrow_length = _scale_draw(scale, 18)
+    tail_length = _scale_draw(scale, 6)
+    arrow_width = _scale_draw(scale, 5)
+    tip_x = center_x + (unit_x * arrow_length)
+    tip_y = center_y + (unit_y * arrow_length)
+    tail_x = center_x - (unit_x * tail_length)
+    tail_y = center_y - (unit_y * tail_length)
+    side_x = -unit_y
+    side_y = unit_x
+    head_length = _scale_draw(scale, 8)
+    draw.line((tail_x, tail_y, tip_x, tip_y), fill=tuple(theme.text_rgba), width=_scale_draw(scale, 2))
+    draw.polygon(
+        (
+            (tip_x, tip_y),
+            (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
+            (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
+        ),
+        fill=tuple(theme.text_rgba),
+    )
 
 
 def _project_point_onto_segment(
