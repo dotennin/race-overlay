@@ -226,6 +226,8 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_enum_style(widget, "font_family", HUD_FONT_FAMILY_OPTIONS)
     _validate_optional_enum_style(widget, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
     _validate_optional_font_size_style(widget, "font_size_px")
+    _validate_optional_bool_style(widget, "show_panel")
+    _validate_optional_bool_style(widget, "transparent_panel")
     _validate_optional_bool_style(widget, "show_unit")
     _validate_optional_bool_style(widget, "show_current_value")
     _validate_optional_bool_style(widget, "show_total_value")
@@ -269,8 +271,13 @@ def _widget_panel_enabled(widget: HudWidgetConfig) -> bool:
     show_panel = widget.style.get("show_panel")
     if isinstance(show_panel, bool):
         return show_panel
-    if bool(widget.style.get("transparent_panel", False)):
-        return False
+    transparent_panel = widget.style.get("transparent_panel")
+    if isinstance(transparent_panel, bool):
+        return not transparent_panel
+    if transparent_panel is not None:
+        raise ValueError(f"widget '{widget.id}' style.transparent_panel must be a boolean")
+    if show_panel is not None:
+        raise ValueError(f"widget '{widget.id}' style.show_panel must be a boolean")
     return widget.type == "route_map"
 
 

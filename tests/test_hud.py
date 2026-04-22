@@ -232,6 +232,52 @@ def test_validate_hud_config_rejects_non_string_context_format() -> None:
         validate_hud_config(config)
 
 
+def test_validate_hud_config_rejects_non_boolean_show_panel() -> None:
+    config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=180,
+                height=180,
+                style={"show_panel": "false"},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="style.show_panel"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_boolean_transparent_panel() -> None:
+    config = HudConfig(
+        preset="metric-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="heart",
+                type="metric_card",
+                bindings={"value": "heart_rate_bpm"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=180,
+                height=96,
+                style={"transparent_panel": "false"},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="style.transparent_panel"):
+        validate_hud_config(config)
+
+
 def test_validate_hud_config_rejects_medium_font_weight() -> None:
     preset = broadcast_runner_preset()
     preset.theme.font_weight = "medium"
