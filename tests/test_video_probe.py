@@ -43,6 +43,7 @@ def test_probe_video_reads_creation_time_and_duration(monkeypatch) -> None:
     assert clip.duration_seconds == 39.96
     assert clip.width == 3840
     assert clip.height == 2160
+    assert clip.fps == 30000 / 1001
     assert clip.video_codec == "h264"
     assert clip.pixel_format == "yuv420p"
     assert clip.video_bitrate == 16_000_000
@@ -87,6 +88,7 @@ def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Pa
     clip = probe_video(tmp_path / "clip.MP4")
 
     assert clip.creation_time == datetime(2026, 4, 19, 9, 5, 59, tzinfo=timezone.utc)
+    assert clip.fps == 30000 / 1001
     assert clip.video_codec == "h264"
     assert clip.pixel_format == "yuv420p"
     assert clip.video_bitrate == 16_000_000
