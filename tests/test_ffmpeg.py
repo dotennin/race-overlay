@@ -219,7 +219,7 @@ def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
         "-map",
         "[video]",
         "-map",
-        "0:a?",
+        "0:a:0?",
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -292,6 +292,29 @@ def test_build_cache_compose_command_uses_single_audio_stream() -> None:
         "copy",
         "output.MP4",
     ]
+
+
+def test_stream_and_cache_compose_commands_select_the_same_audio_stream() -> None:
+    clip = make_clip()
+    plan = resolve_output_encoding_plan(clip)
+
+    stream_command = build_stream_compose_command(
+        source_path=Path("source.MP4"),
+        clip=clip,
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+    cache_command = build_cache_compose_command(
+        source_path=Path("source.MP4"),
+        overlay_path=Path("overlay.mov"),
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+
+    assert stream_command[stream_command.index("-map") + 1] == "[video]"
+    assert cache_command[cache_command.index("-map") + 1] == "[video]"
+    assert stream_command[stream_command.index("0:a:0?")] == "0:a:0?"
+    assert cache_command[cache_command.index("0:a:0?")] == "0:a:0?"
 
 
 def test_build_stream_compose_command_omits_non_positive_bitrate() -> None:

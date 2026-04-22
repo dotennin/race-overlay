@@ -19,6 +19,7 @@ DEFAULT_PIXEL_FORMATS = {
 SAFE_AUDIO_COPY_CODECS = {"aac"}
 FALLBACK_AUDIO_CODEC = "aac"
 DEFAULT_AUDIO_BITRATE = 192_000
+AUDIO_STREAM_SELECTOR = "0:a:0?"
 SUPPORTED_PIXEL_FORMATS = {
     "libx264": {"nv12", "yuv420p", "yuv422p", "yuv444p", "yuvj420p", "yuvj422p", "yuvj444p"},
     "libx265": {"yuv420p", "yuv420p10le", "yuv422p", "yuv422p10le", "yuv444p", "yuv444p10le"},
@@ -256,7 +257,7 @@ def build_cache_compose_command(
         "-map",
         "[video]",
         "-map",
-        "0:a:0?",
+        AUDIO_STREAM_SELECTOR,
     ]
     _append_output_encoding_args(command, plan)
     command.append(str(output_path))
@@ -360,7 +361,7 @@ def build_stream_compose_command(
         "-map",
         "[video]",
         "-map",
-        "0:a?",
+        AUDIO_STREAM_SELECTOR,
     ]
     _append_output_encoding_args(command, plan)
     command.append(str(output_path))
