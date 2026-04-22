@@ -9,6 +9,10 @@ def broadcast_runner_preset() -> HudConfig:
             panel_rgba=[12, 18, 28, 148],
             accent_rgba=[26, 230, 198, 255],
             text_rgba=[247, 251, 255, 255],
+            font_family="sans",
+            font_weight="regular",
+            font_size_px=18,
+            show_units=True,
         ),
         widgets=[
             HudWidgetConfig(
@@ -22,7 +26,7 @@ def broadcast_runner_preset() -> HudConfig:
                 56,
                 40,
                 True,
-                {"label": "Distance", "variant": "ruler"},
+                {"label": "Distance", "variant": "ruler", "show_current_value": True, "show_total_value": True},
             ),
             HudWidgetConfig(
                 "elevation-stat",

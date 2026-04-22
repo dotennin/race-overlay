@@ -17,13 +17,16 @@ from race_overlay.hud import (
     _scaled_font,
     _widget_panel_enabled,
     render_hud_frame,
+    validate_hud_config,
 )
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
 
 
-def _rendered_text_labels(monkeypatch: pytest.MonkeyPatch, hud_config: HudConfig) -> list[str]:
+def _rendered_text_labels(
+    monkeypatch: pytest.MonkeyPatch, hud_config: HudConfig, *, total_distance_m: float | None = None
+) -> list[str]:
     labels: list[str] = []
     original_text = ImageDraw.ImageDraw.text
 
@@ -49,6 +52,7 @@ def _rendered_text_labels(monkeypatch: pytest.MonkeyPatch, hud_config: HudConfig
         route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
         hud_config=hud_config,
         elapsed_seconds=6852,
+        total_distance_m=total_distance_m,
     )
     return labels
 
@@ -110,6 +114,36 @@ def test_render_hud_frame_draws_hud_v2_regions(monkeypatch: pytest.MonkeyPatch) 
     assert image.getpixel((90, 610))[3] > 0
     assert image.getpixel((58, 167))[3] > 0
     assert image.getpixel((1145, 155))[3] > 0
+
+
+def test_render_hud_frame_hides_metric_units_when_theme_disables_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    preset = broadcast_runner_preset()
+    preset.theme.show_units = False
+
+    labels = _rendered_text_labels(monkeypatch, preset)
+
+    assert "KM" not in labels
+    assert "BPM" not in labels
+    assert "/km" not in labels
+
+
+def test_render_hud_frame_shows_current_and_total_distance_on_ruler_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(monkeypatch, broadcast_runner_preset(), total_distance_m=10000.0)
+
+    assert any("Distance" in label for label in labels)
+    assert any("24.60" in label for label in labels)
+    assert any("24.60" in label and "KM" in label for label in labels)
+    assert any("24.60" in label and "10.00" in label for label in labels) or any(
+        "10.00" in label and "KM" in label for label in labels
+    )
+
+
+def test_validate_hud_config_rejects_unknown_font_family() -> None:
+    preset = broadcast_runner_preset()
+    preset.theme.font_family = "comic-sans"
+
+    with pytest.raises(ValueError, match="font_family"):
+        validate_hud_config(preset)
 
 
 def test_render_hud_frame_keeps_right_anchored_widgets_visible_on_narrower_frames() -> None:

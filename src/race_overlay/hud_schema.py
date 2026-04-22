@@ -8,6 +8,10 @@ class HudThemeConfig:
     accent_rgba: list[int] = field(default_factory=lambda: [255, 196, 92, 255])
     text_rgba: list[int] = field(default_factory=lambda: [255, 255, 255, 255])
     note_text: str = "Race Day"
+    font_family: str = "sans"
+    font_weight: str = "regular"
+    font_size_px: int = 18
+    show_units: bool = True
 
 
 @dataclass(slots=True)
@@ -35,6 +39,8 @@ class HudConfig:
 _HUD_KEYS = frozenset(HudConfig.__dataclass_fields__)
 _HUD_THEME_KEYS = frozenset(HudThemeConfig.__dataclass_fields__)
 _HUD_WIDGET_KEYS = frozenset(HudWidgetConfig.__dataclass_fields__)
+HUD_FONT_FAMILY_OPTIONS = ("sans", "serif", "mono")
+HUD_FONT_WEIGHT_OPTIONS = ("regular", "medium", "bold")
 
 
 def deserialize_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
@@ -93,12 +99,30 @@ def _deserialize_theme(payload: object) -> HudThemeConfig:
         raise TypeError("hud.theme must be a mapping")
     _reject_unexpected_keys(payload, _HUD_THEME_KEYS, "hud.theme")
     defaults = HudThemeConfig()
-    return HudThemeConfig(
-        panel_rgba=_require_rgba_list(payload.get("panel_rgba", defaults.panel_rgba), "panel_rgba"),
-        accent_rgba=_require_rgba_list(payload.get("accent_rgba", defaults.accent_rgba), "accent_rgba"),
-        text_rgba=_require_rgba_list(payload.get("text_rgba", defaults.text_rgba), "text_rgba"),
-        note_text=_require_text(payload.get("note_text", defaults.note_text), "note_text"),
+    return validate_hud_theme_config(
+        HudThemeConfig(
+            panel_rgba=_require_rgba_list(payload.get("panel_rgba", defaults.panel_rgba), "panel_rgba"),
+            accent_rgba=_require_rgba_list(payload.get("accent_rgba", defaults.accent_rgba), "accent_rgba"),
+            text_rgba=_require_rgba_list(payload.get("text_rgba", defaults.text_rgba), "text_rgba"),
+            note_text=_require_text(payload.get("note_text", defaults.note_text), "note_text"),
+            font_family=_require_enum_string(
+                payload.get("font_family", defaults.font_family), "font_family", HUD_FONT_FAMILY_OPTIONS
+            ),
+            font_weight=_require_enum_string(
+                payload.get("font_weight", defaults.font_weight), "font_weight", HUD_FONT_WEIGHT_OPTIONS
+            ),
+            font_size_px=_require_min_int(payload.get("font_size_px", defaults.font_size_px), "font_size_px", 8),
+            show_units=_coerce_bool(payload.get("show_units", defaults.show_units), "show_units"),
+        )
     )
+
+
+def validate_hud_theme_config(theme: HudThemeConfig) -> HudThemeConfig:
+    theme.font_family = _require_enum_string(theme.font_family, "font_family", HUD_FONT_FAMILY_OPTIONS)
+    theme.font_weight = _require_enum_string(theme.font_weight, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
+    theme.font_size_px = _require_min_int(theme.font_size_px, "font_size_px", 8)
+    theme.show_units = _coerce_bool(theme.show_units, "show_units")
+    return theme
 
 
 def _require_unique_widget_ids(widgets: list[HudWidgetConfig]) -> None:
@@ -157,6 +181,21 @@ def _require_text(value: object, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field_name} must be a string")
     return value
+
+
+def _require_enum_string(value: object, field_name: str, allowed: tuple[str, ...]) -> str:
+    text = _require_string(value, field_name)
+    if text not in allowed:
+        allowed_values = ", ".join(allowed)
+        raise ValueError(f"{field_name} must be one of: {allowed_values}")
+    return text
+
+
+def _require_min_int(value: object, field_name: str, minimum: int) -> int:
+    number = _coerce_int(value, field_name)
+    if number < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum}")
+    return number
 
 
 def _coerce_int(value: object, field_name: str) -> int:
