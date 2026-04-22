@@ -232,6 +232,8 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_bool_style(widget, "show_north_marker")
     _validate_optional_bool_style(widget, "show_bearing_label")
     _validate_optional_bool_style(widget, "show_heading_arrow")
+    _validate_optional_non_negative_int_style(widget, "decimals")
+    _validate_optional_text_style(widget, "format")
 
 
 def _validate_progress_bar_widget(widget: HudWidgetConfig) -> None:
@@ -290,6 +292,21 @@ def _validate_optional_font_size_style(widget: HudWidgetConfig, key: str) -> Non
 def _validate_optional_bool_style(widget: HudWidgetConfig, key: str) -> None:
     if key in widget.style and not isinstance(widget.style[key], bool):
         raise ValueError(f"widget '{widget.id}' style.{key} must be a boolean")
+
+
+def _validate_optional_non_negative_int_style(widget: HudWidgetConfig, key: str) -> None:
+    if key not in widget.style:
+        return
+    value = widget.style[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"widget '{widget.id}' style.{key} must be an integer")
+    if value < 0:
+        raise ValueError(f"widget '{widget.id}' style.{key} must be at least 0")
+
+
+def _validate_optional_text_style(widget: HudWidgetConfig, key: str) -> None:
+    if key in widget.style and not isinstance(widget.style[key], str):
+        raise ValueError(f"widget '{widget.id}' style.{key} must be a string")
 
 
 def _style_bool(widget: HudWidgetConfig, key: str, default: bool) -> bool:

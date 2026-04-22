@@ -200,6 +200,38 @@ def test_validate_hud_config_rejects_non_integer_widget_font_size() -> None:
         validate_hud_config(preset)
 
 
+def test_validate_hud_config_rejects_negative_stat_block_decimals() -> None:
+    preset = broadcast_runner_preset()
+    distance_widget = next(widget for widget in preset.widgets if widget.id == "distance-stat")
+    distance_widget.style["decimals"] = -1
+
+    with pytest.raises(ValueError, match="decimals"):
+        validate_hud_config(preset)
+
+
+def test_validate_hud_config_rejects_non_string_context_format() -> None:
+    config = HudConfig(
+        preset="context-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="time-card",
+                type="context_card",
+                bindings={"value": "timestamp"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=200,
+                height=72,
+                style={"variant": "timestamp_chip", "format": False},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="style.format"):
+        validate_hud_config(config)
+
+
 def test_validate_hud_config_rejects_medium_font_weight() -> None:
     preset = broadcast_runner_preset()
     preset.theme.font_weight = "medium"
