@@ -64,6 +64,45 @@ def _rendered_text_labels(
     return labels
 
 
+def _rendered_text_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    hud_config: HudConfig,
+    *,
+    total_distance_m: float | None = None,
+    hud_value: HudSample | None = None,
+    route_points: list[tuple[float, float]] | None = None,
+) -> list[tuple[str, int | None]]:
+    calls: list[tuple[str, int | None]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        calls.append((str(text), getattr(kwargs.get("font"), "size", None)))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value
+        or HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=route_points or [(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+        total_distance_m=total_distance_m,
+    )
+    return calls
+
+
 def test_render_hud_frame_creates_transparent_rgba_image(tmp_path: Path) -> None:
     hud_value = HudSample(
         timestamp=datetime(2026, 4, 19, 0, 45, 10, tzinfo=timezone.utc),
@@ -937,6 +976,57 @@ def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: py
     assert polygon_calls == []
 
 
+def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_vectors: list[tuple[float, float]] = []
+    original_draw_heading_arrow = hud_module._draw_heading_arrow
+
+    def record_heading_arrow(draw, center, vector, theme, scale):
+        captured_vectors.append(vector)
+        return original_draw_heading_arrow(draw, center, vector, theme, scale)
+
+    monkeypatch.setattr(hud_module, "_draw_heading_arrow", record_heading_arrow)
+
+    render_hud_frame(
+        width=180,
+        height=180,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=50.0,
+            longitude=0.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(0.0, 0.0), (100.0, 1.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=180,
+                    style={"label": ""},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    vector_x, vector_y = captured_vectors[0]
+    assert vector_x > 0
+    assert vector_y < 0
+    assert abs(vector_y / vector_x) < 1.0
+
+
 def test_render_hud_frame_scales_widget_regions_for_larger_frames() -> None:
     image = render_hud_frame(
         width=2560,
@@ -1064,6 +1154,60 @@ def test_metric_suffix_omits_elapsed_unit_by_default() -> None:
     )
 
     assert _metric_suffix(widget, HudThemeConfig()) == ""
+
+
+def test_render_hud_frame_metric_card_respects_legacy_theme_font_overrides_for_role_fonts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rendered_text_calls(
+        monkeypatch,
+        HudConfig(
+            preset="metric-only",
+            theme=HudThemeConfig(font_family="mono", font_weight="bold", font_size_px=30),
+            widgets=[
+                HudWidgetConfig(
+                    id="heart",
+                    type="metric_card",
+                    bindings={"value": "heart_rate_bpm"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Heart"},
+                )
+            ],
+        ),
+    )
+
+    assert calls == [("Heart", 30), ("162", 30), ("bpm", 30)]
+
+
+def test_render_hud_frame_metric_card_respects_widget_font_override_for_role_fonts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rendered_text_calls(
+        monkeypatch,
+        HudConfig(
+            preset="metric-only",
+            theme=HudThemeConfig(title_font_size_px=14, value_font_size_px=28, unit_font_size_px=10),
+            widgets=[
+                HudWidgetConfig(
+                    id="heart",
+                    type="metric_card",
+                    bindings={"value": "heart_rate_bpm"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Heart", "font_size_px": 26},
+                )
+            ],
+        ),
+    )
+
+    assert calls == [("Heart", 26), ("162", 26), ("bpm", 26)]
 
 
 def test_render_hud_frame_stat_block_uses_thematic_typography_roles_and_tighter_unit_spacing(

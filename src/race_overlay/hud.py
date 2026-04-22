@@ -38,6 +38,8 @@ class RenderScale:
 class RouteProjection:
     point: tuple[float, float]
     tangent: tuple[float, float]
+    segment_start: tuple[float, float]
+    segment_end: tuple[float, float]
 
 
 def _render_scale(frame_width: int, frame_height: int) -> RenderScale:
@@ -339,45 +341,44 @@ def _style_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderSca
     )
 
 
-def _theme_role_font(
-    theme: HudThemeConfig,
-    scale: RenderScale,
-    *,
-    family: str,
-    weight: str,
-    size: int,
-) -> ImageFont.FreeTypeFont:
-    return _scaled_font(scale, size, family, weight)
+def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> str | int:
+    defaults = HudThemeConfig()
+    role_value = getattr(theme, role_key)
+    if role_value != getattr(defaults, role_key):
+        return role_value
+
+    legacy_value = getattr(theme, legacy_key)
+    if legacy_value != getattr(defaults, legacy_key):
+        return legacy_value
+    return role_value
 
 
-def _title_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
-    return _theme_role_font(
-        theme,
-        scale,
-        family=theme.title_font_family,
-        weight=theme.title_font_weight,
-        size=theme.title_font_size_px,
-    )
+def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale, *, role: str) -> ImageFont.FreeTypeFont:
+    family_value = widget.style.get("font_family", _theme_role_value(theme, f"{role}_font_family", "font_family"))
+    if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
+
+    weight_value = widget.style.get("font_weight", _theme_role_value(theme, f"{role}_font_weight", "font_weight"))
+    if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.font_weight must be one of: {allowed_values}")
+
+    size_value = widget.style.get("font_size_px", _theme_role_value(theme, f"{role}_font_size_px", "font_size_px"))
+    size = _require_font_size_style(widget, size_value, "font_size_px")
+    return _scaled_font(scale, size, family_value, weight_value)
 
 
-def _value_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
-    return _theme_role_font(
-        theme,
-        scale,
-        family=theme.value_font_family,
-        weight=theme.value_font_weight,
-        size=theme.value_font_size_px,
-    )
+def _title_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _style_role_font(widget, theme, scale, role="title")
 
 
-def _unit_font(theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
-    return _theme_role_font(
-        theme,
-        scale,
-        family=theme.unit_font_family,
-        weight=theme.unit_font_weight,
-        size=theme.unit_font_size_px,
-    )
+def _value_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _style_role_font(widget, theme, scale, role="value")
+
+
+def _unit_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
+    return _style_role_font(widget, theme, scale, role="unit")
 
 
 def _distance_label(distance_m: float, show_units: bool) -> str:
@@ -457,9 +458,9 @@ def _draw_stat_block(
             radius=_scale_draw(scale, 20),
             fill=tuple(theme.panel_rgba),
         )
-    title_font = _title_font(theme, scale)
-    value_font = _value_font(theme, scale)
-    unit_font = _unit_font(theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     label = str(widget.style.get("label", "Metric"))
     unit = str(widget.style.get("unit", "")) if _style_bool(widget, "show_unit", theme.show_units) else ""
     align = str(widget.style.get("align", "left"))
@@ -542,9 +543,9 @@ def _draw_route_map(
                 outline=(255, 255, 255, 120),
             )
     label = str(widget.style.get("label", "Route map"))
-    title_font = _title_font(theme, scale)
-    value_font = _value_font(theme, scale)
-    unit_font = _unit_font(theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     if label:
         widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)), label, fill=tuple(theme.text_rgba), font=title_font)
     if len(route_points) < 2:
@@ -591,7 +592,7 @@ def _draw_route_map(
         r = _scale_draw(scale, 6)
         widget_draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 90, 90, 255))
         if show_heading_arrow:
-            _draw_heading_arrow(widget_draw, (x, y), route_projection.tangent, theme, scale)
+            _draw_heading_arrow(widget_draw, (x, y), _projected_route_vector(route_projection, project), theme, scale)
 
     if shape == "circle":
         mask = Image.new("L", (w, h), 0)
@@ -616,9 +617,9 @@ def _draw_hero_metric(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    title_font = _title_font(theme, scale)
-    value_font = _value_font(theme, scale)
-    unit_font = _unit_font(theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     draw.text(
@@ -657,9 +658,9 @@ def _draw_metric_card(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    title_font = _title_font(theme, scale)
-    value_font = _value_font(theme, scale)
-    unit_font = _unit_font(theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     if widget.style.get("variant") == "compact":
         if _widget_panel_enabled(widget):
             draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=tuple(theme.panel_rgba))
@@ -710,9 +711,9 @@ def _draw_context_card(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
-    title_font = _title_font(theme, scale)
-    value_font = _value_font(theme, scale)
-    unit_font = _unit_font(theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
@@ -828,6 +829,8 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
 
     current = (hud_value.latitude, hud_value.longitude)
     closest_point = route_points[-1]
+    closest_segment_start = route_points[0]
+    closest_segment_end = route_points[1]
     closest_tangent = (0.0, 0.0)
     closest_distance_sq = float("inf")
 
@@ -836,10 +839,26 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
         distance_sq = _distance_squared(current, candidate)
         if distance_sq < closest_distance_sq:
             closest_point = candidate
+            closest_segment_start = segment_start
+            closest_segment_end = segment_end
             closest_tangent = (segment_end[0] - segment_start[0], segment_end[1] - segment_start[1])
             closest_distance_sq = distance_sq
 
-    return RouteProjection(point=closest_point, tangent=closest_tangent)
+    return RouteProjection(
+        point=closest_point,
+        tangent=closest_tangent,
+        segment_start=closest_segment_start,
+        segment_end=closest_segment_end,
+    )
+
+
+def _projected_route_vector(
+    route_projection: RouteProjection,
+    project,
+) -> tuple[float, float]:
+    start_x, start_y = project(route_projection.segment_start)
+    end_x, end_y = project(route_projection.segment_end)
+    return (end_x - start_x, end_y - start_y)
 
 
 def _format_bearing_label(tangent: tuple[float, float]) -> str:
@@ -864,13 +883,11 @@ def _bearing_cardinal(bearing: int) -> str:
 def _draw_heading_arrow(
     draw: ImageDraw.ImageDraw,
     center: tuple[float, float],
-    tangent: tuple[float, float],
+    vector: tuple[float, float],
     theme: HudThemeConfig,
     scale: RenderScale,
 ) -> None:
-    delta_lat, delta_lon = tangent
-    dx = delta_lon
-    dy = -delta_lat
+    dx, dy = vector
     length = math.hypot(dx, dy)
     if length <= 1e-12:
         return
