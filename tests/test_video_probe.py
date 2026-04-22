@@ -50,6 +50,7 @@ def test_probe_video_reads_creation_time_and_duration(monkeypatch) -> None:
     assert clip.color_transfer == "bt709"
     assert clip.color_primaries == "bt709"
     assert clip.audio_codec == "aac"
+    assert clip.audio_bitrate == 192_000
 
 
 def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Path) -> None:
@@ -93,3 +94,4 @@ def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Pa
     assert clip.color_transfer == "bt709"
     assert clip.color_primaries == "bt709"
     assert clip.audio_codec == "aac"
+    assert clip.audio_bitrate == 192_000
