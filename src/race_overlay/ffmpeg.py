@@ -256,7 +256,7 @@ def build_cache_compose_command(
         "-map",
         "[video]",
         "-map",
-        "0:a?",
+        "0:a:0?",
     ]
     _append_output_encoding_args(command, plan)
     command.append(str(output_path))

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 
-from race_overlay.ffmpeg import build_stream_compose_command, compose_video, resolve_output_encoding_plan
+from race_overlay.ffmpeg import build_cache_compose_command, build_stream_compose_command, compose_video, resolve_output_encoding_plan
 from race_overlay.models import VideoClip
 
 
@@ -252,6 +252,48 @@ def test_build_stream_compose_command_uses_audio_fallback_args() -> None:
     assert command[-5:] == ["-c:a", "aac", "-b:a", "128000", "output.MP4"]
 
 
+def test_build_cache_compose_command_uses_single_audio_stream() -> None:
+    clip = make_clip()
+    plan = resolve_output_encoding_plan(clip)
+
+    command = build_cache_compose_command(
+        source_path=Path("source.MP4"),
+        overlay_path=Path("overlay.mov"),
+        output_path=Path("output.MP4"),
+        plan=plan,
+    )
+
+    assert command == [
+        "ffmpeg",
+        "-y",
+        "-i",
+        "source.MP4",
+        "-i",
+        "overlay.mov",
+        "-filter_complex",
+        "[0:v][1:v]overlay=0:0[video]",
+        "-map",
+        "[video]",
+        "-map",
+        "0:a:0?",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-b:v",
+        "16000000",
+        "-colorspace",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-color_primaries",
+        "bt709",
+        "-c:a",
+        "copy",
+        "output.MP4",
+    ]
+
+
 def test_build_stream_compose_command_omits_non_positive_bitrate() -> None:
     clip = make_clip(video_bitrate=0)
     plan = resolve_output_encoding_plan(clip)
@@ -328,7 +370,7 @@ def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
         "-map",
         "[video]",
         "-map",
-        "0:a?",
+        "0:a:0?",
         "-c:v",
         "libx265",
         "-pix_fmt",
