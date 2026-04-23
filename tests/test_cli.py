@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from race_overlay.cli import app
-from race_overlay.config import ProjectConfig, save_config
+from race_overlay.config import ProjectConfig, save_config, write_default_config
 from race_overlay.hud_presets import broadcast_runner_preset
 
 
@@ -112,3 +112,15 @@ def test_render_command_prints_pipeline_progress(tmp_path: Path, monkeypatch: py
     assert "Generating frame cache at cache/clip/frames" in result.stdout
     assert "Finished clip.MP4" in result.stdout
     assert "Render completed" in result.stdout
+
+
+def test_init_writes_default_overlay_without_removed_theme_colors(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    write_default_config(config_path, "activity_22577902433.tcx")
+
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    route_map = next(widget for widget in payload["hud"]["widgets"] if widget["id"] == "route-map")
+
+    assert "panel_rgba" not in payload["hud"]["theme"]
+    assert "accent_rgba" not in payload["hud"]["theme"]
+    assert route_map["style"]["background_rgba"] == [6, 10, 18, 148]

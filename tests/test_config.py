@@ -187,13 +187,14 @@ def test_load_config_migrates_legacy_broadcast_runner_schema_defaults(tmp_path: 
     elevation = next(widget for widget in config.hud.widgets if widget.id == "elevation-stat")
 
     assert "time-chip" in widget_ids
-    assert config.hud.theme.title_font_size_px == 14
+    assert config.hud.theme.title_font_size_px == 16
+    assert config.hud.theme.unit_font_size_px == 13
     assert config.hud.theme.value_font_family == "broadcast_value"
     assert time_chip.style["variant"] == "timestamp_chip"
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
     assert route_map.style["show_heading_arrow"] is True
-    assert route_map.x == 22
+    assert route_map.x == 21
     assert route_map.y == 488
     assert elevation.y == 122
 

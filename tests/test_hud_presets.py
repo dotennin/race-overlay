@@ -24,16 +24,17 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
 
     assert time_chip.style["variant"] == "timestamp_chip"
     assert time_chip.style["format"] == "%Y/%m/%d %H:%M:%S"
-    assert config.theme.title_font_size_px == 14
+    assert config.theme.title_font_size_px == 16
     assert config.theme.value_font_family == "broadcast_value"
     assert config.theme.value_font_size_px == 32
-    assert config.theme.unit_font_size_px == 12
+    assert config.theme.unit_font_size_px == 13
     assert ruler.width == 560
-    assert ruler.y == 28
+    assert ruler.y == 40
+    assert ruler.x == 359
     assert ruler.style["fill_rgba"] == [34, 255, 138, 255]
     assert ruler.style["rail_rgba"] == [8, 12, 20, 220]
     assert ruler.style["tick_rgba"] == [230, 238, 245, 168]
-    assert route_map.x == 22
+    assert route_map.x == 21
     assert route_map.width == 196
     assert route_map.height == 196
     assert route_map.y == 488
@@ -41,6 +42,9 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
     assert route_map.style["show_heading_arrow"] is True
+    assert route_map.style["background_rgba"] == [6, 10, 18, 148]
+    assert route_map.style["completed_rgba"] == [34, 255, 138, 255]
+    assert route_map.style["remaining_rgba"] == [13, 144, 195, 255]
 
 
 def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -> None:
@@ -102,3 +106,18 @@ def test_apply_legacy_field_visibility_hides_time_chip_when_every_legacy_field_i
     visibility = {widget.id: widget.visible for widget in config.widgets}
 
     assert visibility["time-chip"] is False
+
+
+def test_broadcast_runner_preset_matches_overlay_refresh_defaults() -> None:
+    config = broadcast_runner_preset()
+    ruler = next(widget for widget in config.widgets if widget.id == "distance-ruler")
+    route_map = next(widget for widget in config.widgets if widget.id == "route-map")
+
+    assert config.theme.text_rgba == [247, 251, 255, 255]
+    assert ruler.x == 359
+    assert ruler.y == 40
+    assert ruler.style["fill_rgba"] == [34, 255, 138, 255]
+    assert route_map.x == 21
+    assert route_map.style["background_rgba"] == [6, 10, 18, 148]
+    assert route_map.style["completed_rgba"] == [34, 255, 138, 255]
+    assert route_map.style["remaining_rgba"] == [13, 144, 195, 255]
