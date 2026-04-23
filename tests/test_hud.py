@@ -12,6 +12,7 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
+    _draw_heading_arrow,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
@@ -101,6 +102,46 @@ def _rendered_text_calls(
         total_distance_m=total_distance_m,
     )
     return calls
+
+
+def _rendered_text_draws(
+    monkeypatch: pytest.MonkeyPatch,
+    hud_config: HudConfig,
+    *,
+    total_distance_m: float | None = None,
+    hud_value: HudSample | None = None,
+    route_points: list[tuple[float, float]] | None = None,
+) -> list[tuple[tuple[float, float], str]]:
+    draws: list[tuple[tuple[float, float], str]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        if isinstance(xy, tuple) and len(xy) == 2:
+            draws.append(((float(xy[0]), float(xy[1])), str(text)))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value
+        or HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=route_points or [(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+        total_distance_m=total_distance_m,
+    )
+    return draws
 
 
 def _widget_bounds(widget: HudWidgetConfig, frame_width: int, frame_height: int) -> tuple[int, int, int, int]:
@@ -200,6 +241,17 @@ def test_render_hud_frame_shows_current_and_total_distance_on_ruler_by_default(m
     assert any("24.60" in label and "10.00" in label for label in labels) or any(
         "10.00" in label and "KM" in label for label in labels
     )
+
+
+def test_draw_heading_arrow_uses_explicit_arrow_color() -> None:
+    image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    scale = RenderScale(x=1.0, y=1.0, draw=1.0)
+    arrow_rgba = (1, 2, 3, 255)
+
+    _draw_heading_arrow(draw, (32.0, 32.0), (12.0, 0.0), scale, arrow_rgba=arrow_rgba)
+
+    assert arrow_rgba in image.getdata()
 
 
 def test_validate_hud_config_rejects_unknown_font_family() -> None:
@@ -831,11 +883,11 @@ def test_render_hud_frame_route_map_marker_tracks_current_sample_position() -> N
 def test_render_hud_frame_route_map_skips_marker_when_gps_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ellipse_calls: list[tuple[object, object]] = []
+    ellipse_fills: list[object] = []
     original_ellipse = ImageDraw.ImageDraw.ellipse
 
     def record_ellipse(self, xy, *args, **kwargs):
-        ellipse_calls.append((xy, kwargs.get("fill")))
+        ellipse_fills.append(kwargs.get("fill"))
         return original_ellipse(self, xy, *args, **kwargs)
 
     monkeypatch.setattr(ImageDraw.ImageDraw, "ellipse", record_ellipse)
@@ -877,7 +929,7 @@ def test_render_hud_frame_route_map_skips_marker_when_gps_is_missing(
         elapsed_seconds=6852,
     )
 
-    assert ellipse_calls == []
+    assert (228, 255, 238, 255) not in ellipse_fills
 
 
 def test_render_hud_frame_clips_circular_route_map_content_to_circle() -> None:
@@ -1062,7 +1114,7 @@ def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.Monkey
 
 
 def test_render_hud_frame_route_map_renders_navigation_overlays_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    labels = _rendered_text_labels(
+    draws = _rendered_text_draws(
         monkeypatch,
         HudConfig(
             preset="route-only",
@@ -1095,19 +1147,32 @@ def test_render_hud_frame_route_map_renders_navigation_overlays_by_default(monke
         route_points=[(36.0, 140.0), (35.0, 139.0)],
     )
 
+    labels = {text: xy for xy, text in draws}
+
     assert "N" in labels
     assert "225°SW" in labels
+    assert labels["N"][1] < labels["225°SW"][1]
+    assert labels["225°SW"][1] > 110
 
 
 def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: pytest.MonkeyPatch) -> None:
     polygon_calls: list[object] = []
+    line_fills: list[tuple[int, int, int, int]] = []
     original_polygon = ImageDraw.ImageDraw.polygon
+    original_line = ImageDraw.ImageDraw.line
 
     def record_polygon(self, xy, *args, **kwargs):
         polygon_calls.append(xy)
         return original_polygon(self, xy, *args, **kwargs)
 
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            line_fills.append(fill)
+        return original_line(self, xy, *args, **kwargs)
+
     monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
 
     render_hud_frame(
         width=1280,
@@ -1145,7 +1210,9 @@ def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: py
     )
 
     assert polygon_calls, "expected a heading arrow polygon by default"
+    assert (74, 155, 255, 255) in line_fills
     polygon_calls.clear()
+    line_fills.clear()
 
     render_hud_frame(
         width=1280,
@@ -1183,15 +1250,16 @@ def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: py
     )
 
     assert polygon_calls == []
+    assert (74, 155, 255, 255) not in line_fills
 
 
 def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_vectors: list[tuple[float, float]] = []
     original_draw_heading_arrow = hud_module._draw_heading_arrow
 
-    def record_heading_arrow(draw, center, vector, theme, scale):
+    def record_heading_arrow(draw, center, vector, scale, *, arrow_rgba=(74, 155, 255, 255)):
         captured_vectors.append(vector)
-        return original_draw_heading_arrow(draw, center, vector, theme, scale)
+        return original_draw_heading_arrow(draw, center, vector, scale, arrow_rgba=arrow_rgba)
 
     monkeypatch.setattr(hud_module, "_draw_heading_arrow", record_heading_arrow)
 
@@ -1797,7 +1865,79 @@ def test_render_hud_frame_keeps_route_map_panel_by_default(monkeypatch: pytest.M
         total_distance_m=10000.0,
     )
 
-    assert tuple(preset.theme.panel_rgba) in ellipse_fills
+    assert (6, 10, 18, 214) in ellipse_fills
+
+
+def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line_fills: list[tuple[int, int, int, int]] = []
+    ellipse_fills: list[tuple[int, int, int, int]] = []
+    polygon_fills: list[tuple[int, int, int, int]] = []
+    original_line = ImageDraw.ImageDraw.line
+    original_ellipse = ImageDraw.ImageDraw.ellipse
+    original_polygon = ImageDraw.ImageDraw.polygon
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            line_fills.append(fill)
+        return original_line(self, xy, *args, **kwargs)
+
+    def record_ellipse(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            ellipse_fills.append(fill)
+        return original_ellipse(self, xy, *args, **kwargs)
+
+    def record_polygon(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            polygon_fills.append(fill)
+        return original_polygon(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+    monkeypatch.setattr(ImageDraw.ImageDraw, "ellipse", record_ellipse)
+    monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0, 140.0), (35.0, 139.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": ""},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert (34, 255, 138, 255) in line_fills
+    assert (228, 255, 238, 255) in ellipse_fills
+    assert (255, 255, 255, 255) in polygon_fills
 
 
 def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytest.MonkeyPatch) -> None:

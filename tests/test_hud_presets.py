@@ -24,6 +24,8 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
 
     assert time_chip.style["variant"] == "timestamp_chip"
     assert time_chip.style["format"] == "%Y/%m/%d %H:%M:%S"
+    assert config.theme.panel_rgba == [12, 18, 28, 148]
+    assert config.theme.accent_rgba == [26, 230, 198, 255]
     assert config.theme.title_font_size_px == 14
     assert config.theme.value_font_family == "broadcast_value"
     assert config.theme.value_font_size_px == 32
@@ -40,6 +42,19 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert route_map.style["show_heading_arrow"] is True
 
 
+def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -> None:
+    config = broadcast_runner_preset()
+    route_map = next(widget for widget in config.widgets if widget.id == "route-map")
+
+    assert config.theme.panel_rgba == [12, 18, 28, 148]
+    assert config.theme.accent_rgba == [26, 230, 198, 255]
+    assert route_map.style["shape"] == "circle"
+    assert route_map.style["show_panel"] is True
+    assert route_map.style["show_north_marker"] is True
+    assert route_map.style["show_bearing_label"] is True
+    assert route_map.style["show_heading_arrow"] is True
+
+
 def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
     config = broadcast_runner_preset()
     ruler = next(widget for widget in config.widgets if widget.id == "distance-ruler")
@@ -47,6 +62,9 @@ def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
 
     assert "transparent_panel" not in ruler.style
     assert route_map.style["show_panel"] is True
+    assert route_map.style["show_north_marker"] is True
+    assert route_map.style["show_bearing_label"] is True
+    assert route_map.style["show_heading_arrow"] is True
 
 
 def test_apply_legacy_field_visibility_maps_distance_flag_to_elevation_stat_for_back_compat() -> None:

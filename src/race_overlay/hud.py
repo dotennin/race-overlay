@@ -22,6 +22,13 @@ HUD_REFERENCE_HEIGHT = 720
 PROGRESS_BAR_MIN_WIDTH = 232
 SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 LEGACY_DEFAULT_FONT_SIZE_PX = 18
+ROUTE_MAP_DEFAULT_SHAPE = "circle"
+ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 214)
+ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
+ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
+ROUTE_MAP_MARKER_RGBA = (228, 255, 238, 255)
+ROUTE_MAP_HEADING_ARROW_RGBA = (74, 155, 255, 255)
+ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
@@ -601,19 +608,19 @@ def _draw_route_map(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
-    shape = str(widget.style.get("shape", "rect"))
+    shape = str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE))
     widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     widget_draw = ImageDraw.Draw(widget_image)
     if shape == "circle":
         if _widget_panel_enabled(widget):
-            widget_draw.ellipse((0, 0, w, h), fill=tuple(theme.panel_rgba), outline=(255, 255, 255, 120))
+            widget_draw.ellipse((0, 0, w, h), fill=ROUTE_MAP_PANEL_RGBA, outline=ROUTE_MAP_PANEL_OUTLINE_RGBA)
     else:
         if _widget_panel_enabled(widget):
             widget_draw.rounded_rectangle(
                 (0, 0, w, h),
                 radius=_scale_draw(scale, 16),
-                fill=tuple(theme.panel_rgba),
-                outline=(255, 255, 255, 120),
+                fill=ROUTE_MAP_PANEL_RGBA,
+                outline=ROUTE_MAP_PANEL_OUTLINE_RGBA,
             )
     label = str(widget.style.get("label", "Route map"))
     title_font = _title_font(widget, theme, scale)
@@ -628,10 +635,15 @@ def _draw_route_map(
     show_north_marker = _style_bool(widget, "show_north_marker", True)
     show_bearing_label = _style_bool(widget, "show_bearing_label", True)
     show_heading_arrow = _style_bool(widget, "show_heading_arrow", True)
-    show_top_overlays = label or show_north_marker or show_bearing_label
+    route_projection = _resolve_route_projection(route_points, hud_value)
+    bearing_label = ""
+    if route_projection is not None and show_bearing_label:
+        bearing_label = _format_bearing_label(route_projection.tangent)
+    show_top_overlays = label or show_north_marker
+    show_bottom_overlay = bool(bearing_label)
     map_left = _scale_x(scale, 12)
     map_top = _scale_y(scale, 36) if show_top_overlays else _scale_y(scale, 12)
-    map_bottom = h - _scale_y(scale, 12)
+    map_bottom = h - (_scale_y(scale, 18) if show_bottom_overlay else _scale_y(scale, 12))
     inner_width = max(w - _scale_x(scale, 24), 1)
     inner_height = max(map_bottom - map_top, 1)
     latitudes = [point[0] for point in route_points]
@@ -646,26 +658,38 @@ def _draw_route_map(
         return (x, y)
 
     projected = [project(point) for point in route_points]
-    widget_draw.line(projected, fill=tuple(theme.accent_rgba), width=_scale_draw(scale, 4))
-    route_projection = _resolve_route_projection(route_points, hud_value)
+    widget_draw.line(projected, fill=ROUTE_MAP_ROUTE_RGBA, width=_scale_draw(scale, 4))
     if show_north_marker:
-        widget_draw.text((w - _scale_x(scale, 12), _scale_y(scale, 10)), "N", fill=tuple(theme.text_rgba), anchor="ra", font=unit_font)
+        widget_draw.text((w / 2, _scale_y(scale, 10)), "N", fill=tuple(theme.text_rgba), anchor="ma", font=unit_font)
     if route_projection is not None:
-        if show_bearing_label:
-            bearing_label = _format_bearing_label(route_projection.tangent)
-            if bearing_label:
-                widget_draw.text(
-                    (w - _scale_x(scale, 12), _scale_y(scale, 28)),
-                    bearing_label,
-                    fill=tuple(theme.text_rgba),
-                    anchor="ra",
-                    font=value_font,
-                )
+        if bearing_label:
+            widget_draw.text(
+                (w / 2, h - _scale_y(scale, 10)),
+                bearing_label,
+                fill=tuple(theme.text_rgba),
+                anchor="ms",
+                font=unit_font,
+            )
         x, y = project(route_projection.point)
-        r = _scale_draw(scale, 6)
-        widget_draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 90, 90, 255))
+        r = _scale_draw(scale, 7)
+        widget_draw.ellipse(
+            (x - r, y - r, x + r, y + r),
+            fill=ROUTE_MAP_MARKER_RGBA,
+            outline=ROUTE_MAP_ROUTE_RGBA,
+            width=_scale_draw(scale, 2),
+        )
         if show_heading_arrow:
-            _draw_heading_arrow(widget_draw, (x, y), _projected_route_vector(route_projection, project), theme, scale)
+            heading_vector = _projected_route_vector(route_projection, project)
+            _draw_heading_arrow(
+                widget_draw,
+                (x, y),
+                heading_vector,
+                scale,
+                arrow_rgba=ROUTE_MAP_HEADING_ARROW_RGBA,
+            )
+            arrow_head = _heading_arrow_head_points((x, y), heading_vector, scale)
+            if arrow_head is not None:
+                widget_draw.polygon(arrow_head, fill=ROUTE_MAP_HEADING_ARROW_HEAD_RGBA)
 
     if shape == "circle":
         mask = Image.new("L", (w, h), 0)
@@ -971,34 +995,51 @@ def _draw_heading_arrow(
     draw: ImageDraw.ImageDraw,
     center: tuple[float, float],
     vector: tuple[float, float],
-    theme: HudThemeConfig,
     scale: RenderScale,
+    *,
+    arrow_rgba: tuple[int, int, int, int] = ROUTE_MAP_HEADING_ARROW_RGBA,
 ) -> None:
+    arrow_head = _heading_arrow_head_points(center, vector, scale)
+    if arrow_head is None:
+        return
     dx, dy = vector
     length = math.hypot(dx, dy)
-    if length <= 1e-12:
-        return
     unit_x = dx / length
     unit_y = dy / length
     center_x, center_y = center
     arrow_length = _scale_draw(scale, 18)
     tail_length = _scale_draw(scale, 6)
-    arrow_width = _scale_draw(scale, 5)
     tip_x = center_x + (unit_x * arrow_length)
     tip_y = center_y + (unit_y * arrow_length)
     tail_x = center_x - (unit_x * tail_length)
     tail_y = center_y - (unit_y * tail_length)
+    draw.line((tail_x, tail_y, tip_x, tip_y), fill=arrow_rgba, width=_scale_draw(scale, 2))
+    draw.polygon(arrow_head, fill=arrow_rgba)
+
+
+def _heading_arrow_head_points(
+    center: tuple[float, float],
+    vector: tuple[float, float],
+    scale: RenderScale,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None:
+    dx, dy = vector
+    length = math.hypot(dx, dy)
+    if length <= 1e-12:
+        return None
+    unit_x = dx / length
+    unit_y = dy / length
+    center_x, center_y = center
+    arrow_length = _scale_draw(scale, 18)
+    arrow_width = _scale_draw(scale, 5)
+    head_length = _scale_draw(scale, 8)
+    tip_x = center_x + (unit_x * arrow_length)
+    tip_y = center_y + (unit_y * arrow_length)
     side_x = -unit_y
     side_y = unit_x
-    head_length = _scale_draw(scale, 8)
-    draw.line((tail_x, tail_y, tip_x, tip_y), fill=tuple(theme.text_rgba), width=_scale_draw(scale, 2))
-    draw.polygon(
-        (
-            (tip_x, tip_y),
-            (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
-            (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
-        ),
-        fill=tuple(theme.text_rgba),
+    return (
+        (tip_x, tip_y),
+        (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
+        (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
     )
 
 
