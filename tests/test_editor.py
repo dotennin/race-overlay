@@ -1379,3 +1379,31 @@ console.log(JSON.stringify({{
     assert payload["previewSrc"] == ""
     assert payload["widgetList"] == ""
     assert payload["saveDisabled"] is True
+
+
+def test_build_editor_state_hides_removed_theme_colors_and_exposes_route_map_fields() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    assert "panel_rgba" not in state["schema"]["theme"]
+    assert "accent_rgba" not in state["schema"]["theme"]
+
+    route_map_style = state["schema"]["widgets"]["route-map"]["style"]
+    assert route_map_style["shape"] == {
+        "kind": "enum",
+        "label": "Shape",
+        "options": ["circle", "rounded-rect", "square"],
+    }
+    assert route_map_style["background_rgba"] == {"kind": "rgba", "label": "Background RGBA"}
+    assert route_map_style["completed_rgba"] == {"kind": "rgba", "label": "Completed RGBA"}
+    assert route_map_style["remaining_rgba"] == {"kind": "rgba", "label": "Remaining RGBA"}
+
+
+def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    assert 'input.type = "color"' in app_js
+    assert 'className = "color-alpha-input"' in app_js

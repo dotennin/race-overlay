@@ -15,8 +15,6 @@ from race_overlay.models import HudSample
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
 _THEME_FIELD_SCHEMA = {
-    "panel_rgba": {"kind": "rgba", "label": "Panel RGBA"},
-    "accent_rgba": {"kind": "rgba", "label": "Accent RGBA"},
     "text_rgba": {"kind": "rgba", "label": "Text RGBA"},
     "note_text": {"kind": "text", "label": "Theme note"},
     "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
@@ -87,8 +85,11 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     },
     "route_map": {
         "label": {"kind": "text", "label": "Label"},
-        "shape": {"kind": "text", "label": "Shape"},
+        "shape": {"kind": "enum", "label": "Shape", "options": ["circle", "rounded-rect", "square"]},
         "show_panel": {"kind": "boolean", "label": "Show panel"},
+        "background_rgba": {"kind": "rgba", "label": "Background RGBA"},
+        "completed_rgba": {"kind": "rgba", "label": "Completed RGBA"},
+        "remaining_rgba": {"kind": "rgba", "label": "Remaining RGBA"},
         "show_north_marker": {"kind": "boolean", "label": "Show north marker"},
         "show_bearing_label": {"kind": "boolean", "label": "Show bearing label"},
         "show_heading_arrow": {"kind": "boolean", "label": "Show heading arrow"},

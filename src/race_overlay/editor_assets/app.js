@@ -446,6 +446,42 @@ function buildSelectInput(value, options, onChange, onInput = null) {
   return select;
 }
 
+function rgbToHex(rgb) {
+  return "#" + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
+}
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [255, 255, 255];
+}
+
+function buildColorInput(value, onChange, onInput = null) {
+  const rgba = Array.isArray(value) && value.length === 4 ? [...value] : [255, 255, 255, 255];
+  const wrapper = document.createElement("div");
+  wrapper.className = "color-alpha-input";
+
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = rgbToHex(rgba.slice(0, 3));
+  input.addEventListener("input", () => emitColorChange());
+
+  const alpha = document.createElement("input");
+  alpha.type = "number";
+  alpha.min = "0";
+  alpha.max = "255";
+  alpha.value = String(rgba[3]);
+  alpha.addEventListener("input", () => emitColorChange());
+
+  function emitColorChange() {
+    const [r, g, b] = hexToRgb(input.value);
+    const next = [r, g, b, Number(alpha.value)];
+    (onInput ?? onChange)(next);
+  }
+
+  wrapper.append(input, alpha);
+  return wrapper;
+}
+
 function buildRgbaInput(value, onChange, onInput = null) {
   const channelValues = Array.isArray(value) && value.length === 4 ? [...value] : [0, 0, 0, 255];
   const wrapper = document.createElement("div");
