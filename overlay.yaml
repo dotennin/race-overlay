@@ -1,0 +1,211 @@
+activity_file: activity_22577902433.tcx
+video_globs:
+- inputs/*.MP4
+- inputs/*.mov
+output_dir: rendered
+cache_dir: cache
+timeline:
+  global_offset_seconds: 0.0
+  outside_activity: no_data
+hud:
+  preset: broadcast-runner
+  theme:
+    panel_rgba:
+    - 12
+    - 18
+    - 28
+    - 148
+    accent_rgba:
+    - 26
+    - 230
+    - 198
+    - 255
+    text_rgba:
+    - 247
+    - 251
+    - 255
+    - 255
+    note_text: My Race config
+    font_family: broadcast_value
+    font_weight: regular
+    font_size_px: 18
+    title_font_family: broadcast_value
+    title_font_weight: regular
+    title_font_size_px: 16
+    value_font_family: broadcast_value
+    value_font_weight: bold
+    value_font_size_px: 33
+    unit_font_family: broadcast_value
+    unit_font_weight: regular
+    unit_font_size_px: 13
+    show_units: true
+  widgets:
+  - id: time-chip
+    type: context_card
+    bindings:
+      value: timestamp
+    anchor: top-left
+    x: 44
+    y: 40
+    width: 292
+    height: 56
+    z_index: 36
+    visible: true
+    style:
+      variant: timestamp_chip
+      format: '%Y/%m/%d %H:%M:%S'
+  - id: distance-ruler
+    type: progress_bar
+    bindings:
+      value: distance_m
+    anchor: top-left
+    x: 359
+    y: 40
+    width: 560
+    height: 56
+    z_index: 40
+    visible: true
+    style:
+      label: Distance
+      variant: ruler
+      show_current_value: true
+      show_total_value: true
+      fill_rgba:
+      - 34
+      - 255
+      - 138
+      - 255
+      rail_rgba:
+      - 8
+      - 12
+      - 20
+      - 220
+      tick_rgba:
+      - 230
+      - 238
+      - 245
+      - 168
+      transparent_panel: true
+      font_family: broadcast_value
+      font_weight: regular
+      show_unit: true
+      font_size_px: 18
+  - id: elevation-stat
+    type: stat_block
+    bindings:
+      value: altitude_m
+    anchor: top-left
+    x: 44
+    y: 122
+    width: 152
+    height: 82
+    z_index: 30
+    visible: true
+    style:
+      label: Elevation
+      unit: M
+  - id: distance-stat
+    type: stat_block
+    bindings:
+      value: distance_m
+    anchor: top-left
+    x: 44
+    y: 208
+    width: 196
+    height: 84
+    z_index: 30
+    visible: true
+    style:
+      label: Distance
+      unit: KM
+      decimals: 2
+  - id: heart-rate-stat
+    type: stat_block
+    bindings:
+      value: heart_rate_bpm
+    anchor: top-right
+    x: 1045
+    y: 120
+    width: 195
+    height: 82
+    z_index: 30
+    visible: true
+    style:
+      label: Heart rate
+      unit: BPM
+      align: right
+  - id: pace-chip
+    type: metric_card
+    bindings:
+      value: pace_seconds_per_km
+    anchor: bottom-right
+    x: 984
+    y: 553
+    width: 126
+    height: 76
+    z_index: 20
+    visible: true
+    style:
+      label: Pace
+      variant: compact
+  - id: cadence-chip
+    type: metric_card
+    bindings:
+      value: cadence_spm
+    anchor: bottom-right
+    x: 1129
+    y: 552
+    width: 105
+    height: 76
+    z_index: 20
+    visible: true
+    style:
+      label: Cadence
+      variant: compact
+  - id: elapsed-chip
+    type: metric_card
+    bindings:
+      value: elapsed_seconds
+    anchor: bottom-right
+    x: 984
+    y: 637
+    width: 126
+    height: 76
+    z_index: 20
+    visible: true
+    style:
+      label: Elapsed
+      variant: compact
+  - id: speed-chip
+    type: metric_card
+    bindings:
+      value: speed_mps
+    anchor: bottom-right
+    x: 1130
+    y: 637
+    width: 107
+    height: 78
+    z_index: 20
+    visible: true
+    style:
+      label: Speed
+      variant: compact
+  - id: route-map
+    type: route_map
+    bindings:
+      value: route_points
+    anchor: top-left
+    x: 21
+    y: 488
+    width: 196
+    height: 196
+    z_index: 20
+    visible: true
+    style:
+      label: ''
+      shape: circle
+      show_panel: true
+      show_north_marker: true
+      show_bearing_label: true
+      show_heading_arrow: true
+overrides: {}

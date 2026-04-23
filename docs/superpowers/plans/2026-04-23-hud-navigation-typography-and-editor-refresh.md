@@ -134,7 +134,9 @@ git commit -m "fix: normalize TCX running cadence" -m "Co-authored-by: Copilot <
 ```python
 import pytest
 
-from race_overlay.hud_schema import HudThemeConfig, HudWidgetConfig, validate_hud_theme_config
+from race_overlay.config import ProjectConfig
+from race_overlay.editor_preview import build_editor_state
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, validate_hud_theme_config
 
 
 def test_validate_hud_theme_config_accepts_typography_roles() -> None:
@@ -156,8 +158,36 @@ def test_validate_hud_theme_config_accepts_typography_roles() -> None:
 
 
 def test_build_editor_state_exposes_route_map_navigation_and_timestamp_fields() -> None:
+    hud = HudConfig(
+        preset="broadcast-runner",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=24,
+                y=24,
+                width=180,
+                height=180,
+                style={"show_panel": True},
+            ),
+            HudWidgetConfig(
+                id="time-chip",
+                type="context_card",
+                bindings={"value": "timestamp"},
+                anchor="top-left",
+                x=24,
+                y=24,
+                width=220,
+                height=48,
+                style={"variant": "timestamp"},
+            ),
+        ],
+    )
     state = build_editor_state(
-        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=hud),
         width=1280,
         height=720,
     )
