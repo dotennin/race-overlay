@@ -35,7 +35,7 @@ class HudWidgetConfig:
     height: int
     z_index: int = 0
     visible: bool = True
-    style: dict[str, str | int | float | bool] = field(default_factory=dict)
+    style: dict[str, str | int | float | bool | list[int]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -246,19 +246,22 @@ def _require_string_mapping(value: object, field_name: str) -> dict[str, str]:
     return mapping
 
 
-def _require_style_mapping(value: object, field_name: str) -> dict[str, str | int | float | bool]:
+def _require_style_mapping(value: object, field_name: str) -> dict[str, str | int | float | bool | list[int]]:
     if not isinstance(value, dict):
         raise TypeError(f"{field_name} must be a mapping")
-    mapping: dict[str, str | int | float | bool] = {}
+    mapping: dict[str, str | int | float | bool | list[int]] = {}
     for key, item in value.items():
         if not isinstance(key, str):
             raise ValueError(f"{field_name} must contain only string keys")
         if isinstance(item, float) and not math.isfinite(item):
-            raise ValueError(f"{field_name} values must be strings, booleans, or finite numbers")
+            raise ValueError(f"{field_name} values must be strings, booleans, finite numbers, or RGBA lists")
         if isinstance(item, bool | str | int | float):
             mapping[key] = item
             continue
-        raise ValueError(f"{field_name} values must be strings, booleans, or finite numbers")
+        if isinstance(item, list):
+            mapping[key] = _require_rgba_list(item, f"{field_name}.{key}")
+            continue
+        raise ValueError(f"{field_name} values must be strings, booleans, finite numbers, or RGBA lists")
     return mapping
 
 

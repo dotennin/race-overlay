@@ -29,7 +29,12 @@ def _legacy_broadcast_runner_preset() -> HudConfig:
                 56,
                 40,
                 True,
-                {"label": "Distance", "variant": "ruler", "show_current_value": True, "show_total_value": True},
+                {
+                    "label": "Distance",
+                    "variant": "ruler",
+                    "show_current_value": True,
+                    "show_total_value": True,
+                },
             ),
             HudWidgetConfig(
                 "elevation-stat",
@@ -184,7 +189,15 @@ def broadcast_runner_preset() -> HudConfig:
                 56,
                 40,
                 True,
-                {"label": "Distance", "variant": "ruler", "show_current_value": True, "show_total_value": True},
+                {
+                    "label": "Distance",
+                    "variant": "ruler",
+                    "show_current_value": True,
+                    "show_total_value": True,
+                    "fill_rgba": [34, 255, 138, 255],
+                    "rail_rgba": [8, 12, 20, 220],
+                    "tick_rgba": [230, 238, 245, 168],
+                },
             ),
             HudWidgetConfig(
                 "elevation-stat",

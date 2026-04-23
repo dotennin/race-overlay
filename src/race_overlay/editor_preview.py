@@ -43,6 +43,9 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
         "show_current_value": {"kind": "boolean", "label": "Show current value"},
         "show_total_value": {"kind": "boolean", "label": "Show total value"},
+        "fill_rgba": {"kind": "rgba", "label": "Fill RGBA"},
+        "rail_rgba": {"kind": "rgba", "label": "Rail RGBA"},
+        "tick_rgba": {"kind": "rgba", "label": "Tick RGBA"},
         "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
     },
     "stat_block": {
@@ -280,6 +283,8 @@ def _infer_style_field_schema(key: str, value: object) -> dict[str, object]:
         return {"kind": "boolean", "label": _humanize_field_name(key)}
     if isinstance(value, int):
         return {"kind": "integer", "label": _humanize_field_name(key)}
+    if isinstance(value, list) and len(value) == 4 and all(isinstance(channel, int) for channel in value):
+        return {"kind": "rgba", "label": _humanize_field_name(key).replace("Rgba", "RGBA")}
     return {"kind": "text", "label": _humanize_field_name(key)}
 
 

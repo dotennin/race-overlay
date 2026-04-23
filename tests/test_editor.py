@@ -75,6 +75,9 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert ruler_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
     assert ruler_style["show_current_value"] == {"kind": "boolean", "label": "Show current value"}
     assert ruler_style["show_total_value"] == {"kind": "boolean", "label": "Show total value"}
+    assert ruler_style["fill_rgba"] == {"kind": "rgba", "label": "Fill RGBA"}
+    assert ruler_style["rail_rgba"] == {"kind": "rgba", "label": "Rail RGBA"}
+    assert ruler_style["tick_rgba"] == {"kind": "rgba", "label": "Tick RGBA"}
 
     pace_chip_style = state["schema"]["widgets"]["pace-chip"]["style"]
     assert pace_chip_style["font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
@@ -318,7 +321,13 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
     pace_chip["style"].update(font_family="mono", font_weight="bold", font_size_px=26, show_unit=False)
     distance_ruler = next(widget for widget in payload["widgets"] if widget["id"] == "distance-ruler")
-    distance_ruler["style"].update(show_current_value=False, show_total_value=False)
+    distance_ruler["style"].update(
+        show_current_value=False,
+        show_total_value=False,
+        fill_rgba=[34, 255, 138, 255],
+        rail_rgba=[8, 12, 20, 220],
+        tick_rgba=[230, 238, 245, 168],
+    )
 
     save_editor_payload(config_path, payload)
 
@@ -339,6 +348,9 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     assert reloaded_pace_chip.style["show_unit"] is False
     assert reloaded_ruler.style["show_current_value"] is False
     assert reloaded_ruler.style["show_total_value"] is False
+    assert reloaded_ruler.style["fill_rgba"] == [34, 255, 138, 255]
+    assert reloaded_ruler.style["rail_rgba"] == [8, 12, 20, 220]
+    assert reloaded_ruler.style["tick_rgba"] == [230, 238, 245, 168]
 
 
 def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_present(tmp_path: Path) -> None:

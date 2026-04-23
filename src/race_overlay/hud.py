@@ -12,6 +12,7 @@ from race_overlay.hud_schema import (
     HudConfig,
     HudThemeConfig,
     HudWidgetConfig,
+    _require_rgba_list,
     _require_unique_widget_ids,
     validate_hud_theme_config,
 )
@@ -29,6 +30,9 @@ ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
 ROUTE_MAP_MARKER_RGBA = (228, 255, 238, 255)
 ROUTE_MAP_HEADING_ARROW_RGBA = (74, 155, 255, 255)
 ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
+PROGRESS_BAR_FILL_RGBA = (34, 255, 138, 255)
+PROGRESS_BAR_RAIL_RGBA = (8, 12, 20, 220)
+PROGRESS_BAR_TICK_RGBA = (230, 238, 245, 168)
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
@@ -279,6 +283,9 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_bool_style(widget, "show_north_marker")
     _validate_optional_bool_style(widget, "show_bearing_label")
     _validate_optional_bool_style(widget, "show_heading_arrow")
+    _validate_optional_rgba_style(widget, "fill_rgba")
+    _validate_optional_rgba_style(widget, "rail_rgba")
+    _validate_optional_rgba_style(widget, "tick_rgba")
     _validate_optional_non_negative_int_style(widget, "decimals")
     _validate_optional_text_style(widget, "format")
 
@@ -356,6 +363,11 @@ def _validate_optional_non_negative_int_style(widget: HudWidgetConfig, key: str)
         raise ValueError(f"widget '{widget.id}' style.{key} must be at least 0")
 
 
+def _validate_optional_rgba_style(widget: HudWidgetConfig, key: str) -> None:
+    if key in widget.style:
+        _require_rgba_style(widget, widget.style[key], key)
+
+
 def _validate_optional_text_style(widget: HudWidgetConfig, key: str) -> None:
     if key in widget.style and not isinstance(widget.style[key], str):
         raise ValueError(f"widget '{widget.id}' style.{key} must be a string")
@@ -408,6 +420,17 @@ def _style_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderSca
         _style_font_family(widget, theme),
         _style_font_weight(widget, theme),
     )
+
+
+def _require_rgba_style(widget: HudWidgetConfig, value: object, key: str) -> tuple[int, int, int, int]:
+    rgba = _require_rgba_list(value, f"widget '{widget.id}' style.{key}")
+    return (rgba[0], rgba[1], rgba[2], rgba[3])
+
+
+def _style_rgba(widget: HudWidgetConfig, key: str, default: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    if key not in widget.style:
+        return default
+    return _require_rgba_style(widget, widget.style[key], key)
 
 
 def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> str | int:
@@ -473,41 +496,77 @@ def _draw_progress_bar(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
-    font = _style_font(widget, theme, scale)
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
     track_left = left + _scale_x(scale, 16)
     track_right = left + w - _scale_x(scale, 16)
-    track_y = top + _scale_y(scale, 42)
+    track_top = top + _scale_y(scale, 34)
+    track_bottom = top + h - _scale_y(scale, 10)
+    track_y = track_top + (track_bottom - track_top) // 2
     label = str(widget.style.get("label", ""))
     show_units = _style_bool(widget, "show_unit", theme.show_units)
     show_current_value = _style_bool(widget, "show_current_value", True)
     show_total_value = _style_bool(widget, "show_total_value", True)
-    draw.line((track_left, track_y, track_right, track_y), fill=tuple(theme.text_rgba), width=_scale_draw(scale, 2))
-    for kilometer in range(int(goal_m // 1000) + 1):
-        ratio = kilometer / max(goal_m / 1000.0, 1.0)
-        x = track_left + int((track_right - track_left) * ratio)
-        tick_height = _scale_draw(scale, 20) if kilometer % 2 == 0 else _scale_draw(scale, 14)
-        draw.line((x, track_y - tick_height // 2, x, track_y + tick_height // 2), fill=tuple(theme.text_rgba), width=_scale_draw(scale, 2))
+    fill_rgba = _style_rgba(widget, "fill_rgba", PROGRESS_BAR_FILL_RGBA)
+    rail_rgba = _style_rgba(widget, "rail_rgba", PROGRESS_BAR_RAIL_RGBA)
+    tick_rgba = _style_rgba(widget, "tick_rgba", PROGRESS_BAR_TICK_RGBA)
+    rail_radius = max((track_bottom - track_top) // 2, _scale_draw(scale, 6))
+    draw.rounded_rectangle((track_left, track_top, track_right, track_bottom), radius=rail_radius, fill=rail_rgba)
+    draw.line((track_left, track_y, track_right, track_y), fill=rail_rgba, width=_scale_draw(scale, 1))
     progress_value_m = distance_m if distance_m is not None else 0.0
     progress_ratio = min(max(progress_value_m / goal_m, 0.0), 1.0)
-    marker_x = track_left + int((track_right - track_left) * progress_ratio)
-    r = _scale_draw(scale, 9)
-    draw.ellipse((marker_x - r, track_y - r, marker_x + r, track_y + r), fill=tuple(theme.accent_rgba), outline=tuple(theme.text_rgba))
-    left_parts: list[str] = []
+    progress_right = track_left + int((track_right - track_left) * progress_ratio)
+    fill_top = track_top + _scale_y(scale, 3)
+    fill_bottom = track_bottom - _scale_y(scale, 3)
+    fill_radius = max((fill_bottom - fill_top) // 2, _scale_draw(scale, 4))
+    if progress_right > track_left:
+        draw.rounded_rectangle(
+            (track_left, fill_top, max(progress_right, track_left + fill_radius * 2), fill_bottom),
+            radius=fill_radius,
+            fill=fill_rgba,
+        )
+
+    tick_distances_m = [0.0]
+    minor_tick_step_m = 250.0
+    while minor_tick_step_m < goal_m:
+        tick_distances_m.append(minor_tick_step_m)
+        minor_tick_step_m += 250.0
+    if goal_m > 250.0:
+        tick_distances_m.append(goal_m)
+
+    for tick_distance_m in tick_distances_m:
+        ratio = min(max(tick_distance_m / goal_m, 0.0), 1.0)
+        x = track_left + int((track_right - track_left) * ratio)
+        if math.isclose(tick_distance_m % 1000.0, 0.0, abs_tol=1e-6):
+            tick_height = track_bottom - track_top + _scale_y(scale, 8)
+        elif math.isclose(tick_distance_m % 500.0, 0.0, abs_tol=1e-6):
+            tick_height = track_bottom - track_top + _scale_y(scale, 2)
+        else:
+            tick_height = max(track_bottom - track_top - _scale_y(scale, 4), _scale_draw(scale, 6))
+        draw.line((x, track_y - tick_height // 2, x, track_y + tick_height // 2), fill=tick_rgba, width=_scale_draw(scale, 1))
+
+    text_y = top + _scale_y(scale, 10)
+    text_x = track_left
     if label:
-        left_parts.append(label)
+        draw.text((text_x, text_y), label, fill=tuple(theme.text_rgba), font=title_font)
+        label_box = draw.textbbox((text_x, text_y), label, font=title_font)
+        text_x = label_box[2] + _scale_x(scale, 10)
     if show_current_value:
-        left_parts.append(_distance_label(progress_value_m, show_units))
-    if left_parts:
-        draw.text((track_left, top + _scale_y(scale, 14)), " ".join(left_parts), fill=tuple(theme.text_rgba), font=font)
+        draw.text(
+            (text_x, text_y - _scale_y(scale, 2)),
+            _distance_label(progress_value_m, show_units),
+            fill=tuple(theme.text_rgba),
+            font=value_font,
+        )
     if show_total_value:
         draw.text(
             (track_right, top + _scale_y(scale, 14)),
             _distance_label(goal_m, show_units),
             fill=tuple(theme.text_rgba),
             anchor="ra",
-            font=font,
+            font=value_font,
         )
 
 

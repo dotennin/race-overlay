@@ -1,4 +1,4 @@
-from race_overlay.hud_presets import apply_legacy_field_visibility, broadcast_runner_preset
+from race_overlay.hud_presets import _legacy_broadcast_runner_preset, apply_legacy_field_visibility, broadcast_runner_preset
 
 
 def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
@@ -32,6 +32,9 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert config.theme.unit_font_size_px == 12
     assert ruler.width == 560
     assert ruler.y == 28
+    assert ruler.style["fill_rgba"] == [34, 255, 138, 255]
+    assert ruler.style["rail_rgba"] == [8, 12, 20, 220]
+    assert ruler.style["tick_rgba"] == [230, 238, 245, 168]
     assert route_map.x == 22
     assert route_map.width == 196
     assert route_map.height == 196
@@ -65,6 +68,15 @@ def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
     assert route_map.style["show_heading_arrow"] is True
+
+
+def test_legacy_broadcast_runner_preset_leaves_progress_bar_color_defaults_unset() -> None:
+    config = _legacy_broadcast_runner_preset()
+    ruler = next(widget for widget in config.widgets if widget.id == "distance-ruler")
+
+    assert "fill_rgba" not in ruler.style
+    assert "rail_rgba" not in ruler.style
+    assert "tick_rgba" not in ruler.style
 
 
 def test_apply_legacy_field_visibility_maps_distance_flag_to_elevation_stat_for_back_compat() -> None:

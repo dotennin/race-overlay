@@ -213,3 +213,49 @@ def test_hud_theme_config_defaults_to_broadcast_fonts_for_new_huds() -> None:
     assert theme.title_font_family == "broadcast_ui"
     assert theme.value_font_family == "broadcast_value"
     assert theme.unit_font_family == "broadcast_ui"
+
+
+def test_deserialize_hud_config_supports_progress_bar_rgba_style_fields() -> None:
+    config = deserialize_hud_config(
+        {
+            "preset": "custom",
+            "theme": {
+                "panel_rgba": [12, 18, 28, 168],
+                "accent_rgba": [255, 196, 92, 255],
+                "text_rgba": [255, 255, 255, 255],
+                "note_text": "Race Day",
+                "font_family": "broadcast_ui",
+                "font_weight": "regular",
+                "font_size_px": 18,
+                "show_units": True,
+            },
+            "widgets": [
+                {
+                    "id": "distance-ruler",
+                    "type": "progress_bar",
+                    "bindings": {"value": "distance_m"},
+                    "anchor": "top-left",
+                    "x": 360,
+                    "y": 28,
+                    "width": 560,
+                    "height": 56,
+                    "style": {
+                        "label": "Distance",
+                        "fill_rgba": [34, 255, 138, 255],
+                        "rail_rgba": [8, 12, 20, 220],
+                        "tick_rgba": [230, 238, 245, 168],
+                    },
+                }
+            ],
+        }
+    )
+
+    ruler = config.widgets[0]
+    serialized = serialize_hud_config(config)
+
+    assert ruler.style["fill_rgba"] == [34, 255, 138, 255]
+    assert ruler.style["rail_rgba"] == [8, 12, 20, 220]
+    assert ruler.style["tick_rgba"] == [230, 238, 245, 168]
+    assert serialized["widgets"][0]["style"]["fill_rgba"] == [34, 255, 138, 255]
+    assert serialized["widgets"][0]["style"]["rail_rgba"] == [8, 12, 20, 220]
+    assert serialized["widgets"][0]["style"]["tick_rgba"] == [230, 238, 245, 168]

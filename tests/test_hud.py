@@ -243,6 +243,41 @@ def test_render_hud_frame_shows_current_and_total_distance_on_ruler_by_default(m
     )
 
 
+def test_draw_progress_bar_defaults_to_dense_green_ruler() -> None:
+    image = Image.new("RGBA", (640, 96), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    _draw_progress_bar(
+        draw,
+        HudWidgetConfig(
+            id="distance-progress",
+            type="progress_bar",
+            bindings={"value": "distance_m"},
+            anchor="top-left",
+            x=0,
+            y=0,
+            width=560,
+            height=56,
+            style={"label": "Distance"},
+        ),
+        distance_m=5200.0,
+        total_distance_m=10000.0,
+        theme=HudThemeConfig(),
+        frame_width=640,
+        frame_height=96,
+        scale=RenderScale(x=1.0, y=1.0, draw=1.0),
+    )
+
+    tick_x_positions = {
+        x
+        for x, y in ((x, y) for x in range(image.width) for y in range(image.height))
+        if image.getpixel((x, y)) == (230, 238, 245, 168)
+    }
+
+    assert len(tick_x_positions) >= 30
+    assert (34, 255, 138, 255) in image.getdata()
+
+
 def test_draw_heading_arrow_uses_explicit_arrow_color() -> None:
     image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
