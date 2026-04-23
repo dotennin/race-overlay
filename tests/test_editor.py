@@ -1249,6 +1249,18 @@ def test_editor_script_uses_preview_endpoint_for_live_draft_updates() -> None:
     assert "help-modal" in script
 
 
+def test_editor_script_refreshes_preview_from_active_input_events() -> None:
+    script = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    text_builder = script.split("function buildTextInput", 1)[1].split("function buildNumberInput", 1)[0]
+    number_builder = script.split("function buildNumberInput", 1)[1].split("function buildCheckbox", 1)[0]
+    select_builder = script.split("function buildSelectInput", 1)[1].split("function buildRgbaInput", 1)[0]
+
+    assert 'addEventListener("input"' in text_builder
+    assert 'addEventListener("input"' in number_builder
+    assert 'addEventListener("input"' in select_builder
+    assert 'addEventListener("change"' in number_builder
+
+
 def test_editor_script_throttles_preview_during_drag_and_flushes_on_pointerup() -> None:
     script = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
 

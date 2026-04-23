@@ -368,18 +368,35 @@ function appendField(parent, labelText, control, fullWidth = false) {
   parent.appendChild(wrapper);
 }
 
-function buildTextInput(value, onChange, type = "text") {
+function buildTextInput(value, onChange, type = "text", onInput = null) {
   const input = document.createElement("input");
   input.type = type;
-  input.value = value ?? "";
+  let currentValue = value ?? "";
+  input.value = currentValue;
+  input.addEventListener("input", () => {
+    currentValue = input.value;
+    (onInput ?? onChange)(currentValue);
+  });
   input.addEventListener("change", () => onChange(input.value));
   return input;
 }
 
-function buildNumberInput(value, onChange, options = {}) {
+function parseIntegerInput(rawValue) {
+  if (rawValue.trim() === "") {
+    return null;
+  }
+  const nextValue = Number(rawValue);
+  if (!Number.isFinite(nextValue) || !Number.isInteger(nextValue)) {
+    return null;
+  }
+  return nextValue;
+}
+
+function buildNumberInput(value, onChange, options = {}, onInput = null) {
   const input = document.createElement("input");
   input.type = "number";
-  input.value = String(value);
+  let currentValue = value;
+  input.value = String(currentValue);
   input.step = String(options.step ?? 1);
   if (options.min !== undefined) {
     input.min = String(options.min);
@@ -387,16 +404,21 @@ function buildNumberInput(value, onChange, options = {}) {
   if (options.max !== undefined) {
     input.max = String(options.max);
   }
+  input.addEventListener("input", () => {
+    const nextValue = parseIntegerInput(input.value);
+    if (nextValue === null) {
+      return;
+    }
+    currentValue = nextValue;
+    (onInput ?? onChange)(nextValue);
+  });
   input.addEventListener("change", () => {
-    if (input.value.trim() === "") {
-      input.value = String(value);
+    const nextValue = parseIntegerInput(input.value);
+    if (nextValue === null) {
+      input.value = String(currentValue);
       return;
     }
-    const nextValue = Number(input.value);
-    if (!Number.isFinite(nextValue) || !Number.isInteger(nextValue)) {
-      input.value = String(value);
-      return;
-    }
+    currentValue = nextValue;
     onChange(nextValue);
   });
   return input;
@@ -410,7 +432,7 @@ function buildCheckbox(value, onChange) {
   return input;
 }
 
-function buildSelectInput(value, options, onChange) {
+function buildSelectInput(value, options, onChange, onInput = null) {
   const select = document.createElement("select");
   options.forEach((optionValue) => {
     const option = document.createElement("option");
@@ -419,12 +441,13 @@ function buildSelectInput(value, options, onChange) {
     option.selected = optionValue === value;
     select.appendChild(option);
   });
+  select.addEventListener("input", () => (onInput ?? onChange)(select.value));
   select.addEventListener("change", () => onChange(select.value));
   return select;
 }
 
-function buildRgbaInput(value, onChange) {
-  const values = Array.isArray(value) && value.length === 4 ? value : [0, 0, 0, 255];
+function buildRgbaInput(value, onChange, onInput = null) {
+  const channelValues = Array.isArray(value) && value.length === 4 ? [...value] : [0, 0, 0, 255];
   const wrapper = document.createElement("div");
   wrapper.className = "rgba-input";
   ["R", "G", "B", "A"].forEach((channelLabel, index) => {
@@ -434,18 +457,25 @@ function buildRgbaInput(value, onChange) {
     text.textContent = channelLabel;
     channel.appendChild(text);
     channel.appendChild(
-      buildNumberInput(values[index], (nextValue) => {
-        const nextChannels = [...values];
-        nextChannels[index] = nextValue;
-        onChange(nextChannels);
-      }, { min: 0, max: 255 }),
+      buildNumberInput(
+        channelValues[index],
+        (nextValue) => {
+          channelValues[index] = nextValue;
+          onChange([...channelValues]);
+        },
+        { min: 0, max: 255 },
+        (nextValue) => {
+          channelValues[index] = nextValue;
+          (onInput ?? onChange)([...channelValues]);
+        },
+      ),
     );
     wrapper.appendChild(channel);
   });
   return wrapper;
 }
 
-function renderFieldControl(parent, key, metadata, value, onChange) {
+function renderFieldControl(parent, key, metadata, value, onChange, onInput = null) {
   const fieldLabel = metadata?.label ?? key;
   if (metadata?.kind === "boolean" || typeof value === "boolean") {
     const toggle = document.createElement("label");
@@ -458,18 +488,31 @@ function renderFieldControl(parent, key, metadata, value, onChange) {
     return;
   }
   if (metadata?.kind === "rgba") {
-    appendField(parent, fieldLabel, buildRgbaInput(value, onChange), true);
+    appendField(parent, fieldLabel, buildRgbaInput(value, onChange, onInput), true);
     return;
   }
   if (metadata?.kind === "enum") {
-    appendField(parent, fieldLabel, buildSelectInput(value, metadata.options ?? [], onChange), true);
+    appendField(parent, fieldLabel, buildSelectInput(value, metadata.options ?? [], onChange, onInput), true);
     return;
   }
   if (metadata?.kind === "integer" || typeof value === "number") {
-    appendField(parent, fieldLabel, buildNumberInput(value, onChange, { min: metadata?.min }), false);
+    appendField(parent, fieldLabel, buildNumberInput(value, onChange, { min: metadata?.min }, onInput), false);
     return;
   }
-  appendField(parent, fieldLabel, buildTextInput(String(value ?? ""), onChange), true);
+  appendField(parent, fieldLabel, buildTextInput(String(value ?? ""), onChange, "text", onInput), true);
+}
+
+function updateThemeField(key, nextValue, { live = false } = {}) {
+  if (!draftState) {
+    return;
+  }
+  draftState.theme = Object.assign({}, draftState.theme, { [key]: nextValue });
+  if (!live) {
+    renderThemeControls();
+    renderInspector();
+  }
+  schedulePreviewRefresh();
+  updateSaveButtonState();
 }
 
 function renderThemeControls() {
@@ -486,16 +529,14 @@ function renderThemeControls() {
   const themeGrid = document.createElement("div");
   themeGrid.className = "inspector-grid";
   Object.entries(themeSchema).forEach(([key, metadata]) => {
-    renderFieldControl(themeGrid, key, metadata, draftState.theme[key], (nextValue) => {
-      if (!draftState) {
-        return;
-      }
-      draftState.theme = Object.assign({}, draftState.theme, { [key]: nextValue });
-      renderThemeControls();
-      renderInspector();
-      schedulePreviewRefresh();
-      updateSaveButtonState();
-    });
+    renderFieldControl(
+      themeGrid,
+      key,
+      metadata,
+      draftState.theme[key],
+      (nextValue) => updateThemeField(key, nextValue),
+      (nextValue) => updateThemeField(key, nextValue, { live: true }),
+    );
   });
   themeCard.appendChild(themeGrid);
   elements.themeControls.appendChild(themeCard);
@@ -561,21 +602,47 @@ function renderInspector() {
   const geometryGrid = document.createElement("div");
   geometryGrid.className = "inspector-grid";
 
-  const anchorSelect = document.createElement("select");
-  SUPPORTED_ANCHORS.forEach((anchor) => {
-    const option = document.createElement("option");
-    option.value = anchor;
-    option.textContent = anchor;
-    option.selected = anchor === widget.anchor;
-    anchorSelect.appendChild(option);
-  });
-  anchorSelect.addEventListener("change", () => updateWidget(widget.id, { anchor: anchorSelect.value }));
-  appendField(geometryGrid, "Anchor", anchorSelect, true);
-  appendField(geometryGrid, "X", buildNumberInput(widget.x, (value) => updateWidget(widget.id, { x: value })), false);
-  appendField(geometryGrid, "Y", buildNumberInput(widget.y, (value) => updateWidget(widget.id, { y: value })), false);
-  appendField(geometryGrid, "Width", buildNumberInput(widget.width, (value) => updateWidget(widget.id, { width: value })), false);
-  appendField(geometryGrid, "Height", buildNumberInput(widget.height, (value) => updateWidget(widget.id, { height: value })), false);
-  appendField(geometryGrid, "Z index", buildNumberInput(widget.z_index, (value) => updateWidget(widget.id, { z_index: value })), true);
+  appendField(
+    geometryGrid,
+    "Anchor",
+    buildSelectInput(
+      widget.anchor,
+      SUPPORTED_ANCHORS,
+      (value) => updateWidget(widget.id, { anchor: value }),
+      (value) => updateWidget(widget.id, { anchor: value }, { live: true }),
+    ),
+    true,
+  );
+  appendField(
+    geometryGrid,
+    "X",
+    buildNumberInput(widget.x, (value) => updateWidget(widget.id, { x: value }), {}, (value) => updateWidget(widget.id, { x: value }, { live: true })),
+    false,
+  );
+  appendField(
+    geometryGrid,
+    "Y",
+    buildNumberInput(widget.y, (value) => updateWidget(widget.id, { y: value }), {}, (value) => updateWidget(widget.id, { y: value }, { live: true })),
+    false,
+  );
+  appendField(
+    geometryGrid,
+    "Width",
+    buildNumberInput(widget.width, (value) => updateWidget(widget.id, { width: value }), {}, (value) => updateWidget(widget.id, { width: value }, { live: true })),
+    false,
+  );
+  appendField(
+    geometryGrid,
+    "Height",
+    buildNumberInput(widget.height, (value) => updateWidget(widget.id, { height: value }), {}, (value) => updateWidget(widget.id, { height: value }, { live: true })),
+    false,
+  );
+  appendField(
+    geometryGrid,
+    "Z index",
+    buildNumberInput(widget.z_index, (value) => updateWidget(widget.id, { z_index: value }), {}, (value) => updateWidget(widget.id, { z_index: value }, { live: true })),
+    true,
+  );
 
   geometryCard.appendChild(geometryGrid);
   elements.inspectorContent.appendChild(geometryCard);
@@ -598,9 +665,18 @@ function renderInspector() {
     styleCard.appendChild(empty);
   } else {
     styleKeys.forEach((key) => {
-      renderFieldControl(styleGrid, key, styleSchema[key], getStyleFieldValue(widget, key), (nextValue) => {
-        updateWidgetStyle(widget.id, key, nextValue);
-      });
+      renderFieldControl(
+        styleGrid,
+        key,
+        styleSchema[key],
+        getStyleFieldValue(widget, key),
+        (nextValue) => {
+          updateWidgetStyle(widget.id, key, nextValue);
+        },
+        (nextValue) => {
+          updateWidgetStyle(widget.id, key, nextValue, { live: true });
+        },
+      );
     });
     styleCard.appendChild(styleGrid);
   }
@@ -654,7 +730,9 @@ function updateWidget(widgetId, patch, options = {}) {
   }
   Object.assign(widget, patch);
   renderLayers();
-  renderInspector();
+  if (!options.live) {
+    renderInspector();
+  }
   renderCanvasOverlays();
   if (options.refreshPreview !== false) {
     schedulePreviewRefresh();
@@ -662,16 +740,19 @@ function updateWidget(widgetId, patch, options = {}) {
   updateSaveButtonState();
 }
 
-function updateWidgetStyle(widgetId, key, value) {
+function updateWidgetStyle(widgetId, key, value, options = {}) {
   const widget = getWidget(widgetId);
   if (!widget) {
     return;
   }
   widget.style = Object.assign({}, widget.style, { [key]: value });
   renderLayers();
-  renderInspector();
+  if (!options.live) {
+    renderInspector();
+  }
   renderCanvasOverlays();
   schedulePreviewRefresh();
+  updateSaveButtonState();
 }
 
 function moveLayer(widgetId, delta) {

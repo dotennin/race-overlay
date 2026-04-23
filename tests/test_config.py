@@ -237,6 +237,59 @@ def test_load_config_preserves_customized_broadcast_runner_geometry_and_legacy_t
     assert loaded_route_map.style["show_north_marker"] is True
 
 
+def test_load_config_only_backfills_broadcast_runner_defaults_for_explicit_legacy_values(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    legacy_hud = _legacy_broadcast_runner_preset()
+    legacy_theme = _legacy_broadcast_runner_preset().theme
+    legacy_hud.theme.title_font_family = "mono"
+    legacy_hud.theme.title_font_weight = "bold"
+    legacy_hud.theme.title_font_size_px = 22
+    legacy_hud.theme.value_font_family = legacy_theme.font_family
+    legacy_hud.theme.value_font_weight = legacy_theme.font_weight
+    legacy_hud.theme.value_font_size_px = legacy_theme.font_size_px
+    legacy_hud.theme.unit_font_family = "serif"
+    legacy_hud.theme.unit_font_weight = "bold"
+    legacy_hud.theme.unit_font_size_px = 11
+    distance_ruler = next(widget for widget in legacy_hud.widgets if widget.id == "distance-ruler")
+    distance_ruler.style["fill_rgba"] = [200, 10, 20, 255]
+    route_map = next(widget for widget in legacy_hud.widgets if widget.id == "route-map")
+    route_map.x = 96
+    route_map.width = 244
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": serialize_hud_config(legacy_hud),
+                "overrides": {},
+            },
+            sort_keys=False,
+        )
+    )
+
+    config = load_config(path)
+    loaded_ruler = next(widget for widget in config.hud.widgets if widget.id == "distance-ruler")
+    loaded_route_map = next(widget for widget in config.hud.widgets if widget.id == "route-map")
+
+    assert config.hud.theme.title_font_family == "mono"
+    assert config.hud.theme.title_font_weight == "bold"
+    assert config.hud.theme.title_font_size_px == 22
+    assert config.hud.theme.value_font_family == "broadcast_value"
+    assert config.hud.theme.value_font_weight == "bold"
+    assert config.hud.theme.value_font_size_px == 32
+    assert config.hud.theme.unit_font_family == "serif"
+    assert config.hud.theme.unit_font_weight == "bold"
+    assert config.hud.theme.unit_font_size_px == 11
+    assert loaded_ruler.style["fill_rgba"] == [200, 10, 20, 255]
+    assert loaded_ruler.style["rail_rgba"] == [8, 12, 20, 220]
+    assert loaded_route_map.x == 96
+    assert loaded_route_map.width == 244
+    assert loaded_route_map.style["show_north_marker"] is True
+
+
 def test_load_config_does_not_reintroduce_removed_legacy_widgets(tmp_path: Path) -> None:
     path = tmp_path / "overlay.yaml"
     legacy_hud = _legacy_broadcast_runner_preset()

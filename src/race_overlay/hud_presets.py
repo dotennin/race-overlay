@@ -353,26 +353,37 @@ def _migrate_broadcast_runner_theme(
     legacy_theme: HudThemeConfig,
     refreshed_theme: HudThemeConfig,
 ) -> None:
-    if theme.title_font_family is None and theme.font_family == legacy_theme.font_family:
+    legacy_font_family = theme.font_family == legacy_theme.font_family
+    legacy_font_weight = theme.font_weight == legacy_theme.font_weight
+    legacy_font_size = theme.font_size_px == legacy_theme.font_size_px
+
+    if legacy_font_family:
+        theme.font_family = refreshed_theme.font_family
+
+    if legacy_font_family and _should_backfill_theme_role(theme.title_font_family, legacy_theme.font_family):
         theme.title_font_family = refreshed_theme.title_font_family
-    if theme.title_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+    if legacy_font_weight and _should_backfill_theme_role(theme.title_font_weight, legacy_theme.font_weight):
         theme.title_font_weight = refreshed_theme.title_font_weight
-    if theme.title_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+    if legacy_font_size and _should_backfill_theme_role(theme.title_font_size_px, legacy_theme.font_size_px):
         theme.title_font_size_px = refreshed_theme.title_font_size_px
 
-    if theme.value_font_family is None and theme.font_family == legacy_theme.font_family:
+    if legacy_font_family and _should_backfill_theme_role(theme.value_font_family, legacy_theme.font_family):
         theme.value_font_family = refreshed_theme.value_font_family
-    if theme.value_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+    if legacy_font_weight and _should_backfill_theme_role(theme.value_font_weight, legacy_theme.font_weight):
         theme.value_font_weight = refreshed_theme.value_font_weight
-    if theme.value_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+    if legacy_font_size and _should_backfill_theme_role(theme.value_font_size_px, legacy_theme.font_size_px):
         theme.value_font_size_px = refreshed_theme.value_font_size_px
 
-    if theme.unit_font_family is None and theme.font_family == legacy_theme.font_family:
+    if legacy_font_family and _should_backfill_theme_role(theme.unit_font_family, legacy_theme.font_family):
         theme.unit_font_family = refreshed_theme.unit_font_family
-    if theme.unit_font_weight is None and theme.font_weight == legacy_theme.font_weight:
+    if legacy_font_weight and _should_backfill_theme_role(theme.unit_font_weight, legacy_theme.font_weight):
         theme.unit_font_weight = refreshed_theme.unit_font_weight
-    if theme.unit_font_size_px is None and theme.font_size_px == legacy_theme.font_size_px:
+    if legacy_font_size and _should_backfill_theme_role(theme.unit_font_size_px, legacy_theme.font_size_px):
         theme.unit_font_size_px = refreshed_theme.unit_font_size_px
+
+
+def _should_backfill_theme_role(value: str | int | None, legacy_value: str | int) -> bool:
+    return value is None or value == legacy_value
 
 
 def _geometry_nearly_matches(widget: HudWidgetConfig, reference: HudWidgetConfig) -> bool:
