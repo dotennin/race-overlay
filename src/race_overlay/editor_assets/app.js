@@ -623,6 +623,10 @@ function getStyleFieldValue(widget, key) {
   if (Object.prototype.hasOwnProperty.call(widget.style, key)) {
     return widget.style[key];
   }
+  if (widget.type === "progress_bar" && key === "current_font_size_px") {
+    const baseFontSize = Number(getStyleFieldValue(widget, "font_size_px"));
+    return Number.isFinite(baseFontSize) ? Math.max(baseFontSize - 2, 8) : 8;
+  }
   const themeKey = STYLE_THEME_FALLBACKS[key];
   if (themeKey && draftState?.theme) {
     return draftState.theme[themeKey];

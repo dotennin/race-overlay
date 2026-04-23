@@ -74,6 +74,7 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert ruler_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
     assert ruler_style["show_current_value"] == {"kind": "boolean", "label": "Show current value"}
     assert ruler_style["show_total_value"] == {"kind": "boolean", "label": "Show total value"}
+    assert ruler_style["current_font_size_px"] == {"kind": "integer", "label": "Current font size", "min": 8}
     assert ruler_style["fill_rgba"] == {"kind": "rgba", "label": "Fill RGBA"}
     assert ruler_style["rail_rgba"] == {"kind": "rgba", "label": "Rail RGBA"}
     assert ruler_style["tick_rgba"] == {"kind": "rgba", "label": "Tick RGBA"}
@@ -1230,7 +1231,8 @@ def test_editor_shell_contains_two_pane_workspace_and_hidden_help_modal() -> Non
 
     assert 'id="canvas-panel"' in html
     assert 'id="inspector-panel"' in html
-    assert 'id="widget-list"' in html
+    assert 'id="widget-list"' not in html
+    assert "Widgets" not in html
     assert 'id="help-button"' in html
     assert 'id="help-modal"' in html
     assert "hidden" in html.split('id="help-modal"', 1)[1]
@@ -1438,7 +1440,7 @@ def test_editor_shell_uses_canvas_first_layout_copy() -> None:
 
     assert "Canvas-first designer" in html
     assert "Selection rail" not in html
-    assert "Widgets" in html
+    assert "Widgets" not in html
     assert "grid-template-columns: minmax(0, 1fr) 360px;" in css
     assert "function renderWidgetSelection()" in app_js
     assert "layer-item__actions" not in app_js

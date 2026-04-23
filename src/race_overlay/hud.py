@@ -336,6 +336,7 @@ def _validate_progress_bar_widget(widget: HudWidgetConfig) -> None:
             f"progress_bar widget '{widget.id}' requires a minimum width of {PROGRESS_BAR_MIN_WIDTH}px "
             f"(got {widget.width}px)"
         )
+    _validate_optional_font_size_style(widget, "current_font_size_px")
 
 
 def _require_supported_binding(widget: HudWidgetConfig, supported_bindings: set[str]) -> str:
@@ -504,6 +505,36 @@ def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: Rend
     return _scaled_font(scale, size, family_value, weight_value)
 
 
+def _progress_bar_value_font(
+    widget: HudWidgetConfig,
+    theme: HudThemeConfig,
+    scale: RenderScale,
+    *,
+    current: bool = False,
+) -> ImageFont.FreeTypeFont:
+    family_value = widget.style.get("font_family", _theme_role_value(theme, "value_font_family", "font_family"))
+    if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
+
+    weight_value = widget.style.get("font_weight", _theme_role_value(theme, "value_font_weight", "font_weight"))
+    if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.font_weight must be one of: {allowed_values}")
+
+    if current:
+        size_value = widget.style.get("current_font_size_px")
+        if size_value is None:
+            size_value = widget.style.get("font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
+            size = max(_require_font_size_style(widget, size_value, "font_size_px") - 2, 8)
+        else:
+            size = _require_font_size_style(widget, size_value, "current_font_size_px")
+    else:
+        size_value = widget.style.get("font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
+        size = _require_font_size_style(widget, size_value, "font_size_px")
+    return _scaled_font(scale, size, family_value, weight_value)
+
+
 def _title_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale) -> ImageFont.FreeTypeFont:
     return _style_role_font(widget, theme, scale, role="title")
 
@@ -537,7 +568,8 @@ def _draw_progress_bar(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     title_font = _title_font(widget, theme, scale)
-    value_font = _value_font(widget, theme, scale)
+    current_font = _progress_bar_value_font(widget, theme, scale, current=True)
+    total_font = _progress_bar_value_font(widget, theme, scale, current=False)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
     text_layout = _progress_bar_text_layout(left, top, w, h, str(widget.style.get("label", "")))
@@ -595,11 +627,15 @@ def _draw_progress_bar(
         label_box = draw.textbbox((text_x, text_y), label, font=title_font)
         text_x = label_box[2] + _scale_x(scale, 10)
     if show_current_value:
+        current_text = _distance_label(progress_value_m, show_units)
+        current_box = draw.textbbox((0, 0), current_text, font=current_font)
+        current_text_width = current_box[2] - current_box[0]
+        current_text_x = max(track_left, progress_right - current_text_width - _scale_x(scale, 8))
         draw.text(
-            text_layout.current_anchor,
-            _distance_label(progress_value_m, show_units),
+            (current_text_x, text_layout.current_anchor[1]),
+            current_text,
             fill=tuple(theme.text_rgba),
-            font=value_font,
+            font=current_font,
         )
     if show_total_value:
         draw.text(
@@ -607,7 +643,7 @@ def _draw_progress_bar(
             _distance_label(goal_m, show_units),
             fill=tuple(theme.text_rgba),
             anchor="ra",
-            font=value_font,
+            font=total_font,
         )
 
 
@@ -782,13 +818,9 @@ def _draw_route_map(
                 font=unit_font,
             )
         x, y = project(route_projection.point)
-        r = _scale_draw(scale, 7)
-        widget_draw.ellipse(
-            (x - r, y - r, x + r, y + r),
-            fill=ROUTE_MAP_MARKER_RGBA,
-            outline=ROUTE_MAP_ROUTE_RGBA,
-            width=_scale_draw(scale, 2),
-        )
+        marker_points = _route_map_marker_points((x, y), route_projection.tangent, scale)
+        if marker_points is not None:
+            widget_draw.polygon(marker_points, fill=ROUTE_MAP_MARKER_RGBA, outline=ROUTE_MAP_ROUTE_RGBA)
         if show_heading_arrow:
             heading_vector = _projected_route_vector(route_projection, project)
             _draw_heading_arrow(
@@ -1129,6 +1161,32 @@ def _draw_heading_arrow(
     tail_y = center_y - (unit_y * tail_length)
     draw.line((tail_x, tail_y, tip_x, tip_y), fill=arrow_rgba, width=_scale_draw(scale, 2))
     draw.polygon(arrow_head, fill=arrow_rgba)
+
+
+def _route_map_marker_points(
+    center: tuple[float, float],
+    vector: tuple[float, float],
+    scale: RenderScale,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None:
+    dx, dy = vector
+    length = math.hypot(dx, dy)
+    if length <= 1e-12:
+        return None
+    unit_x = dx / length
+    unit_y = dy / length
+    center_x, center_y = center
+    tip_length = _scale_draw(scale, 10)
+    head_length = _scale_draw(scale, 6)
+    arrow_width = _scale_draw(scale, 4)
+    tip_x = center_x + (unit_x * tip_length)
+    tip_y = center_y + (unit_y * tip_length)
+    side_x = -unit_y
+    side_y = unit_x
+    return (
+        (tip_x, tip_y),
+        (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
+        (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
+    )
 
 
 def _heading_arrow_head_points(

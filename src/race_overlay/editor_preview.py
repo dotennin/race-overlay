@@ -38,6 +38,7 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
         "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
         "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},
+        "current_font_size_px": {"kind": "integer", "label": "Current font size", "min": 8},
         "show_unit": {"kind": "boolean", "label": "Show unit suffix"},
         "show_current_value": {"kind": "boolean", "label": "Show current value"},
         "show_total_value": {"kind": "boolean", "label": "Show total value"},
