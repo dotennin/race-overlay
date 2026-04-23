@@ -1407,3 +1407,24 @@ def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
 
     assert 'input.type = "color"' in app_js
     assert 'className = "color-alpha-input"' in app_js
+
+
+def test_editor_assets_remove_duplicate_layer_actions_and_overlay_titles() -> None:
+    from importlib.resources import files
+
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    assert 'textContent = "▲"' not in app_js
+    assert 'textContent = "▼"' not in app_js
+    assert 'widget-overlay__label' not in app_js
+
+
+def test_editor_shell_uses_canvas_first_layout_copy() -> None:
+    from importlib.resources import files
+
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert "Canvas-first designer" in html
+    assert "HUD workspace" not in html
+    assert "grid-template-columns: 188px minmax(0, 1fr) 340px;" in css

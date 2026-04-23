@@ -37,7 +37,7 @@ select {
 #app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 280px;
+  grid-template-columns: 188px minmax(0, 1fr) 340px;
   gap: 16px;
   padding: 16px;
 }
@@ -267,6 +267,7 @@ button:disabled {
 }
 
 .widget-overlay__label {
+  display: none;
   position: absolute;
   top: 8px;
   left: 10px;
@@ -352,7 +353,8 @@ button:disabled {
 }
 
 .layer-item__actions {
-  display: flex;
+  display: none;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
 }

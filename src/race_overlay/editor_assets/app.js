@@ -337,22 +337,6 @@ function renderLayers() {
     });
     actions.appendChild(visibilityButton);
 
-    const upButton = document.createElement("button");
-    upButton.type = "button";
-    upButton.className = "layer-control";
-    upButton.textContent = "▲";
-    upButton.title = "Bring forward";
-    upButton.addEventListener("click", () => moveLayer(widget.id, 1));
-    actions.appendChild(upButton);
-
-    const downButton = document.createElement("button");
-    downButton.type = "button";
-    downButton.className = "layer-control";
-    downButton.textContent = "▼";
-    downButton.title = "Send backward";
-    downButton.addEventListener("click", () => moveLayer(widget.id, -1));
-    actions.appendChild(downButton);
-
     item.appendChild(actions);
     elements.widgetList.appendChild(item);
   });
@@ -741,11 +725,6 @@ function renderCanvasOverlays() {
     overlay.style.zIndex = String(widget.z_index);
     overlay.dataset.widgetId = widget.id;
     overlay.addEventListener("pointerdown", (event) => beginInteraction(event, widget.id, null));
-
-    const label = document.createElement("div");
-    label.className = "widget-overlay__label";
-    label.textContent = widget.style.label || widget.id;
-    overlay.appendChild(label);
 
     ["nw", "ne", "sw", "se"].forEach((handleName) => {
       const handle = document.createElement("div");
