@@ -1225,12 +1225,12 @@ def test_launch_editor_rejects_directory_config_path(tmp_path: Path) -> None:
         launch_editor(config_path, width=1280, height=720)
 
 
-def test_editor_shell_contains_three_pane_workspace_and_hidden_help_modal() -> None:
+def test_editor_shell_contains_two_pane_workspace_and_hidden_help_modal() -> None:
     html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
 
-    assert 'id="layers-panel"' in html
     assert 'id="canvas-panel"' in html
     assert 'id="inspector-panel"' in html
+    assert 'id="widget-list"' in html
     assert 'id="help-button"' in html
     assert 'id="help-modal"' in html
     assert "hidden" in html.split('id="help-modal"', 1)[1]
@@ -1404,9 +1404,12 @@ def test_build_editor_state_hides_removed_theme_colors_and_exposes_route_map_fie
 
 def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
     app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
 
     assert 'input.type = "color"' in app_js
     assert 'className = "color-alpha-input"' in app_js
+    assert "function buildRgbaInput(" not in app_js
+    assert ".color-alpha-input" in css
 
 
 def test_editor_assets_remove_duplicate_layer_actions_and_overlay_titles() -> None:
@@ -1419,12 +1422,23 @@ def test_editor_assets_remove_duplicate_layer_actions_and_overlay_titles() -> No
     assert 'widget-overlay__label' not in app_js
 
 
-def test_editor_shell_uses_canvas_first_layout_copy() -> None:
-    from importlib.resources import files
+def test_editor_asset_defines_drag_snapping_helpers() -> None:
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
 
+    assert "const GRID_SNAP_SIZE = 8" in app_js
+    assert "function collectSnapGuides(" in app_js
+    assert "function snapRectToGuides(" in app_js
+    assert "function renderSnapGuides(" in app_js
+
+
+def test_editor_shell_uses_canvas_first_layout_copy() -> None:
     html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
     css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
 
     assert "Canvas-first designer" in html
-    assert "HUD workspace" not in html
-    assert "grid-template-columns: 188px minmax(0, 1fr) 340px;" in css
+    assert "Selection rail" not in html
+    assert "Widgets" in html
+    assert "grid-template-columns: minmax(0, 1fr) 360px;" in css
+    assert "function renderWidgetSelection()" in app_js
+    assert "layer-item__actions" not in app_js

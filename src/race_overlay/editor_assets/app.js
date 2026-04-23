@@ -1,6 +1,8 @@
 const HUD_REFERENCE_WIDTH = 1280;
 const HUD_REFERENCE_HEIGHT = 720;
 const MIN_WIDGET_SIZE = 24;
+const GRID_SNAP_SIZE = 8;
+const SNAP_THRESHOLD = 6;
 const PREVIEW_DEBOUNCE_MS = 120;
 const PREVIEW_DRAG_THROTTLE_MS = 90;
 const SUPPORTED_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"];
@@ -24,6 +26,7 @@ const elements = {
   preview: document.getElementById("preview"),
   canvasStage: document.getElementById("canvas-stage"),
   widgetOverlays: document.getElementById("widget-overlays"),
+  snapGuides: document.getElementById("snap-guides"),
 };
 
 let savedState = null;
@@ -36,6 +39,7 @@ let dragPreviewTimer = null;
 let lastPreviewRefreshAt = 0;
 let dragPreviewDirty = false;
 let activeInteraction = null;
+let activeSnapGuides = [];
 
 function cloneHud(hud) {
   const theme = Object.assign({}, hud.theme);
@@ -167,6 +171,95 @@ function clampRect(rect, frame) {
   return { left, top, width, height };
 }
 
+function collectSnapGuides(widgetId) {
+  const frame = getPreviewDimensions();
+  const guides = {
+    x: new Set([0, frame.width / 2, frame.width]),
+    y: new Set([0, frame.height / 2, frame.height]),
+  };
+  getWidgetsInLayerOrder().forEach((widget) => {
+    if (widget.id === widgetId || !widget.visible) {
+      return;
+    }
+    const rect = widgetToRect(widget);
+    guides.x.add(rect.left);
+    guides.x.add(rect.left + rect.width / 2);
+    guides.x.add(rect.left + rect.width);
+    guides.y.add(rect.top);
+    guides.y.add(rect.top + rect.height / 2);
+    guides.y.add(rect.top + rect.height);
+  });
+  return {
+    x: [...guides.x],
+    y: [...guides.y],
+  };
+}
+
+function snapPosition(value, span, candidates) {
+  const guideCandidates = candidates.flatMap((candidate) => [
+    { value: candidate, guide: candidate },
+    { value: candidate - span / 2, guide: candidate },
+    { value: candidate - span, guide: candidate },
+  ]);
+  let bestGuide = null;
+  guideCandidates.forEach((candidate) => {
+    const delta = Math.abs(candidate.value - value);
+    if (delta > SNAP_THRESHOLD) {
+      return;
+    }
+    if (!bestGuide || delta < bestGuide.delta) {
+      bestGuide = { ...candidate, delta, kind: "guide" };
+    }
+  });
+  if (bestGuide) {
+    return bestGuide;
+  }
+  const gridValue = Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+  const gridDelta = Math.abs(gridValue - value);
+  if (gridDelta <= SNAP_THRESHOLD) {
+    return { value: gridValue, delta: gridDelta, kind: "grid" };
+  }
+  return { value, delta: 0, kind: "none" };
+}
+
+function snapRectToGuides(rect, widgetId, handle = null) {
+  const guides = collectSnapGuides(widgetId);
+  const nextRect = { ...rect };
+  const guideFeedback = [];
+  const horizontal = handle ? (handle.includes("w") ? "left" : handle.includes("e") ? "right" : null) : "left";
+  const vertical = handle ? (handle.includes("n") ? "top" : handle.includes("s") ? "bottom" : null) : "top";
+
+  if (horizontal === "left") {
+    const snapped = snapPosition(nextRect.left, nextRect.width, guides.x);
+    nextRect.left = snapped.value;
+    if (snapped.kind === "guide") {
+      guideFeedback.push({ axis: "x", position: snapped.guide });
+    }
+  } else if (horizontal === "right") {
+    const snapped = snapPosition(nextRect.left + nextRect.width, nextRect.width, guides.x);
+    nextRect.width = Math.max(MIN_WIDGET_SIZE, snapped.value - nextRect.left);
+    if (snapped.kind === "guide") {
+      guideFeedback.push({ axis: "x", position: snapped.guide });
+    }
+  }
+
+  if (vertical === "top") {
+    const snapped = snapPosition(nextRect.top, nextRect.height, guides.y);
+    nextRect.top = snapped.value;
+    if (snapped.kind === "guide") {
+      guideFeedback.push({ axis: "y", position: snapped.guide });
+    }
+  } else if (vertical === "bottom") {
+    const snapped = snapPosition(nextRect.top + nextRect.height, nextRect.height, guides.y);
+    nextRect.height = Math.max(MIN_WIDGET_SIZE, snapped.value - nextRect.top);
+    if (snapped.kind === "guide") {
+      guideFeedback.push({ axis: "y", position: snapped.guide });
+    }
+  }
+
+  return { rect: nextRect, guides: guideFeedback };
+}
+
 function isDraftDirty() {
   if (!savedState || !draftState) {
     return false;
@@ -287,9 +380,15 @@ function syncOverlayBounds() {
   elements.widgetOverlays.style.top = `${previewRect.top - stageRect.top}px`;
   elements.widgetOverlays.style.width = `${previewRect.width}px`;
   elements.widgetOverlays.style.height = `${previewRect.height}px`;
+  if (elements.snapGuides) {
+    elements.snapGuides.style.left = `${previewRect.left - stageRect.left}px`;
+    elements.snapGuides.style.top = `${previewRect.top - stageRect.top}px`;
+    elements.snapGuides.style.width = `${previewRect.width}px`;
+    elements.snapGuides.style.height = `${previewRect.height}px`;
+  }
 }
 
-function renderLayers() {
+function renderWidgetSelection() {
   if (!elements.widgetList) {
     return;
   }
@@ -308,7 +407,7 @@ function renderLayers() {
     selectButton.className = "layer-select";
     selectButton.addEventListener("click", () => {
       selectedWidgetId = widget.id;
-      renderLayers();
+      renderWidgetSelection();
       renderInspector();
       renderCanvasOverlays();
     });
@@ -323,21 +422,6 @@ function renderLayers() {
     meta.textContent = `${widget.type} · z ${widget.z_index}`;
     selectButton.appendChild(meta);
     item.appendChild(selectButton);
-
-    const actions = document.createElement("div");
-    actions.className = "layer-item__actions";
-
-    const visibilityButton = document.createElement("button");
-    visibilityButton.type = "button";
-    visibilityButton.className = `visibility-toggle${widget.visible ? "" : " is-off"}`;
-    visibilityButton.title = widget.visible ? "Hide widget" : "Show widget";
-    visibilityButton.textContent = widget.visible ? "◉" : "○";
-    visibilityButton.addEventListener("click", () => {
-      updateWidget(widget.id, { visible: !widget.visible });
-    });
-    actions.appendChild(visibilityButton);
-
-    item.appendChild(actions);
     elements.widgetList.appendChild(item);
   });
 }
@@ -439,7 +523,7 @@ function hexToRgb(hex) {
   return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [255, 255, 255];
 }
 
-function buildColorInput(value, onChange, onInput = null) {
+function buildColorInput(value, onChange, onInput = null, labelText = "RGBA") {
   const rgba = Array.isArray(value) && value.length === 4 ? [...value] : [255, 255, 255, 255];
   const wrapper = document.createElement("div");
   wrapper.className = "color-alpha-input";
@@ -447,6 +531,7 @@ function buildColorInput(value, onChange, onInput = null) {
   const input = document.createElement("input");
   input.type = "color";
   input.value = rgbToHex(rgba.slice(0, 3));
+  input.setAttribute("aria-label", `${labelText} color`);
   input.addEventListener("input", () => emitColorChange());
 
   const alpha = document.createElement("input");
@@ -454,6 +539,7 @@ function buildColorInput(value, onChange, onInput = null) {
   alpha.min = "0";
   alpha.max = "255";
   alpha.value = String(rgba[3]);
+  alpha.setAttribute("aria-label", `${labelText} alpha`);
   alpha.addEventListener("input", () => emitColorChange());
 
   function emitColorChange() {
@@ -463,35 +549,6 @@ function buildColorInput(value, onChange, onInput = null) {
   }
 
   wrapper.append(input, alpha);
-  return wrapper;
-}
-
-function buildRgbaInput(value, onChange, onInput = null) {
-  const channelValues = Array.isArray(value) && value.length === 4 ? [...value] : [0, 0, 0, 255];
-  const wrapper = document.createElement("div");
-  wrapper.className = "rgba-input";
-  ["R", "G", "B", "A"].forEach((channelLabel, index) => {
-    const channel = document.createElement("label");
-    channel.className = "rgba-input__channel";
-    const text = document.createElement("span");
-    text.textContent = channelLabel;
-    channel.appendChild(text);
-    channel.appendChild(
-      buildNumberInput(
-        channelValues[index],
-        (nextValue) => {
-          channelValues[index] = nextValue;
-          onChange([...channelValues]);
-        },
-        { min: 0, max: 255 },
-        (nextValue) => {
-          channelValues[index] = nextValue;
-          (onInput ?? onChange)([...channelValues]);
-        },
-      ),
-    );
-    wrapper.appendChild(channel);
-  });
   return wrapper;
 }
 
@@ -508,7 +565,7 @@ function renderFieldControl(parent, key, metadata, value, onChange, onInput = nu
     return;
   }
   if (metadata?.kind === "rgba") {
-    appendField(parent, fieldLabel, buildRgbaInput(value, onChange, onInput), true);
+    appendField(parent, fieldLabel, buildColorInput(value, onChange, onInput, fieldLabel), true);
     return;
   }
   if (metadata?.kind === "enum") {
@@ -703,6 +760,23 @@ function renderInspector() {
   elements.inspectorContent.appendChild(styleCard);
 }
 
+function renderSnapGuides(guides = activeSnapGuides) {
+  if (!elements.snapGuides) {
+    return;
+  }
+  elements.snapGuides.innerHTML = "";
+  guides.forEach((guide) => {
+    const line = document.createElement("span");
+    line.className = `snap-guide snap-guide--${guide.axis}`;
+    if (guide.axis === "x") {
+      line.style.left = `${guide.position}px`;
+    } else {
+      line.style.top = `${guide.position}px`;
+    }
+    elements.snapGuides.appendChild(line);
+  });
+}
+
 function renderCanvasOverlays() {
   if (!elements.widgetOverlays) {
     return;
@@ -736,6 +810,7 @@ function renderCanvasOverlays() {
 
     elements.widgetOverlays.appendChild(overlay);
   });
+  renderSnapGuides();
 }
 
 function updateWidget(widgetId, patch, options = {}) {
@@ -744,7 +819,7 @@ function updateWidget(widgetId, patch, options = {}) {
     return;
   }
   Object.assign(widget, patch);
-  renderLayers();
+  renderWidgetSelection();
   if (!options.live) {
     renderInspector();
   }
@@ -761,7 +836,7 @@ function updateWidgetStyle(widgetId, key, value, options = {}) {
     return;
   }
   widget.style = Object.assign({}, widget.style, { [key]: value });
-  renderLayers();
+  renderWidgetSelection();
   if (!options.live) {
     renderInspector();
   }
@@ -785,7 +860,7 @@ function moveLayer(widgetId, delta) {
   widgets.forEach((widget, order) => {
     widget.z_index = (order + 1) * 10;
   });
-  renderLayers();
+  renderWidgetSelection();
   renderInspector();
   renderCanvasOverlays();
   schedulePreviewRefresh();
@@ -814,7 +889,9 @@ function beginInteraction(event, widgetId, handle) {
     startRect: rect,
     moved: false,
   };
-  renderLayers();
+  activeSnapGuides = [];
+  renderSnapGuides();
+  renderWidgetSelection();
   renderInspector();
   renderCanvasOverlays();
 }
@@ -872,6 +949,8 @@ function handlePointerMove(event) {
     nextRect.left += dx;
     nextRect.top += dy;
   }
+  const snapped = snapRectToGuides(nextRect, activeInteraction.widgetId, activeInteraction.handle);
+  nextRect = snapped.rect;
   nextRect = clampRect(nextRect, getPreviewDimensions());
   const nextPatch = rectToWidgetPatch(widget, nextRect);
   if (
@@ -884,6 +963,7 @@ function handlePointerMove(event) {
   }
   Object.assign(widget, nextPatch);
   activeInteraction.moved = true;
+  activeSnapGuides = snapped.guides;
   if (previewRefreshTimer) {
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = null;
@@ -899,10 +979,11 @@ function endInteraction() {
   }
   const interaction = activeInteraction;
   activeInteraction = null;
+  activeSnapGuides = [];
   if (interaction.moved && (dragPreviewTimer || dragPreviewDirty)) {
     schedulePreviewRefresh({ immediate: true });
   }
-  renderLayers();
+  renderWidgetSelection();
   renderInspector();
   renderCanvasOverlays();
 }
@@ -940,7 +1021,7 @@ async function loadState() {
       elements.preview.style.aspectRatio = `${savedState.preview.width} / ${savedState.preview.height}`;
     }
     updateSaveButtonState();
-    renderLayers();
+    renderWidgetSelection();
     renderInspector();
     renderCanvasOverlays();
     await refreshPreview();
@@ -965,6 +1046,8 @@ async function loadState() {
     if (elements.inspectorContent) {
       elements.inspectorContent.innerHTML = "";
     }
+    activeSnapGuides = [];
+    renderSnapGuides();
     updateSaveButtonState();
     setStatusMessage(readErrorMessage(error, "Failed to load HUD config"));
     return false;
