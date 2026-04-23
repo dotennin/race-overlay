@@ -25,9 +25,11 @@ SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-righ
 LEGACY_DEFAULT_FONT_SIZE_PX = 18
 ROUTE_MAP_DEFAULT_SHAPE = "circle"
 WIDGET_PANEL_RGBA = (12, 18, 28, 168)
-ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 214)
+ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 148)
 ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
-ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
+ROUTE_MAP_COMPLETED_RGBA = (34, 255, 138, 255)
+ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
+ROUTE_MAP_ROUTE_RGBA = ROUTE_MAP_COMPLETED_RGBA
 ROUTE_MAP_MARKER_RGBA = (228, 255, 238, 255)
 ROUTE_MAP_HEADING_ARROW_RGBA = (74, 155, 255, 255)
 ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
@@ -56,6 +58,7 @@ class RouteProjection:
     tangent: tuple[float, float]
     segment_start: tuple[float, float]
     segment_end: tuple[float, float]
+    segment_index: int
 
 
 ROUTE_MAP_SHAPES = ("circle", "rounded-rect", "square")
@@ -78,7 +81,7 @@ def _route_map_shape(widget: HudWidgetConfig) -> str:
 def _split_route_segments(
     projected: list[tuple[float, float]], projection: RouteProjection
 ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
-    split_index = projected.index(projection.segment_start)
+    split_index = projection.segment_index
     completed = projected[: split_index + 1] + [projection.point]
     remaining = [projection.point, projection.segment_end]
     if projection.segment_end in projected[split_index + 1 :]:
@@ -705,17 +708,20 @@ def _draw_route_map(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     shape = str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE))
+    background_rgba = _style_rgba(widget, "background_rgba", ROUTE_MAP_PANEL_RGBA)
+    completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_COMPLETED_RGBA)
+    remaining_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
     widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     widget_draw = ImageDraw.Draw(widget_image)
     if shape == "circle":
         if _widget_panel_enabled(widget):
-            widget_draw.ellipse((0, 0, w, h), fill=ROUTE_MAP_PANEL_RGBA, outline=ROUTE_MAP_PANEL_OUTLINE_RGBA)
+            widget_draw.ellipse((0, 0, w, h), fill=background_rgba, outline=ROUTE_MAP_PANEL_OUTLINE_RGBA)
     else:
         if _widget_panel_enabled(widget):
             widget_draw.rounded_rectangle(
                 (0, 0, w, h),
                 radius=_scale_draw(scale, 16),
-                fill=ROUTE_MAP_PANEL_RGBA,
+                fill=background_rgba,
                 outline=ROUTE_MAP_PANEL_OUTLINE_RGBA,
             )
     label = str(widget.style.get("label", "Route map"))
@@ -754,7 +760,15 @@ def _draw_route_map(
         return (x, y)
 
     projected = [project(point) for point in route_points]
-    widget_draw.line(projected, fill=ROUTE_MAP_ROUTE_RGBA, width=_scale_draw(scale, 4))
+    line_width = _scale_draw(scale, 4)
+    if route_projection is None:
+        widget_draw.line(projected, fill=remaining_rgba, width=line_width)
+    else:
+        completed_points, remaining_points = _split_route_segments(projected, route_projection)
+        if len(completed_points) >= 2:
+            widget_draw.line(completed_points, fill=completed_rgba, width=line_width)
+        if len(remaining_points) >= 2:
+            widget_draw.line(remaining_points, fill=remaining_rgba, width=line_width)
     if show_north_marker:
         widget_draw.text((w / 2, _scale_y(scale, 10)), "N", fill=tuple(theme.text_rgba), anchor="ma", font=unit_font)
     if route_projection is not None:
@@ -1031,8 +1045,9 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
     closest_segment_end = route_points[1]
     closest_tangent = (0.0, 0.0)
     closest_distance_sq = float("inf")
+    segment_index = 0
 
-    for segment_start, segment_end in zip(route_points, route_points[1:]):
+    for index, (segment_start, segment_end) in enumerate(zip(route_points, route_points[1:])):
         candidate = _project_point_onto_segment(current, segment_start, segment_end)
         distance_sq = _distance_squared(current, candidate)
         candidate_tangent = (segment_end[0] - segment_start[0], segment_end[1] - segment_start[1])
@@ -1046,12 +1061,14 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
             closest_segment_end = segment_end
             closest_tangent = candidate_tangent
             closest_distance_sq = distance_sq
+            segment_index = index
 
     return RouteProjection(
         point=closest_point,
         tangent=closest_tangent,
         segment_start=closest_segment_start,
         segment_end=closest_segment_end,
+        segment_index=segment_index,
     )
 
 

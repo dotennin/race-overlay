@@ -1905,16 +1905,18 @@ def test_render_hud_frame_keeps_route_map_panel_by_default(monkeypatch: pytest.M
         total_distance_m=10000.0,
     )
 
-    assert (6, 10, 18, 214) in ellipse_fills
+    assert (6, 10, 18, 148) in ellipse_fills
 
 
 def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     line_fills: list[tuple[int, int, int, int]] = []
+    rounded_rectangle_fills: list[tuple[int, int, int, int]] = []
     ellipse_fills: list[tuple[int, int, int, int]] = []
     polygon_fills: list[tuple[int, int, int, int]] = []
     original_line = ImageDraw.ImageDraw.line
+    original_rounded_rectangle = ImageDraw.ImageDraw.rounded_rectangle
     original_ellipse = ImageDraw.ImageDraw.ellipse
     original_polygon = ImageDraw.ImageDraw.polygon
 
@@ -1923,6 +1925,12 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
         if isinstance(fill, tuple):
             line_fills.append(fill)
         return original_line(self, xy, *args, **kwargs)
+
+    def record_rounded_rectangle(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            rounded_rectangle_fills.append(fill)
+        return original_rounded_rectangle(self, xy, *args, **kwargs)
 
     def record_ellipse(self, xy, *args, **kwargs):
         fill = kwargs.get("fill")
@@ -1937,6 +1945,7 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
         return original_polygon(self, xy, *args, **kwargs)
 
     monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+    monkeypatch.setattr(ImageDraw.ImageDraw, "rounded_rectangle", record_rounded_rectangle)
     monkeypatch.setattr(ImageDraw.ImageDraw, "ellipse", record_ellipse)
     monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
 
@@ -1968,14 +1977,16 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
                     y=24,
                     width=176,
                     height=128,
-                    style={"label": ""},
+                    style={"label": "", "shape": "rounded-rect"},
                 )
             ],
         ),
         elapsed_seconds=6852,
     )
 
+    assert (6, 10, 18, 148) in rounded_rectangle_fills
     assert (34, 255, 138, 255) in line_fills
+    assert (13, 144, 195, 255) in line_fills
     assert (228, 255, 238, 255) in ellipse_fills
     assert (255, 255, 255, 255) in polygon_fills
 
@@ -2107,6 +2118,7 @@ def test_split_route_segments_uses_current_projection_for_completed_and_remainin
         tangent=(1.0, 0.0),
         segment_start=(10.0, 0.0),
         segment_end=(20.0, 0.0),
+        segment_index=1,
     )
 
     completed, remaining = _split_route_segments(projected, projection)
@@ -2119,4 +2131,3 @@ def test_progress_bar_text_layout_aligns_current_and_total_values() -> None:
     layout = _progress_bar_text_layout(left=0, top=0, width=560, height=56, label="Distance")
 
     assert layout.current_anchor[1] == layout.total_anchor[1]
-
