@@ -6,8 +6,6 @@ from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 def _legacy_broadcast_runner_preset() -> HudConfig:
     return HudConfig(
         theme=HudThemeConfig(
-            panel_rgba=[12, 18, 28, 148],
-            accent_rgba=[26, 230, 198, 255],
             text_rgba=[247, 251, 255, 255],
             font_family="sans",
             font_weight="regular",
@@ -147,8 +145,6 @@ def _legacy_broadcast_runner_preset() -> HudConfig:
 def broadcast_runner_preset() -> HudConfig:
     return HudConfig(
         theme=HudThemeConfig(
-            panel_rgba=[12, 18, 28, 148],
-            accent_rgba=[26, 230, 198, 255],
             text_rgba=[247, 251, 255, 255],
             font_family="broadcast_ui",
             font_weight="regular",

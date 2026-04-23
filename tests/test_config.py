@@ -499,3 +499,51 @@ def test_resolve_video_globs_from_config_uses_config_directory_for_relative_patt
     resolved = resolve_video_globs_from_config(config_path, ["*.MP4", "/already/absolute.mov"])
 
     assert resolved == [str(config_path.parent / "*.MP4"), "/already/absolute.mov"]
+
+
+def test_load_config_strips_legacy_panel_and_accent_theme_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "activity_file": "activity_22577902433.tcx",
+                "video_globs": ["*.MP4", "*.mov"],
+                "output_dir": "rendered",
+                "cache_dir": "cache",
+                "timeline": {"global_offset_seconds": 0.0, "outside_activity": "no_data"},
+                "hud": {
+                    "preset": "broadcast-runner",
+                    "theme": {
+                        "panel_rgba": [12, 18, 28, 148],
+                        "accent_rgba": [26, 230, 198, 255],
+                        "text_rgba": [247, 251, 255, 255],
+                        "note_text": "Race Day",
+                        "font_family": "broadcast_ui",
+                        "font_weight": "regular",
+                        "font_size_px": 18,
+                        "title_font_family": "broadcast_ui",
+                        "title_font_weight": "regular",
+                        "title_font_size_px": 16,
+                        "value_font_family": "broadcast_value",
+                        "value_font_weight": "bold",
+                        "value_font_size_px": 33,
+                        "unit_font_family": "broadcast_value",
+                        "unit_font_weight": "regular",
+                        "unit_font_size_px": 13,
+                        "show_units": True,
+                    },
+                    "widgets": [],
+                },
+                "overrides": {},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    theme_payload = serialize_hud_config(config.hud)["theme"]
+
+    assert "panel_rgba" not in theme_payload
+    assert "accent_rgba" not in theme_payload
+    assert theme_payload["text_rgba"] == [247, 251, 255, 255]

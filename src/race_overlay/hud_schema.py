@@ -4,8 +4,6 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass(slots=True)
 class HudThemeConfig:
-    panel_rgba: list[int] = field(default_factory=lambda: [12, 18, 28, 168])
-    accent_rgba: list[int] = field(default_factory=lambda: [255, 196, 92, 255])
     text_rgba: list[int] = field(default_factory=lambda: [255, 255, 255, 255])
     note_text: str = "Race Day"
     font_family: str = "broadcast_ui"
@@ -106,86 +104,83 @@ def _deserialize_widget(payload: object) -> HudWidgetConfig:
 def _deserialize_theme(payload: object) -> HudThemeConfig:
     if not isinstance(payload, dict):
         raise TypeError("hud.theme must be a mapping")
+    
+    # Check for removed legacy keys first - these should raise TypeError
+    removed_keys = {"panel_rgba", "accent_rgba"}
+    found_removed = {key for key in payload if key in removed_keys}
+    if found_removed:
+        # Try to construct with removed key to get natural TypeError
+        kwargs = {key: payload[key] for key in found_removed}
+        HudThemeConfig(**kwargs)  # This will raise TypeError
+    
+    # Check for other unknown keys - these should raise ValueError
     _reject_unexpected_keys(payload, _HUD_THEME_KEYS, "hud.theme")
+    
     defaults = HudThemeConfig()
-    return validate_hud_theme_config(
-        HudThemeConfig(
-            panel_rgba=_require_rgba_list(payload.get("panel_rgba", defaults.panel_rgba), "panel_rgba"),
-            accent_rgba=_require_rgba_list(payload.get("accent_rgba", defaults.accent_rgba), "accent_rgba"),
-            text_rgba=_require_rgba_list(payload.get("text_rgba", defaults.text_rgba), "text_rgba"),
-            note_text=_require_text(payload.get("note_text", defaults.note_text), "note_text"),
-            font_family=_require_enum_string(
-                payload.get("font_family", defaults.font_family), "font_family", HUD_FONT_FAMILY_OPTIONS
-            ),
-            font_weight=_require_enum_string(
-                payload.get("font_weight", defaults.font_weight), "font_weight", HUD_FONT_WEIGHT_OPTIONS
-            ),
-            font_size_px=_require_min_int(payload.get("font_size_px", defaults.font_size_px), "font_size_px", 8),
-            title_font_family=_require_enum_string(
-                payload["title_font_family"],
-                "title_font_family",
-                HUD_FONT_FAMILY_OPTIONS,
-            )
-            if "title_font_family" in payload and payload["title_font_family"] is not None
-            else (None if "title_font_family" in payload else defaults.title_font_family),
-            title_font_weight=_require_enum_string(
-                payload["title_font_weight"],
-                "title_font_weight",
-                HUD_FONT_WEIGHT_OPTIONS,
-            )
-            if "title_font_weight" in payload and payload["title_font_weight"] is not None
-            else None,
-            title_font_size_px=_require_min_int(
-                payload["title_font_size_px"], "title_font_size_px", 8
-            )
-            if "title_font_size_px" in payload and payload["title_font_size_px"] is not None
-            else None,
-            value_font_family=_require_enum_string(
-                payload["value_font_family"],
-                "value_font_family",
-                HUD_FONT_FAMILY_OPTIONS,
-            )
-            if "value_font_family" in payload and payload["value_font_family"] is not None
-            else (None if "value_font_family" in payload else defaults.value_font_family),
-            value_font_weight=_require_enum_string(
-                payload["value_font_weight"],
-                "value_font_weight",
-                HUD_FONT_WEIGHT_OPTIONS,
-            )
-            if "value_font_weight" in payload and payload["value_font_weight"] is not None
-            else None,
-            value_font_size_px=_require_min_int(
-                payload["value_font_size_px"], "value_font_size_px", 8
-            )
-            if "value_font_size_px" in payload and payload["value_font_size_px"] is not None
-            else None,
-            unit_font_family=_require_enum_string(
-                payload["unit_font_family"],
-                "unit_font_family",
-                HUD_FONT_FAMILY_OPTIONS,
-            )
-            if "unit_font_family" in payload and payload["unit_font_family"] is not None
-            else (None if "unit_font_family" in payload else defaults.unit_font_family),
-            unit_font_weight=_require_enum_string(
-                payload["unit_font_weight"],
-                "unit_font_weight",
-                HUD_FONT_WEIGHT_OPTIONS,
-            )
-            if "unit_font_weight" in payload and payload["unit_font_weight"] is not None
-            else None,
-            unit_font_size_px=_require_min_int(
-                payload["unit_font_size_px"], "unit_font_size_px", 8
-            )
-            if "unit_font_size_px" in payload and payload["unit_font_size_px"] is not None
-            else None,
-            show_units=_coerce_bool(payload.get("show_units", defaults.show_units), "show_units"),
-        )
-    )
+    kwargs = {}
+    for key, value in payload.items():
+        if key == "text_rgba":
+            kwargs["text_rgba"] = _require_rgba_list(value, "text_rgba")
+        elif key == "note_text":
+            kwargs["note_text"] = _require_text(value, "note_text")
+        elif key == "font_family":
+            kwargs["font_family"] = _require_enum_string(value, "font_family", HUD_FONT_FAMILY_OPTIONS)
+        elif key == "font_weight":
+            kwargs["font_weight"] = _require_enum_string(value, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
+        elif key == "font_size_px":
+            kwargs["font_size_px"] = _require_min_int(value, "font_size_px", 8)
+        elif key == "title_font_family":
+            if value is not None:
+                kwargs["title_font_family"] = _require_enum_string(value, "title_font_family", HUD_FONT_FAMILY_OPTIONS)
+            else:
+                kwargs["title_font_family"] = None
+        elif key == "title_font_weight":
+            if value is not None:
+                kwargs["title_font_weight"] = _require_enum_string(value, "title_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+            else:
+                kwargs["title_font_weight"] = None
+        elif key == "title_font_size_px":
+            if value is not None:
+                kwargs["title_font_size_px"] = _require_min_int(value, "title_font_size_px", 8)
+            else:
+                kwargs["title_font_size_px"] = None
+        elif key == "value_font_family":
+            if value is not None:
+                kwargs["value_font_family"] = _require_enum_string(value, "value_font_family", HUD_FONT_FAMILY_OPTIONS)
+            else:
+                kwargs["value_font_family"] = None
+        elif key == "value_font_weight":
+            if value is not None:
+                kwargs["value_font_weight"] = _require_enum_string(value, "value_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+            else:
+                kwargs["value_font_weight"] = None
+        elif key == "value_font_size_px":
+            if value is not None:
+                kwargs["value_font_size_px"] = _require_min_int(value, "value_font_size_px", 8)
+            else:
+                kwargs["value_font_size_px"] = None
+        elif key == "unit_font_family":
+            if value is not None:
+                kwargs["unit_font_family"] = _require_enum_string(value, "unit_font_family", HUD_FONT_FAMILY_OPTIONS)
+            else:
+                kwargs["unit_font_family"] = None
+        elif key == "unit_font_weight":
+            if value is not None:
+                kwargs["unit_font_weight"] = _require_enum_string(value, "unit_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+            else:
+                kwargs["unit_font_weight"] = None
+        elif key == "unit_font_size_px":
+            if value is not None:
+                kwargs["unit_font_size_px"] = _require_min_int(value, "unit_font_size_px", 8)
+            else:
+                kwargs["unit_font_size_px"] = None
+        elif key == "show_units":
+            kwargs["show_units"] = _coerce_bool(value, "show_units")
+    
+    return validate_hud_theme_config(HudThemeConfig(**kwargs))
 
 
 def validate_hud_theme_config(theme: HudThemeConfig) -> HudThemeConfig:
-    theme.panel_rgba = _require_rgba_list(theme.panel_rgba, "panel_rgba")
-    theme.accent_rgba = _require_rgba_list(theme.accent_rgba, "accent_rgba")
     theme.text_rgba = _require_rgba_list(theme.text_rgba, "text_rgba")
     theme.note_text = _require_text(theme.note_text, "note_text")
     theme.font_family = _require_enum_string(theme.font_family, "font_family", HUD_FONT_FAMILY_OPTIONS)

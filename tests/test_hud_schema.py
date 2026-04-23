@@ -7,7 +7,7 @@ from race_overlay.hud_presets import apply_legacy_field_visibility
 def test_serialize_hud_config_round_trips_widgets() -> None:
     config = HudConfig(
         preset="broadcast-runner",
-        theme=HudThemeConfig(panel_rgba=[12, 18, 28, 168], accent_rgba=[255, 196, 92, 255], note_text="Race Day"),
+        theme=HudThemeConfig(note_text="Race Day"),
         widgets=[
             HudWidgetConfig(
                 id="hero-pace",
@@ -93,8 +93,7 @@ def test_deserialize_hud_config_supports_typography_roles_and_extended_widget_st
     payload = {
         "preset": "custom",
         "theme": {
-            "panel_rgba": [12, 18, 28, 168],
-            "accent_rgba": [255, 196, 92, 255],
+            
             "text_rgba": [255, 255, 255, 255],
             "note_text": "Race Day",
             "font_family": "sans",
@@ -175,8 +174,7 @@ def test_deserialize_hud_config_applies_broadcast_defaults_for_absent_role_field
         {
             "preset": "custom",
             "theme": {
-                "panel_rgba": [12, 18, 28, 168],
-                "accent_rgba": [255, 196, 92, 255],
+                
                 "text_rgba": [255, 255, 255, 255],
                 "note_text": "Race Day",
                 "font_family": "mono",
@@ -220,8 +218,7 @@ def test_deserialize_hud_config_supports_progress_bar_rgba_style_fields() -> Non
         {
             "preset": "custom",
             "theme": {
-                "panel_rgba": [12, 18, 28, 168],
-                "accent_rgba": [255, 196, 92, 255],
+                
                 "text_rgba": [255, 255, 255, 255],
                 "note_text": "Race Day",
                 "font_family": "broadcast_ui",
@@ -259,3 +256,20 @@ def test_deserialize_hud_config_supports_progress_bar_rgba_style_fields() -> Non
     assert serialized["widgets"][0]["style"]["fill_rgba"] == [34, 255, 138, 255]
     assert serialized["widgets"][0]["style"]["rail_rgba"] == [8, 12, 20, 220]
     assert serialized["widgets"][0]["style"]["tick_rgba"] == [230, 238, 245, 168]
+
+
+def test_removed_theme_color_keys_rejected_by_direct_schema_deserialization() -> None:
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        deserialize_hud_config(
+            {
+                "preset": "broadcast-runner",
+                "theme": {
+                    "panel_rgba": [12, 18, 28, 148],
+                    "accent_rgba": [26, 230, 198, 255],
+                    "text_rgba": [247, 251, 255, 255],
+                    "note_text": "Race Day",
+                    "font_family": "broadcast_ui",
+                },
+                "widgets": [],
+            }
+        )

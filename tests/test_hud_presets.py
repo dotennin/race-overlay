@@ -24,8 +24,6 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
 
     assert time_chip.style["variant"] == "timestamp_chip"
     assert time_chip.style["format"] == "%Y/%m/%d %H:%M:%S"
-    assert config.theme.panel_rgba == [12, 18, 28, 148]
-    assert config.theme.accent_rgba == [26, 230, 198, 255]
     assert config.theme.title_font_size_px == 14
     assert config.theme.value_font_family == "broadcast_value"
     assert config.theme.value_font_size_px == 32
@@ -49,8 +47,6 @@ def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -
     config = broadcast_runner_preset()
     route_map = next(widget for widget in config.widgets if widget.id == "route-map")
 
-    assert config.theme.panel_rgba == [12, 18, 28, 148]
-    assert config.theme.accent_rgba == [26, 230, 198, 255]
     assert route_map.style["shape"] == "circle"
     assert route_map.style["show_panel"] is True
     assert route_map.style["show_north_marker"] is True

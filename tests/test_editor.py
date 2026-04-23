@@ -54,7 +54,6 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
         height=720,
     )
 
-    assert state["schema"]["theme"]["panel_rgba"] == {"kind": "rgba", "label": "Panel RGBA"}
     assert state["schema"]["theme"]["font_family"] == {
         "kind": "enum",
         "label": "Font family",
@@ -310,8 +309,6 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
     payload["theme"].update(
-        panel_rgba=[10, 20, 30, 140],
-        accent_rgba=[40, 50, 60, 255],
         text_rgba=[70, 80, 90, 255],
         font_family="serif",
         font_weight="bold",
@@ -335,8 +332,6 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     reloaded_pace_chip = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
     reloaded_ruler = next(widget for widget in reloaded.hud.widgets if widget.id == "distance-ruler")
 
-    assert reloaded.hud.theme.panel_rgba == [10, 20, 30, 140]
-    assert reloaded.hud.theme.accent_rgba == [40, 50, 60, 255]
     assert reloaded.hud.theme.text_rgba == [70, 80, 90, 255]
     assert reloaded.hud.theme.font_family == "serif"
     assert reloaded.hud.theme.font_weight == "bold"
@@ -699,13 +694,13 @@ def test_save_editor_payload_rejects_invalid_theme_values(tmp_path: Path) -> Non
 
     payload = serialize_hud_config(broadcast_runner_preset())
     payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
-    payload["theme"]["panel_rgba"] = "oops"
+    payload["theme"]["text_rgba"] = "oops"
     payload["theme"]["note_text"] = "Kasumigaura"
 
-    with pytest.raises(ValueError, match="panel_rgba must be a list of 4 integers"):
+    with pytest.raises(ValueError, match="text_rgba must be a list of 4 integers"):
         save_editor_payload(config_path, payload)
 
-    assert load_config(config_path).hud.theme.panel_rgba == [12, 18, 28, 148]
+    assert load_config(config_path).hud.theme.text_rgba == [247, 251, 255, 255]
 
 
 def test_save_editor_payload_rejects_partial_widget_objects(tmp_path: Path) -> None:

@@ -51,21 +51,34 @@ def write_default_config(path: Path, activity_file: str) -> None:
     )
 
 
+def _strip_legacy_theme_keys(payload: dict[str, object]) -> dict[str, object]:
+    normalized = dict(payload)
+    theme_payload = normalized.get("theme")
+    if isinstance(theme_payload, dict):
+        normalized["theme"] = {
+            key: value
+            for key, value in theme_payload.items()
+            if key not in {"panel_rgba", "accent_rgba"}
+        }
+    return normalized
+
+
 def _load_hud_config(payload: dict[str, object], *, require_complete: bool = False) -> HudConfig:
-    if "fields" in payload:
-        if any(key != "fields" for key in payload):
+    normalized_payload = _strip_legacy_theme_keys(payload)
+    if "fields" in normalized_payload:
+        if any(key != "fields" for key in normalized_payload):
             hud = deserialize_hud_config(
-                {key: value for key, value in payload.items() if key != "fields"},
+                {key: value for key, value in normalized_payload.items() if key != "fields"},
                 require_complete=require_complete,
             )
             return migrate_broadcast_runner_config(hud)
         if require_complete:
             raise ValueError("editor save requires a complete HUD document with preset, theme, and widgets")
-        fields = payload["fields"]
+        fields = normalized_payload["fields"]
         if not isinstance(fields, dict):
             raise TypeError("hud.fields must be a mapping")
         return migrate_broadcast_runner_config(apply_legacy_field_visibility(broadcast_runner_preset(), fields))
-    return migrate_broadcast_runner_config(deserialize_hud_config(payload, require_complete=require_complete))
+    return migrate_broadcast_runner_config(deserialize_hud_config(normalized_payload, require_complete=require_complete))
 
 
 def load_config(path: Path) -> ProjectConfig:

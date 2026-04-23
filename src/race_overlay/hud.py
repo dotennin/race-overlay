@@ -24,6 +24,7 @@ PROGRESS_BAR_MIN_WIDTH = 232
 SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 LEGACY_DEFAULT_FONT_SIZE_PX = 18
 ROUTE_MAP_DEFAULT_SHAPE = "circle"
+WIDGET_PANEL_RGBA = (12, 18, 28, 168)
 ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 214)
 ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
 ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
@@ -499,7 +500,7 @@ def _draw_progress_bar(
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
-        draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
+        draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
     track_left = left + _scale_x(scale, 16)
     track_right = left + w - _scale_x(scale, 16)
     track_top = top + _scale_y(scale, 34)
@@ -587,7 +588,7 @@ def _draw_stat_block(
         draw.rounded_rectangle(
             (left, top, left + w, top + h),
             radius=_scale_draw(scale, 20),
-            fill=tuple(theme.panel_rgba),
+            fill=(6, 10, 18, 120),
         )
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
@@ -777,7 +778,7 @@ def _draw_hero_metric(
     value_font = _value_font(widget, theme, scale)
     unit_font = _unit_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
-        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=(6, 10, 18, 120))
     draw.text(
         (left + _scale_x(scale, 20), top + _scale_y(scale, 18)),
         str(widget.style.get("label", "Pace")),
@@ -819,7 +820,7 @@ def _draw_metric_card(
     unit_font = _unit_font(widget, theme, scale)
     if widget.style.get("variant") == "compact":
         if _widget_panel_enabled(widget):
-            draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=tuple(theme.panel_rgba))
+            draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=(6, 10, 18, 120))
         label = str(widget.style.get("label", "Metric"))
         draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
         draw.text(
@@ -840,7 +841,7 @@ def _draw_metric_card(
         return
 
     if _widget_panel_enabled(widget):
-        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=tuple(theme.panel_rgba))
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
     label = str(widget.style.get("label", "Metric"))
     draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=title_font)
     draw.text(
@@ -871,7 +872,7 @@ def _draw_context_card(
     value_font = _value_font(widget, theme, scale)
     unit_font = _unit_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
-        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=tuple(theme.panel_rgba))
+        draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 22), fill=(6, 10, 18, 120))
     context_timestamp = timestamp if timestamp.tzinfo is None else timestamp.astimezone(timestamp.tzinfo)
     if _is_compact_context_variant(widget):
         draw.text(
