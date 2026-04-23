@@ -2127,7 +2127,46 @@ def test_split_route_segments_uses_current_projection_for_completed_and_remainin
     assert remaining == [(12.0, 0.0), (20.0, 0.0)]
 
 
-def test_progress_bar_text_layout_aligns_current_and_total_values() -> None:
+def test_progress_bar_text_layout_aligns_current_and_total_values(monkeypatch: pytest.MonkeyPatch) -> None:
     layout = _progress_bar_text_layout(left=0, top=0, width=560, height=56, label="Distance")
 
     assert layout.current_anchor[1] == layout.total_anchor[1]
+    assert layout.total_anchor[0] > layout.current_anchor[0]
+
+    rendered_texts: list[tuple[str, tuple[float, float]]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        if str(text) in {"5.20 KM", "10.00 KM"}:
+            rendered_texts.append((str(text), (float(xy[0]), float(xy[1]))))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    image = Image.new("RGBA", (640, 96), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    _draw_progress_bar(
+        draw,
+        HudWidgetConfig(
+            id="distance-progress",
+            type="progress_bar",
+            bindings={"value": "distance_m"},
+            anchor="top-left",
+            x=0,
+            y=0,
+            width=560,
+            height=56,
+            style={"label": "Distance"},
+        ),
+        distance_m=5200.0,
+        total_distance_m=10000.0,
+        theme=HudThemeConfig(),
+        frame_width=640,
+        frame_height=96,
+        scale=RenderScale(x=1.0, y=1.0, draw=1.0),
+    )
+
+    current_xy = next(xy for text, xy in rendered_texts if text == "5.20 KM")
+    total_xy = next(xy for text, xy in rendered_texts if text == "10.00 KM")
+
+    assert current_xy[1] == total_xy[1] == layout.current_anchor[1]

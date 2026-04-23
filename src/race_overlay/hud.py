@@ -90,10 +90,10 @@ def _split_route_segments(
 
 
 def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
-    baseline_y = top + 14
+    value_baseline_y = top + 14
     current_x = left + 16 + (80 if label else 0)
     total_x = left + width - 16
-    return ProgressBarTextLayout(current_anchor=(current_x, baseline_y), total_anchor=(total_x, baseline_y))
+    return ProgressBarTextLayout(current_anchor=(current_x, value_baseline_y), total_anchor=(total_x, value_baseline_y))
 
 
 def _render_scale(frame_width: int, frame_height: int) -> RenderScale:
@@ -540,6 +540,7 @@ def _draw_progress_bar(
     value_font = _value_font(widget, theme, scale)
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, left + w, top + h), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
+    text_layout = _progress_bar_text_layout(left, top, w, h, str(widget.style.get("label", "")))
     track_left = left + _scale_x(scale, 16)
     track_right = left + w - _scale_x(scale, 16)
     track_top = top + _scale_y(scale, 34)
@@ -595,14 +596,14 @@ def _draw_progress_bar(
         text_x = label_box[2] + _scale_x(scale, 10)
     if show_current_value:
         draw.text(
-            (text_x, text_y - _scale_y(scale, 2)),
+            text_layout.current_anchor,
             _distance_label(progress_value_m, show_units),
             fill=tuple(theme.text_rgba),
             font=value_font,
         )
     if show_total_value:
         draw.text(
-            (track_right, top + _scale_y(scale, 14)),
+            text_layout.total_anchor,
             _distance_label(goal_m, show_units),
             fill=tuple(theme.text_rgba),
             anchor="ra",
