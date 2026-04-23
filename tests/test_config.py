@@ -188,7 +188,7 @@ def test_load_config_migrates_legacy_broadcast_runner_schema_defaults(tmp_path: 
 
     assert "time-chip" in widget_ids
     assert config.hud.theme.title_font_size_px == 14
-    assert config.hud.theme.value_font_family == "serif"
+    assert config.hud.theme.value_font_family == "broadcast_value"
     assert time_chip.style["variant"] == "timestamp_chip"
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True

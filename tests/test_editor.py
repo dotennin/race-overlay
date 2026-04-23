@@ -83,6 +83,21 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert pace_chip_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
 
 
+def test_build_editor_state_exposes_broadcast_font_families_in_schema() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    font_family_options = state["schema"]["theme"]["font_family"]["options"]
+    assert "broadcast_ui" in font_family_options
+    assert "broadcast_value" in font_family_options
+    assert "sans" in font_family_options
+    assert "serif" in font_family_options
+    assert "mono" in font_family_options
+
+
 def test_build_editor_state_exposes_navigation_timestamp_and_typography_role_schema() -> None:
     config = ProjectConfig(
         activity_file="activity_22577902433.tcx",

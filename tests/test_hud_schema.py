@@ -1,6 +1,6 @@
 import pytest
 
-from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, deserialize_hud_config, serialize_hud_config
+from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HudConfig, HudThemeConfig, HudWidgetConfig, deserialize_hud_config, serialize_hud_config
 from race_overlay.hud_presets import apply_legacy_field_visibility
 
 
@@ -170,7 +170,7 @@ def test_deserialize_hud_config_supports_typography_roles_and_extended_widget_st
     assert serialized["widgets"][1]["style"]["format"] == "%H:%M"
 
 
-def test_deserialize_hud_config_leaves_unset_typography_roles_as_none() -> None:
+def test_deserialize_hud_config_applies_broadcast_defaults_for_absent_role_fields() -> None:
     config = deserialize_hud_config(
         {
             "preset": "custom",
@@ -190,8 +190,26 @@ def test_deserialize_hud_config_leaves_unset_typography_roles_as_none() -> None:
 
     serialized = serialize_hud_config(config)
 
-    assert config.theme.title_font_family is None
-    assert config.theme.value_font_size_px is None
-    assert config.theme.unit_font_weight is None
-    assert serialized["theme"]["title_font_family"] is None
-    assert serialized["theme"]["value_font_size_px"] is None
+    assert config.theme.title_font_family == "broadcast_ui"
+    assert config.theme.value_font_family == "broadcast_value"
+    assert config.theme.unit_font_family == "broadcast_ui"
+    assert serialized["theme"]["title_font_family"] == "broadcast_ui"
+    assert serialized["theme"]["value_font_family"] == "broadcast_value"
+    assert serialized["theme"]["unit_font_family"] == "broadcast_ui"
+
+
+def test_hud_font_family_options_includes_broadcast_families() -> None:
+    assert "broadcast_ui" in HUD_FONT_FAMILY_OPTIONS
+    assert "broadcast_value" in HUD_FONT_FAMILY_OPTIONS
+    assert "sans" in HUD_FONT_FAMILY_OPTIONS
+    assert "serif" in HUD_FONT_FAMILY_OPTIONS
+    assert "mono" in HUD_FONT_FAMILY_OPTIONS
+
+
+def test_hud_theme_config_defaults_to_broadcast_fonts_for_new_huds() -> None:
+    theme = HudThemeConfig()
+    
+    assert theme.font_family == "broadcast_ui"
+    assert theme.title_font_family == "broadcast_ui"
+    assert theme.value_font_family == "broadcast_value"
+    assert theme.unit_font_family == "broadcast_ui"

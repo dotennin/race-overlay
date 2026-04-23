@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from importlib.resources import files
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -24,6 +25,8 @@ _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
     "mono": {"regular": "DejaVuSansMono.ttf", "bold": "DejaVuSansMono-Bold.ttf"},
+    "broadcast_ui": {"regular": "BarlowSemiCondensed-Regular.ttf", "bold": "BarlowSemiCondensed-Medium.ttf"},
+    "broadcast_value": {"regular": "BarlowSemiCondensed-BoldItalic.ttf", "bold": "BarlowSemiCondensed-BoldItalic.ttf"},
 }
 
 
@@ -62,8 +65,17 @@ def _scale_draw(scale: RenderScale, value: int) -> int:
 
 @lru_cache(maxsize=32)
 def _load_default_font(pixel_size: int, family: str = "sans", weight: str = "regular") -> ImageFont.FreeTypeFont:
+    font_filename = _FONT_FILES[family][weight]
+    
+    if family in ("broadcast_ui", "broadcast_value"):
+        try:
+            font_path = files("race_overlay.assets.fonts").joinpath(font_filename)
+            return ImageFont.truetype(str(font_path), pixel_size)
+        except (OSError, AttributeError):
+            pass
+    
     try:
-        return ImageFont.truetype(_FONT_FILES[family][weight], pixel_size)
+        return ImageFont.truetype(font_filename, pixel_size)
     except OSError:
         return ImageFont.load_default(size=pixel_size)
 

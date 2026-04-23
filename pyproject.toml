@@ -25,3 +25,4 @@ testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 "race_overlay.editor_assets" = ["*.html", "*.css", "*.js"]
+"race_overlay.assets.fonts" = ["*.ttf", "OFL.txt"]

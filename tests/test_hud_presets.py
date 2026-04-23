@@ -25,7 +25,7 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert time_chip.style["variant"] == "timestamp_chip"
     assert time_chip.style["format"] == "%Y/%m/%d %H:%M:%S"
     assert config.theme.title_font_size_px == 14
-    assert config.theme.value_font_family == "serif"
+    assert config.theme.value_font_family == "broadcast_value"
     assert config.theme.value_font_size_px == 32
     assert config.theme.unit_font_size_px == 12
     assert ruler.width == 560

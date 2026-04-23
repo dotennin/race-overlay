@@ -8,16 +8,16 @@ class HudThemeConfig:
     accent_rgba: list[int] = field(default_factory=lambda: [255, 196, 92, 255])
     text_rgba: list[int] = field(default_factory=lambda: [255, 255, 255, 255])
     note_text: str = "Race Day"
-    font_family: str = "sans"
+    font_family: str = "broadcast_ui"
     font_weight: str = "regular"
     font_size_px: int = 18
-    title_font_family: str | None = None
+    title_font_family: str | None = "broadcast_ui"
     title_font_weight: str | None = None
     title_font_size_px: int | None = None
-    value_font_family: str | None = None
+    value_font_family: str | None = "broadcast_value"
     value_font_weight: str | None = None
     value_font_size_px: int | None = None
-    unit_font_family: str | None = None
+    unit_font_family: str | None = "broadcast_ui"
     unit_font_weight: str | None = None
     unit_font_size_px: int | None = None
     show_units: bool = True
@@ -48,7 +48,7 @@ class HudConfig:
 _HUD_KEYS = frozenset(HudConfig.__dataclass_fields__)
 _HUD_THEME_KEYS = frozenset(HudThemeConfig.__dataclass_fields__)
 _HUD_WIDGET_KEYS = frozenset(HudWidgetConfig.__dataclass_fields__)
-HUD_FONT_FAMILY_OPTIONS = ("sans", "serif", "mono")
+HUD_FONT_FAMILY_OPTIONS = ("sans", "serif", "mono", "broadcast_ui", "broadcast_value")
 HUD_FONT_WEIGHT_OPTIONS = ("regular", "bold")
 
 
@@ -122,61 +122,61 @@ def _deserialize_theme(payload: object) -> HudThemeConfig:
             ),
             font_size_px=_require_min_int(payload.get("font_size_px", defaults.font_size_px), "font_size_px", 8),
             title_font_family=_require_enum_string(
-                payload.get("title_font_family", defaults.title_font_family),
+                payload["title_font_family"],
                 "title_font_family",
                 HUD_FONT_FAMILY_OPTIONS,
             )
-            if payload.get("title_font_family", defaults.title_font_family) is not None
-            else None,
+            if "title_font_family" in payload and payload["title_font_family"] is not None
+            else (None if "title_font_family" in payload else defaults.title_font_family),
             title_font_weight=_require_enum_string(
-                payload.get("title_font_weight", defaults.title_font_weight),
+                payload["title_font_weight"],
                 "title_font_weight",
                 HUD_FONT_WEIGHT_OPTIONS,
             )
-            if payload.get("title_font_weight", defaults.title_font_weight) is not None
+            if "title_font_weight" in payload and payload["title_font_weight"] is not None
             else None,
             title_font_size_px=_require_min_int(
-                payload.get("title_font_size_px", defaults.title_font_size_px), "title_font_size_px", 8
+                payload["title_font_size_px"], "title_font_size_px", 8
             )
-            if payload.get("title_font_size_px", defaults.title_font_size_px) is not None
+            if "title_font_size_px" in payload and payload["title_font_size_px"] is not None
             else None,
             value_font_family=_require_enum_string(
-                payload.get("value_font_family", defaults.value_font_family),
+                payload["value_font_family"],
                 "value_font_family",
                 HUD_FONT_FAMILY_OPTIONS,
             )
-            if payload.get("value_font_family", defaults.value_font_family) is not None
-            else None,
+            if "value_font_family" in payload and payload["value_font_family"] is not None
+            else (None if "value_font_family" in payload else defaults.value_font_family),
             value_font_weight=_require_enum_string(
-                payload.get("value_font_weight", defaults.value_font_weight),
+                payload["value_font_weight"],
                 "value_font_weight",
                 HUD_FONT_WEIGHT_OPTIONS,
             )
-            if payload.get("value_font_weight", defaults.value_font_weight) is not None
+            if "value_font_weight" in payload and payload["value_font_weight"] is not None
             else None,
             value_font_size_px=_require_min_int(
-                payload.get("value_font_size_px", defaults.value_font_size_px), "value_font_size_px", 8
+                payload["value_font_size_px"], "value_font_size_px", 8
             )
-            if payload.get("value_font_size_px", defaults.value_font_size_px) is not None
+            if "value_font_size_px" in payload and payload["value_font_size_px"] is not None
             else None,
             unit_font_family=_require_enum_string(
-                payload.get("unit_font_family", defaults.unit_font_family),
+                payload["unit_font_family"],
                 "unit_font_family",
                 HUD_FONT_FAMILY_OPTIONS,
             )
-            if payload.get("unit_font_family", defaults.unit_font_family) is not None
-            else None,
+            if "unit_font_family" in payload and payload["unit_font_family"] is not None
+            else (None if "unit_font_family" in payload else defaults.unit_font_family),
             unit_font_weight=_require_enum_string(
-                payload.get("unit_font_weight", defaults.unit_font_weight),
+                payload["unit_font_weight"],
                 "unit_font_weight",
                 HUD_FONT_WEIGHT_OPTIONS,
             )
-            if payload.get("unit_font_weight", defaults.unit_font_weight) is not None
+            if "unit_font_weight" in payload and payload["unit_font_weight"] is not None
             else None,
             unit_font_size_px=_require_min_int(
-                payload.get("unit_font_size_px", defaults.unit_font_size_px), "unit_font_size_px", 8
+                payload["unit_font_size_px"], "unit_font_size_px", 8
             )
-            if payload.get("unit_font_size_px", defaults.unit_font_size_px) is not None
+            if "unit_font_size_px" in payload and payload["unit_font_size_px"] is not None
             else None,
             show_units=_coerce_bool(payload.get("show_units", defaults.show_units), "show_units"),
         )
