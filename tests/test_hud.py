@@ -1287,7 +1287,7 @@ def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: py
         elapsed_seconds=6852,
     )
 
-    assert len(polygon_calls) == 1
+    assert polygon_calls == []
     assert (74, 155, 255, 255) not in line_fills
 
 
@@ -1987,8 +1987,8 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
     assert (6, 10, 18, 148) in rounded_rectangle_fills
     assert (34, 255, 138, 255) in line_fills
     assert (13, 144, 195, 255) in line_fills
-    assert (228, 255, 238, 255) in polygon_fills
-    assert (228, 255, 238, 255) not in ellipse_fills
+    assert (228, 255, 238, 255) in ellipse_fills
+    assert (228, 255, 238, 255) not in polygon_fills
     assert (255, 255, 255, 255) in polygon_fills
 
 

@@ -818,9 +818,13 @@ def _draw_route_map(
                 font=unit_font,
             )
         x, y = project(route_projection.point)
-        marker_points = _route_map_marker_points((x, y), route_projection.tangent, scale)
-        if marker_points is not None:
-            widget_draw.polygon(marker_points, fill=ROUTE_MAP_MARKER_RGBA, outline=ROUTE_MAP_ROUTE_RGBA)
+        r = _scale_draw(scale, 7)
+        widget_draw.ellipse(
+            (x - r, y - r, x + r, y + r),
+            fill=ROUTE_MAP_MARKER_RGBA,
+            outline=ROUTE_MAP_ROUTE_RGBA,
+            width=_scale_draw(scale, 2),
+        )
         if show_heading_arrow:
             heading_vector = _projected_route_vector(route_projection, project)
             _draw_heading_arrow(
@@ -1161,32 +1165,6 @@ def _draw_heading_arrow(
     tail_y = center_y - (unit_y * tail_length)
     draw.line((tail_x, tail_y, tip_x, tip_y), fill=arrow_rgba, width=_scale_draw(scale, 2))
     draw.polygon(arrow_head, fill=arrow_rgba)
-
-
-def _route_map_marker_points(
-    center: tuple[float, float],
-    vector: tuple[float, float],
-    scale: RenderScale,
-) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None:
-    dx, dy = vector
-    length = math.hypot(dx, dy)
-    if length <= 1e-12:
-        return None
-    unit_x = dx / length
-    unit_y = dy / length
-    center_x, center_y = center
-    tip_length = _scale_draw(scale, 10)
-    head_length = _scale_draw(scale, 6)
-    arrow_width = _scale_draw(scale, 4)
-    tip_x = center_x + (unit_x * tip_length)
-    tip_y = center_y + (unit_y * tip_length)
-    side_x = -unit_y
-    side_y = unit_x
-    return (
-        (tip_x, tip_y),
-        (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
-        (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
-    )
 
 
 def _heading_arrow_head_points(
