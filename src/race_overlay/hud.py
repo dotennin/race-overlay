@@ -58,6 +58,41 @@ class RouteProjection:
     segment_end: tuple[float, float]
 
 
+ROUTE_MAP_SHAPES = ("circle", "rounded-rect", "square")
+
+
+@dataclass(slots=True, frozen=True)
+class ProgressBarTextLayout:
+    current_anchor: tuple[int, int]
+    total_anchor: tuple[int, int]
+
+
+def _route_map_shape(widget: HudWidgetConfig) -> str:
+    shape = str(widget.style.get("shape", "circle"))
+    if shape not in ROUTE_MAP_SHAPES:
+        supported = ", ".join(ROUTE_MAP_SHAPES)
+        raise ValueError(f"supported shapes: {supported}")
+    return shape
+
+
+def _split_route_segments(
+    projected: list[tuple[float, float]], projection: RouteProjection
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    split_index = projected.index(projection.segment_start)
+    completed = projected[: split_index + 1] + [projection.point]
+    remaining = [projection.point, projection.segment_end]
+    if projection.segment_end in projected[split_index + 1 :]:
+        remaining.extend(projected[split_index + 2 :])
+    return completed, remaining
+
+
+def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
+    baseline_y = top + 14
+    current_x = left + 16 + (80 if label else 0)
+    total_x = left + width - 16
+    return ProgressBarTextLayout(current_anchor=(current_x, baseline_y), total_anchor=(total_x, baseline_y))
+
+
 def _render_scale(frame_width: int, frame_height: int) -> RenderScale:
     x_scale = max(frame_width / HUD_REFERENCE_WIDTH, 1.0)
     y_scale = max(frame_height / HUD_REFERENCE_HEIGHT, 1.0)
@@ -241,6 +276,7 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
         _require_supported_binding(widget, {"altitude_m", "distance_m", "heart_rate_bpm"})
     elif widget.type == "route_map":
         _require_supported_binding(widget, {"route_points"})
+        _route_map_shape(widget)  # Validate shape enum
     elif widget.type == "hero_metric":
         _require_supported_binding(widget, {"pace_seconds_per_km"})
     elif widget.type == "metric_card":

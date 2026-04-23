@@ -12,11 +12,14 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
+    RouteProjection,
     _draw_heading_arrow,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
+    _progress_bar_text_layout,
     _scaled_font,
+    _split_route_segments,
     _widget_panel_enabled,
     render_hud_frame,
     validate_hud_config,
@@ -2071,3 +2074,48 @@ def test_scaled_font_caches_object_for_same_effective_size() -> None:
         "_scaled_font should return a cached font object for the same effective size, "
         "but got two distinct objects"
     )
+
+
+def test_validate_hud_config_rejects_unknown_route_map_shape() -> None:
+    with pytest.raises(ValueError, match="supported shapes: circle, rounded-rect, square"):
+        validate_hud_config(
+            HudConfig(
+                preset="broadcast-runner",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=0,
+                        y=0,
+                        width=196,
+                        height=196,
+                        style={"shape": "triangle"},
+                    )
+                ],
+            )
+        )
+
+
+def test_split_route_segments_uses_current_projection_for_completed_and_remaining_paths() -> None:
+    projected = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]
+    projection = RouteProjection(
+        point=(12.0, 0.0),
+        tangent=(1.0, 0.0),
+        segment_start=(10.0, 0.0),
+        segment_end=(20.0, 0.0),
+    )
+
+    completed, remaining = _split_route_segments(projected, projection)
+
+    assert completed == [(0.0, 0.0), (10.0, 0.0), (12.0, 0.0)]
+    assert remaining == [(12.0, 0.0), (20.0, 0.0)]
+
+
+def test_progress_bar_text_layout_aligns_current_and_total_values() -> None:
+    layout = _progress_bar_text_layout(left=0, top=0, width=560, height=56, label="Distance")
+
+    assert layout.current_anchor[1] == layout.total_anchor[1]
+
