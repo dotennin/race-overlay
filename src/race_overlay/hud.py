@@ -21,6 +21,7 @@ HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
 PROGRESS_BAR_MIN_WIDTH = 232
 SUPPORTED_WIDGET_ANCHORS = {"top-left", "top-right", "bottom-left", "bottom-right"}
+LEGACY_DEFAULT_FONT_SIZE_PX = 18
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
@@ -406,7 +407,15 @@ def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> 
     role_value = getattr(theme, role_key)
     if role_value is not None:
         return role_value
-    return getattr(theme, legacy_key)
+    legacy_value = getattr(theme, legacy_key)
+    if "font_size" in role_key and legacy_value == LEGACY_DEFAULT_FONT_SIZE_PX:
+        if "title" in role_key:
+            return 14
+        elif "value" in role_key:
+            return 32
+        elif "unit" in role_key:
+            return 12
+    return legacy_value
 
 
 def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale, *, role: str) -> ImageFont.FreeTypeFont:
@@ -523,6 +532,7 @@ def _draw_stat_block(
     value_text = _stat_block_value(binding, hud_value, decimals=int(widget.style.get("decimals", 0)))
     if align == "right":
         value_right = left + w - _scale_x(scale, 12)
+        value_y = top + _scale_y(scale, 34)
         draw.text(
             (value_right, top + _scale_y(scale, 12)),
             label,
@@ -531,18 +541,23 @@ def _draw_stat_block(
             font=title_font,
         )
         draw.text(
-            (value_right, top + _scale_y(scale, 34)),
+            (value_right, value_y),
             value_text,
             fill=tuple(theme.text_rgba),
             anchor="ra",
             font=value_font,
         )
         if unit:
+            value_bbox = draw.textbbox((value_right, value_y), value_text, font=value_font, anchor="ra")
+            unit_x = value_bbox[2] + _scale_x(scale, 6)
+            unit_bbox_origin = draw.textbbox((0, 0), unit, font=unit_font, anchor="la")
+            value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
+            unit_y = value_y + (value_bbox_origin[3] - unit_bbox_origin[3])
             draw.text(
-                (value_right, top + _scale_y(scale, 62)),
+                (unit_x, unit_y),
                 unit,
                 fill=tuple(theme.text_rgba),
-                anchor="ra",
+                anchor="la",
                 font=unit_font,
             )
         return
@@ -552,10 +567,12 @@ def _draw_stat_block(
     draw.text((value_x, top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
     draw.text((value_x, value_y), value_text, fill=tuple(theme.text_rgba), font=value_font)
     if unit:
-        value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font)
+        value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font, anchor="la")
         unit_x = value_bbox[2] + _scale_x(scale, 6)
-        unit_y = value_y + max(value_font.size - unit_font.size - _scale_y(scale, 2), 0)
-        draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), font=unit_font)
+        unit_bbox_origin = draw.textbbox((0, 0), unit, font=unit_font, anchor="la")
+        value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
+        unit_y = value_y + (value_bbox_origin[3] - unit_bbox_origin[3])
+        draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
 
 
 def _stat_block_value(binding: str, hud_value: HudSample, decimals: int) -> str:

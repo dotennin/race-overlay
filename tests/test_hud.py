@@ -1581,6 +1581,73 @@ def test_render_hud_frame_stat_block_uses_thematic_typography_roles_and_tighter_
     assert unit_call[1][0] < 100
 
 
+def test_stat_block_unit_anchors_match_placement_logic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that stat block units use left-anchor for both left and right-aligned widgets,
+    since unit_x is computed as value_bbox right edge + spacing (expecting left-anchored text)."""
+    text_calls: list[tuple[str, tuple[int, int], str | None]] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        text_calls.append((str(text), xy, kwargs.get("anchor")))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="stat-dual",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="left-stat",
+                    type="stat_block",
+                    bindings={"value": "heart_rate_bpm"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Heart", "unit": "bpm"},
+                ),
+                HudWidgetConfig(
+                    id="right-stat",
+                    type="stat_block",
+                    bindings={"value": "distance_m"},
+                    anchor="top-right",
+                    x=0,
+                    y=0,
+                    width=180,
+                    height=96,
+                    style={"label": "Distance", "unit": "km"},
+                ),
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    # Check left-aligned stat block unit
+    left_unit_call = next(call for call in text_calls if call[0] == "bpm")
+    assert left_unit_call[2] == "la", "Left-aligned stat block unit should use left anchor"
+
+    # Check right-aligned stat block unit
+    right_unit_call = next(call for call in text_calls if call[0] == "km")
+    assert right_unit_call[2] == "la", "Right-aligned stat block unit should use left anchor"
+
+
 def test_hero_metric_km_suffix_stays_within_narrow_widget(monkeypatch: pytest.MonkeyPatch) -> None:
     """The /km suffix must be right-anchored relative to widget width, not placed at a hard-coded
     absolute x offset that overflows narrow hero_metric widgets."""
