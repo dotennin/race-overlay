@@ -15,16 +15,16 @@ hud:
     - 251
     - 255
     - 255
-    note_text: My Race config
+    note_text: Race Day
     font_family: broadcast_value
     font_weight: regular
     font_size_px: 18
     title_font_family: broadcast_value
-    title_font_weight: regular
+    title_font_weight: bold
     title_font_size_px: 16
     value_font_family: broadcast_value
     value_font_weight: bold
-    value_font_size_px: 33
+    value_font_size_px: 32
     unit_font_family: broadcast_value
     unit_font_weight: regular
     unit_font_size_px: 13
@@ -35,8 +35,8 @@ hud:
     bindings:
       value: timestamp
     anchor: top-left
-    x: 44
-    y: 40
+    x: 0
+    y: 0
     width: 292
     height: 56
     z_index: 36
@@ -49,14 +49,14 @@ hud:
     bindings:
       value: distance_m
     anchor: top-left
-    x: 359
-    y: 40
+    x: 360
+    y: 0
     width: 560
     height: 56
     z_index: 40
     visible: true
     style:
-      label: Distance
+      label: ''
       variant: ruler
       show_current_value: true
       show_total_value: true
@@ -66,45 +66,45 @@ hud:
       - 138
       - 255
       rail_rgba:
-      - 8
-      - 12
-      - 20
+      - 0
+      - 0
+      - 0
       - 220
       tick_rgba:
-      - 230
-      - 238
-      - 245
+      - 0
+      - 0
+      - 0
       - 168
       transparent_panel: true
-      font_family: broadcast_value
-      font_weight: regular
-      show_unit: true
-      font_size_px: 18
+      font_size_px: 16
   - id: elevation-stat
     type: stat_block
     bindings:
       value: altitude_m
     anchor: top-left
-    x: 44
-    y: 122
-    width: 152
-    height: 82
+    x: 1153
+    y: 571
+    width: 127
+    height: 73
     z_index: 30
     visible: true
     style:
       label: Elevation
       unit: M
+      decimals: 1
+      show_unit: true
+      transparent_panel: true
   - id: distance-stat
     type: stat_block
     bindings:
       value: distance_m
     anchor: top-left
-    x: 44
-    y: 208
+    x: 0
+    y: 210
     width: 196
     height: 84
     z_index: 30
-    visible: true
+    visible: false
     style:
       label: Distance
       unit: KM
@@ -114,23 +114,23 @@ hud:
     bindings:
       value: heart_rate_bpm
     anchor: top-right
-    x: 1092
-    y: 118
-    width: 152
-    height: 82
+    x: 1152
+    y: 232
+    width: 128
+    height: 76
     z_index: 30
     visible: true
     style:
       label: Heart rate
       unit: BPM
-      align: right
+      align: left
   - id: pace-chip
     type: metric_card
     bindings:
       value: pace_seconds_per_km
     anchor: bottom-right
-    x: 978
-    y: 552
+    x: 1154
+    y: 308
     width: 126
     height: 76
     z_index: 20
@@ -143,8 +143,8 @@ hud:
     bindings:
       value: cadence_spm
     anchor: bottom-right
-    x: 1110
-    y: 552
+    x: 1152
+    y: 384
     width: 126
     height: 76
     z_index: 20
@@ -157,8 +157,8 @@ hud:
     bindings:
       value: elapsed_seconds
     anchor: bottom-right
-    x: 978
-    y: 636
+    x: 1154
+    y: 0
     width: 126
     height: 76
     z_index: 20
@@ -171,8 +171,8 @@ hud:
     bindings:
       value: speed_mps
     anchor: bottom-right
-    x: 1110
-    y: 636
+    x: 1154
+    y: 644
     width: 126
     height: 76
     z_index: 20
@@ -185,8 +185,8 @@ hud:
     bindings:
       value: route_points
     anchor: top-left
-    x: 21
-    y: 488
+    x: 0
+    y: 492
     width: 196
     height: 196
     z_index: 20
@@ -197,7 +197,7 @@ hud:
       show_panel: true
       show_north_marker: true
       show_bearing_label: true
-      show_heading_arrow: true
+      show_heading_arrow: false
       background_rgba:
       - 6
       - 10
@@ -209,8 +209,8 @@ hud:
       - 138
       - 255
       remaining_rgba:
-      - 13
-      - 144
-      - 195
+      - 240
+      - 247
+      - 249
       - 255
 overrides: {}
