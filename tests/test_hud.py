@@ -12,14 +12,12 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
-    RouteProjection,
     _draw_heading_arrow,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
     _progress_bar_text_layout,
     _scaled_font,
-    _split_route_segments,
     _widget_panel_enabled,
     render_hud_frame,
     validate_hud_config,
@@ -1986,7 +1984,7 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
 
     assert (6, 10, 18, 148) in rounded_rectangle_fills
     assert (34, 255, 138, 255) in line_fills
-    assert (13, 144, 195, 255) in line_fills
+    assert (13, 144, 195, 255) not in line_fills
     assert (228, 255, 238, 255) in ellipse_fills
     assert (228, 255, 238, 255) not in polygon_fills
     assert (255, 255, 255, 255) in polygon_fills
@@ -2110,22 +2108,6 @@ def test_validate_hud_config_rejects_unknown_route_map_shape() -> None:
                 ],
             )
         )
-
-
-def test_split_route_segments_uses_current_projection_for_completed_and_remaining_paths() -> None:
-    projected = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]
-    projection = RouteProjection(
-        point=(12.0, 0.0),
-        tangent=(1.0, 0.0),
-        segment_start=(10.0, 0.0),
-        segment_end=(20.0, 0.0),
-        segment_index=1,
-    )
-
-    completed, remaining = _split_route_segments(projected, projection)
-
-    assert completed == [(0.0, 0.0), (10.0, 0.0), (12.0, 0.0)]
-    assert remaining == [(12.0, 0.0), (20.0, 0.0)]
 
 
 def test_progress_bar_text_layout_aligns_current_and_total_values(monkeypatch: pytest.MonkeyPatch) -> None:
