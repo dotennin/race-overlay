@@ -553,6 +553,9 @@ function buildColorInput(value, onChange, onInput = null, labelText = "RGBA") {
 }
 
 function renderFieldControl(parent, key, metadata, value, onChange, onInput = null) {
+  if (metadata?.hidden) {
+    return;
+  }
   const fieldLabel = metadata?.label ?? key;
   if (metadata?.kind === "boolean" || typeof value === "boolean") {
     const toggle = document.createElement("label");
@@ -568,7 +571,7 @@ function renderFieldControl(parent, key, metadata, value, onChange, onInput = nu
     appendField(parent, fieldLabel, buildColorInput(value, onChange, onInput, fieldLabel), true);
     return;
   }
-  if (metadata?.kind === "enum") {
+  if (metadata?.kind === "enum" || metadata?.kind === "selection") {
     appendField(parent, fieldLabel, buildSelectInput(value, metadata.options ?? [], onChange, onInput), true);
     return;
   }

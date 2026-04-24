@@ -188,7 +188,7 @@ def test_build_editor_state_exposes_navigation_timestamp_and_typography_role_sch
     assert route_map_style["show_heading_arrow"] == {"kind": "boolean", "label": "Show heading arrow"}
 
     time_card_style = state["schema"]["widgets"]["time-card"]["style"]
-    assert time_card_style["variant"] == {"kind": "text", "label": "Variant"}
+    assert time_card_style["variant"] == {"kind": "selection", "label": "Variant", "options": ["compact", "timestamp_chip"]}
     assert time_card_style["format"] == {"kind": "text", "label": "Format"}
 
 
