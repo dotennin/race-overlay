@@ -82,10 +82,26 @@ def serialize_hud_config(config: HudConfig) -> dict[str, object]:
     return asdict(config)
 
 
+def _migrate_widget_style_font_names(style: dict[str, str | int | float | bool | list[int]]) -> dict[str, str | int | float | bool | list[int]]:
+    """Migrate old generic font names to unit-specific names for backward compatibility."""
+    if "font_family" in style and "unit_font_family" not in style:
+        style["unit_font_family"] = style.pop("font_family")
+    if "font_weight" in style and "unit_font_weight" not in style:
+        style["unit_font_weight"] = style.pop("font_weight")
+    if "font_size_px" in style and "unit_font_size_px" not in style:
+        style["unit_font_size_px"] = style.pop("font_size_px")
+    return style
+
+
 def _deserialize_widget(payload: object) -> HudWidgetConfig:
     if not isinstance(payload, dict):
         raise TypeError("hud.widgets entries must be mappings")
     _reject_unexpected_keys(payload, _HUD_WIDGET_KEYS, "hud.widgets")
+    
+    # Get style and migrate old font names to unit_font names
+    style = _require_style_mapping(payload.get("style", {}), "hud.widgets[].style")
+    style = _migrate_widget_style_font_names(style)
+    
     return HudWidgetConfig(
         id=_require_string(payload.get("id"), "hud.widgets[].id"),
         type=_require_string(payload.get("type"), "hud.widgets[].type"),
@@ -97,7 +113,7 @@ def _deserialize_widget(payload: object) -> HudWidgetConfig:
         height=_coerce_int(payload.get("height"), "height"),
         z_index=_coerce_int(payload.get("z_index", 0), "z_index"),
         visible=_coerce_bool(payload.get("visible", True), "hud.widgets[].visible"),
-        style=_require_style_mapping(payload.get("style", {}), "hud.widgets[].style"),
+        style=style,
     )
 
 
