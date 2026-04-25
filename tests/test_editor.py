@@ -206,6 +206,33 @@ def test_build_editor_state_exposes_time_chip_and_navigation_schema_for_broadcas
     }
     assert state["schema"]["widgets"]["time-chip"]["style"]["format"] == {"kind": "text", "label": "Format"}
 
+def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:
+    """Verify time-chip uses value_font_* fields (not unit_font_*) in editor schema."""
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+    
+    time_chip_style = state["schema"]["widgets"]["time-chip"]["style"]
+    
+    # Verify value_font fields are exposed
+    assert "value_font_family" in time_chip_style
+    assert time_chip_style["value_font_family"]["kind"] == "enum"
+    assert "value_font_weight" in time_chip_style
+    assert time_chip_style["value_font_weight"]["kind"] == "enum"
+    assert "value_font_size_px" in time_chip_style
+    assert time_chip_style["value_font_size_px"]["kind"] == "integer"
+    
+    # Verify unit_font fields are NOT exposed for time-chip
+    assert "unit_font_family" not in time_chip_style
+    assert "unit_font_weight" not in time_chip_style
+    assert "unit_font_size_px" not in time_chip_style
+    
+    # Verify label is hidden
+    assert time_chip_style.get("label", {}).get("hidden") is True
+
+
 
 def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fields(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
@@ -347,6 +374,33 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     assert reloaded_ruler.style["fill_rgba"] == [34, 255, 138, 255]
     assert reloaded_ruler.style["rail_rgba"] == [8, 12, 20, 220]
     assert reloaded_ruler.style["tick_rgba"] == [230, 238, 245, 168]
+
+
+def test_save_editor_payload_round_trips_time_chip_value_font_fields(tmp_path: Path) -> None:
+    """Verify time-chip value_font_* fields are persisted correctly through save/load cycle."""
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    
+    # Update time-chip with custom value_font settings
+    time_chip = next(widget for widget in payload["widgets"] if widget["id"] == "time-chip")
+    time_chip["style"].update(
+        value_font_family="mono",
+        value_font_weight="regular",
+        value_font_size_px=22,
+    )
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    reloaded_time_chip = next(widget for widget in reloaded.hud.widgets if widget.id == "time-chip")
+
+    # Verify value_font fields were persisted
+    assert reloaded_time_chip.style["value_font_family"] == "mono"
+    assert reloaded_time_chip.style["value_font_weight"] == "regular"
+    assert reloaded_time_chip.style["value_font_size_px"] == 22
 
 
 def test_save_editor_payload_preserves_schema_when_legacy_fields_are_also_present(tmp_path: Path) -> None:

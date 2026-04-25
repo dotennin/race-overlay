@@ -104,14 +104,14 @@ def _scale_draw(scale: RenderScale, value: int) -> int:
 @lru_cache(maxsize=32)
 def _load_default_font(pixel_size: int, family: str = "sans", weight: str = "regular") -> ImageFont.FreeTypeFont:
     font_filename = _FONT_FILES[family][weight]
-    
+
     if family in ("broadcast_ui", "broadcast_value"):
         try:
             font_path = files("race_overlay.assets.fonts").joinpath(font_filename)
             return ImageFont.truetype(str(font_path), pixel_size)
         except (OSError, AttributeError):
             pass
-    
+
     try:
         return ImageFont.truetype(font_filename, pixel_size)
     except OSError:
@@ -477,35 +477,24 @@ def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> 
 
 
 def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale, *, role: str) -> ImageFont.FreeTypeFont:
-    # Only widget-level overrides for unit fonts; other roles always use theme defaults
-    if role == "unit":
-        family_value = widget.style.get("unit_font_family", _theme_role_value(theme, "unit_font_family", "font_family"))
-        if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
-            allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
-            raise ValueError(f"widget '{widget.id}' style.unit_font_family must be one of: {allowed_values}")
+    # Widget-level overrides for all roles (unit, value, title, etc.); fallback to theme defaults
+    family_key = f"{role}_font_family"
+    weight_key = f"{role}_font_weight"
+    size_key = f"{role}_font_size_px"
 
-        weight_value = widget.style.get("unit_font_weight", _theme_role_value(theme, "unit_font_weight", "font_weight"))
-        if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
-            allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
-            raise ValueError(f"widget '{widget.id}' style.unit_font_weight must be one of: {allowed_values}")
+    family_value = widget.style.get(family_key, _theme_role_value(theme, family_key, "font_family"))
+    if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.{family_key} must be one of: {allowed_values}")
 
-        size_value = widget.style.get("unit_font_size_px", _theme_role_value(theme, "unit_font_size_px", "font_size_px"))
-        size = _require_font_size_style(widget, size_value, "unit_font_size_px")
-    else:
-        # Title, value, etc. always use theme defaults, never widget overrides
-        family_value = _theme_role_value(theme, f"{role}_font_family", "font_family")
-        if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
-            allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
-            raise ValueError(f"theme {role}_font_family must be one of: {allowed_values}")
+    weight_value = widget.style.get(weight_key, _theme_role_value(theme, weight_key, "font_weight"))
+    if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
+        allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
+        raise ValueError(f"widget '{widget.id}' style.{weight_key} must be one of: {allowed_values}")
 
-        weight_value = _theme_role_value(theme, f"{role}_font_weight", "font_weight")
-        if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
-            allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
-            raise ValueError(f"theme {role}_font_weight must be one of: {allowed_values}")
+    size_value = widget.style.get(size_key, _theme_role_value(theme, size_key, "font_size_px"))
+    size = _require_font_size_style(widget, size_value, size_key)
 
-        size_value = _theme_role_value(theme, f"{role}_font_size_px", "font_size_px")
-        size = _require_font_size_style(widget, size_value, f"{role}_font_size_px")
-    
     return _scaled_font(scale, size, family_value, weight_value)
 
 
@@ -666,14 +655,14 @@ def _draw_stat_block(
     h = _scale_y(scale, widget.height)
     right, bottom = left + w, top + h
     variant = str(widget.style.get("variant", "standard"))
-    
+
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle(
             (left, top, right, bottom),
             radius=_scale_draw(scale, 20),
             fill=(6, 10, 18, 120),
         )
-    
+
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
     unit_font = _unit_font(widget, theme, scale)
@@ -681,7 +670,7 @@ def _draw_stat_block(
     unit = str(widget.style.get("unit", "")) if _style_bool(widget, "show_unit", theme.show_units) else ""
     align = str(widget.style.get("align", "left"))
     value_text = _stat_block_value(binding, hud_value)
-    
+
     # Compact variant: reduced spacing
     if variant == "compact":
         if align == "right":
@@ -727,7 +716,7 @@ def _draw_stat_block(
                 unit_y = value_y + (value_bbox_origin[3] - unit_bbox_origin[3])
                 draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
         return
-    
+
     # Standard variant: original spacing
     if align == "right":
         value_right = right - _scale_x(scale, 12)
@@ -953,12 +942,12 @@ def _draw_metric_card(
     unit_font = _unit_font(widget, theme, scale)
     label = str(widget.style.get("label", "Metric"))
     align = str(widget.style.get("align", "left"))
-    
+
     if widget.style.get("variant") == "compact":
         if _widget_panel_enabled(widget):
             draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=(6, 10, 18, 120))
         value_text = _metric_value(widget, hud_value, elapsed_seconds)
-        
+
         if align == "right":
             # Right-aligned: label and value on right side
             value_right = right - _scale_x(scale, 12)
@@ -993,7 +982,7 @@ def _draw_metric_card(
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
     value_text = _metric_value(widget, hud_value, elapsed_seconds)
-    
+
     if align == "right":
         # Right-aligned: label and value on right side
         value_right = right - _scale_x(scale, 16)
@@ -1124,9 +1113,9 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if binding == "pace_seconds_per_km":
         return "/km"
     if binding == "heart_rate_bpm":
-        return "bpm"
+        return "BPM"
     if binding == "cadence_spm":
-        return "spm"
+        return "SPM"
     if binding == "elapsed_seconds":
         return ""
     if binding == "speed_mps":

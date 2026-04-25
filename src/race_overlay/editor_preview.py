@@ -77,12 +77,12 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
     },
     "context_card": {
-        "label": {"kind": "text", "label": "Label"},
+        "label": {"kind": "text", "label": "Label", "hidden": True},
         "variant": {"kind": "selection", "label": "Variant", "options": ["compact", "timestamp_chip"]},
         "format": {"kind": "text", "label": "Format"},
-        "unit_font_family": {"kind": "enum", "label": "Unit font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
-        "unit_font_weight": {"kind": "enum", "label": "Unit font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
-        "unit_font_size_px": {"kind": "integer", "label": "Unit font size", "min": 8},
+        "value_font_family": {"kind": "enum", "label": "Value font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
+        "value_font_weight": {"kind": "enum", "label": "Value font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
+        "value_font_size_px": {"kind": "integer", "label": "Value font size", "min": 8},
         "transparent_panel": {"kind": "boolean", "label": "Transparent panel"},
     },
     "route_map": {

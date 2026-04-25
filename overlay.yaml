@@ -45,9 +45,9 @@ hud:
       variant: timestamp_chip
       format: '%Y/%m/%d %H:%M:%S'
       transparent_panel: true
-      unit_font_size_px: 10
-      unit_font_weight: regular
-      unit_font_family: broadcast_value
+      value_font_size_px: 19
+      value_font_weight: bold
+      value_font_family: broadcast_value
       label: DD
   - id: distance-ruler
     type: progress_bar
@@ -88,7 +88,7 @@ hud:
     bindings:
       value: altitude_m
     anchor: top-left
-    x: 1153
+    x: 1144
     y: 76
     width: 127
     height: 73
@@ -106,7 +106,7 @@ hud:
       value: distance_m
     anchor: top-left
     x: 0
-    y: 210
+    y: 208
     width: 196
     height: 84
     z_index: 30
@@ -165,7 +165,7 @@ hud:
     bindings:
       value: elapsed_seconds
     anchor: bottom-right
-    x: 1154
+    x: 1144
     y: 0
     width: 126
     height: 76
@@ -195,7 +195,7 @@ hud:
       value: route_points
     anchor: top-left
     x: 0
-    y: 492
+    y: 524
     width: 196
     height: 196
     z_index: 20

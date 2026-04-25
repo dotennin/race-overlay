@@ -11,6 +11,15 @@ const STYLE_THEME_FALLBACKS = {
   font_weight: "font_weight",
   font_size_px: "font_size_px",
   show_unit: "show_units",
+  value_font_family: "value_font_family",
+  value_font_weight: "value_font_weight",
+  value_font_size_px: "value_font_size_px",
+  unit_font_family: "unit_font_family",
+  unit_font_weight: "unit_font_weight",
+  unit_font_size_px: "unit_font_size_px",
+  title_font_family: "title_font_family",
+  title_font_weight: "title_font_weight",
+  title_font_size_px: "title_font_size_px",
 };
 
 const elements = {
