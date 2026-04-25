@@ -1191,24 +1191,19 @@ def test_render_hud_frame_route_map_renders_navigation_overlays_by_default(monke
     assert labels["225°SW"][1] > 110
 
 
-def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_hud_frame_route_map_shows_position_marker_arrow(monkeypatch: pytest.MonkeyPatch) -> None:
     polygon_calls: list[object] = []
-    line_fills: list[tuple[int, int, int, int]] = []
+    polygon_fills: list[tuple[int, int, int, int]] = []
     original_polygon = ImageDraw.ImageDraw.polygon
-    original_line = ImageDraw.ImageDraw.line
 
     def record_polygon(self, xy, *args, **kwargs):
         polygon_calls.append(xy)
-        return original_polygon(self, xy, *args, **kwargs)
-
-    def record_line(self, xy, *args, **kwargs):
         fill = kwargs.get("fill")
         if isinstance(fill, tuple):
-            line_fills.append(fill)
-        return original_line(self, xy, *args, **kwargs)
+            polygon_fills.append(fill)
+        return original_polygon(self, xy, *args, **kwargs)
 
     monkeypatch.setattr(ImageDraw.ImageDraw, "polygon", record_polygon)
-    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
 
     render_hud_frame(
         width=1280,
@@ -1245,59 +1240,19 @@ def test_render_hud_frame_route_map_respects_heading_arrow_style(monkeypatch: py
         elapsed_seconds=6852,
     )
 
-    assert polygon_calls, "expected a heading arrow polygon by default"
-    assert (74, 155, 255, 255) in line_fills
-    polygon_calls.clear()
-    line_fills.clear()
-
-    render_hud_frame(
-        width=1280,
-        height=720,
-        hud_value=HudSample(
-            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
-            latitude=35.5,
-            longitude=139.5,
-            altitude_m=25.0,
-            distance_m=24600.0,
-            speed_mps=3.58,
-            pace_seconds_per_km=278.0,
-            heart_rate_bpm=162,
-            cadence_spm=178,
-        ),
-        route_points=[(36.0, 140.0), (35.0, 139.0)],
-        hud_config=HudConfig(
-            preset="route-only",
-            theme=HudThemeConfig(),
-            widgets=[
-                HudWidgetConfig(
-                    id="route-map",
-                    type="route_map",
-                    bindings={"value": "route_points"},
-                    anchor="top-left",
-                    x=24,
-                    y=24,
-                    width=176,
-                    height=128,
-                    style={"label": "", "show_heading_arrow": False},
-                )
-            ],
-        ),
-        elapsed_seconds=6852,
-    )
-
-    assert polygon_calls == []
-    assert (74, 155, 255, 255) not in line_fills
+    assert polygon_calls, "expected position marker arrow polygon"
+    assert (74, 155, 255, 255) in polygon_fills, "expected arrow head in blue color"
 
 
 def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_vectors: list[tuple[float, float]] = []
-    original_draw_heading_arrow = hud_module._draw_heading_arrow
+    original_draw_position_arrow = hud_module._draw_position_marker_arrow
 
-    def record_heading_arrow(draw, center, vector, scale, *, arrow_rgba=(74, 155, 255, 255)):
+    def record_position_arrow(draw, center, vector, scale):
         captured_vectors.append(vector)
-        return original_draw_heading_arrow(draw, center, vector, scale, arrow_rgba=arrow_rgba)
+        return original_draw_position_arrow(draw, center, vector, scale)
 
-    monkeypatch.setattr(hud_module, "_draw_heading_arrow", record_heading_arrow)
+    monkeypatch.setattr(hud_module, "_draw_position_marker_arrow", record_position_arrow)
 
     render_hud_frame(
         width=180,
@@ -1986,9 +1941,8 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
     assert (6, 10, 18, 148) in rounded_rectangle_fills
     assert (34, 255, 138, 255) in line_fills
     assert (13, 144, 195, 255) not in line_fills
-    assert (228, 255, 238, 255) in ellipse_fills
-    assert (228, 255, 238, 255) not in polygon_fills
-    assert (255, 255, 255, 255) in polygon_fills
+    assert (228, 255, 238, 255) not in ellipse_fills
+    assert (74, 155, 255, 255) in polygon_fills
 
 
 def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytest.MonkeyPatch) -> None:

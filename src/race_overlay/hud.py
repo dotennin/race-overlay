@@ -309,7 +309,6 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_bool_style(widget, "show_total_value")
     _validate_optional_bool_style(widget, "show_north_marker")
     _validate_optional_bool_style(widget, "show_bearing_label")
-    _validate_optional_bool_style(widget, "show_heading_arrow")
     _validate_optional_rgba_style(widget, "fill_rgba")
     _validate_optional_rgba_style(widget, "rail_rgba")
     _validate_optional_rgba_style(widget, "tick_rgba")
@@ -816,7 +815,6 @@ def _draw_route_map(
 
     show_north_marker = _style_bool(widget, "show_north_marker", True)
     show_bearing_label = _style_bool(widget, "show_bearing_label", True)
-    show_heading_arrow = _style_bool(widget, "show_heading_arrow", True)
     route_projection = _resolve_route_projection(route_points, hud_value)
     bearing_label = ""
     if route_projection is not None and show_bearing_label:
@@ -832,6 +830,15 @@ def _draw_route_map(
     longitudes = [point[1] for point in route_points]
     lat_min, lat_max = min(latitudes), max(latitudes)
     lon_min, lon_max = min(longitudes), max(longitudes)
+    
+    lat_range = max(lat_max - lat_min, 1e-9)
+    lon_range = max(lon_max - lon_min, 1e-9)
+    lat_padding = lat_range * 0.05
+    lon_padding = lon_range * 0.05
+    lat_min -= lat_padding
+    lat_max += lat_padding
+    lon_min -= lon_padding
+    lon_max += lon_padding
 
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
@@ -853,25 +860,13 @@ def _draw_route_map(
                 font=unit_font,
             )
         x, y = project(route_projection.point)
-        r = _scale_draw(scale, 7)
-        widget_draw.ellipse(
-            (x - r, y - r, x + r, y + r),
-            fill=ROUTE_MAP_MARKER_RGBA,
-            outline=ROUTE_MAP_ROUTE_RGBA,
-            width=_scale_draw(scale, 2),
+        heading_vector = _projected_route_vector(route_projection, project)
+        _draw_position_marker_arrow(
+            widget_draw,
+            (x, y),
+            heading_vector,
+            scale,
         )
-        if show_heading_arrow:
-            heading_vector = _projected_route_vector(route_projection, project)
-            _draw_heading_arrow(
-                widget_draw,
-                (x, y),
-                heading_vector,
-                scale,
-                arrow_rgba=ROUTE_MAP_HEADING_ARROW_RGBA,
-            )
-            arrow_head = _heading_arrow_head_points((x, y), heading_vector, scale)
-            if arrow_head is not None:
-                widget_draw.polygon(arrow_head, fill=ROUTE_MAP_HEADING_ARROW_HEAD_RGBA)
 
     if shape == "circle":
         mask = Image.new("L", (w, h), 0)
@@ -1210,6 +1205,53 @@ def _bearing_from_tangent(tangent: tuple[float, float]) -> int | None:
 def _bearing_cardinal(bearing: int) -> str:
     cardinals = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     return cardinals[int(((bearing + 22.5) % 360) // 45)]
+
+
+def _draw_position_marker_arrow(
+    draw: ImageDraw.ImageDraw,
+    center: tuple[float, float],
+    vector: tuple[float, float],
+    scale: RenderScale,
+) -> None:
+    """Draw a navigation-style arrow marker showing current position and bearing."""
+    dx, dy = vector
+    length = math.hypot(dx, dy)
+    if length <= 1e-12:
+        return
+    
+    unit_x = dx / length
+    unit_y = dy / length
+    center_x, center_y = center
+    
+    # Larger arrow dimensions for prominent position marker
+    arrow_length = _scale_draw(scale, 24)
+    arrow_width = _scale_draw(scale, 8)
+    head_length = _scale_draw(scale, 12)
+    
+    # Arrow tip point
+    tip_x = center_x + (unit_x * arrow_length)
+    tip_y = center_y + (unit_y * arrow_length)
+    
+    # Base point (center)
+    base_x = center_x
+    base_y = center_y
+    
+    # Side vectors perpendicular to direction
+    side_x = -unit_y
+    side_y = unit_x
+    
+    # Arrow head points (filled triangle)
+    arrow_head = (
+        (tip_x, tip_y),
+        (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
+        (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
+    )
+    
+    # Draw main arrow head (blue)
+    draw.polygon(arrow_head, fill=ROUTE_MAP_HEADING_ARROW_RGBA)
+    
+    # Draw arrow head outline (white)
+    draw.polygon(arrow_head, outline=ROUTE_MAP_HEADING_ARROW_HEAD_RGBA, width=_scale_draw(scale, 1))
 
 
 def _draw_heading_arrow(

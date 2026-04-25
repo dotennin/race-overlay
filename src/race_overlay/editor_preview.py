@@ -94,7 +94,6 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "remaining_rgba": {"kind": "rgba", "label": "Remaining RGBA"},
         "show_north_marker": {"kind": "boolean", "label": "Show north marker"},
         "show_bearing_label": {"kind": "boolean", "label": "Show bearing label"},
-        "show_heading_arrow": {"kind": "boolean", "label": "Show heading arrow"},
     },
 }
 
