@@ -344,9 +344,9 @@ def test_validate_hud_config_rejects_non_string_theme_note_text() -> None:
 
 def test_validate_hud_config_rejects_non_integer_widget_font_size() -> None:
     preset = broadcast_runner_preset()
-    preset.widgets[0].style["font_size_px"] = 8.5
+    preset.widgets[0].style["unit_font_size_px"] = 8.5
 
-    with pytest.raises(ValueError, match="font_size_px"):
+    with pytest.raises(ValueError, match="unit_font_size_px"):
         validate_hud_config(preset)
 
 
