@@ -911,7 +911,7 @@ def _draw_hero_metric(
         draw.text(
             (right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)),
             "/km",
-            fill=(255, 255, 255, 160),
+            fill=tuple(theme.text_rgba),
             anchor="rs",
             font=unit_font,
         )
@@ -955,7 +955,7 @@ def _draw_metric_card(
                 suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
                 value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
                 suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
-                draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+                draw.text((suffix_x, suffix_y), suffix, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
         else:
             # Left-aligned: label and value on left side (default)
             value_x = left + _scale_x(scale, 12)
@@ -969,7 +969,7 @@ def _draw_metric_card(
                 suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
                 value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
                 suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
-                draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+                draw.text((suffix_x, suffix_y), suffix, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
         return
 
     # Non-compact variant
@@ -990,7 +990,7 @@ def _draw_metric_card(
             suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
             value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
             suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
-            draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+            draw.text((suffix_x, suffix_y), suffix, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
     else:
         # Left-aligned: label and value on left side (default)
         value_x = left + _scale_x(scale, 16)
@@ -1004,7 +1004,7 @@ def _draw_metric_card(
             suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
             value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
             suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
-            draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+            draw.text((suffix_x, suffix_y), suffix, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
 
 
 def _draw_context_card(

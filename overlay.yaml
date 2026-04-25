@@ -11,14 +11,14 @@ hud:
   preset: broadcast-runner
   theme:
     text_rgba:
-    - 247
-    - 251
+    - 255
+    - 255
     - 255
     - 255
     note_text: Race Day
     font_family: broadcast_value
     font_weight: regular
-    font_size_px: 18
+    font_size_px: 25
     title_font_family: broadcast_value
     title_font_weight: bold
     title_font_size_px: 16
@@ -27,7 +27,7 @@ hud:
     value_font_size_px: 32
     unit_font_family: broadcast_value
     unit_font_weight: regular
-    unit_font_size_px: 13
+    unit_font_size_px: 15
     show_units: true
   widgets:
   - id: time-chip
@@ -107,6 +107,7 @@ hud:
     style:
       label: Distance
       unit: KM
+      decimals: 2
   - id: heart-rate-stat
     type: stat_block
     bindings:
