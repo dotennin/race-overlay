@@ -1618,13 +1618,14 @@ def test_render_hud_frame_metric_card_respects_widget_font_override_for_role_fon
                     y=0,
                     width=180,
                     height=96,
-                    style={"label": "Heart", "font_size_px": 26},
+                    style={"label": "Heart", "unit_font_size_px": 26},
                 )
             ],
         ),
     )
 
-    assert calls == [("Heart", 26), ("162", 26), ("bpm", 26)]
+    # With new design: title uses theme.title_font_size_px, value uses theme.value_font_size_px, unit uses unit_font_size_px override
+    assert calls == [("Heart", 14), ("162", 28), ("bpm", 26)]
 
 
 def test_render_hud_frame_stat_block_uses_thematic_typography_roles_and_tighter_unit_spacing(

@@ -477,18 +477,35 @@ def _theme_role_value(theme: HudThemeConfig, role_key: str, legacy_key: str) -> 
 
 
 def _style_role_font(widget: HudWidgetConfig, theme: HudThemeConfig, scale: RenderScale, *, role: str) -> ImageFont.FreeTypeFont:
-    family_value = widget.style.get("font_family", _theme_role_value(theme, f"{role}_font_family", "font_family"))
-    if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
-        allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
+    # Only widget-level overrides for unit fonts; other roles always use theme defaults
+    if role == "unit":
+        family_value = widget.style.get("unit_font_family", _theme_role_value(theme, "unit_font_family", "font_family"))
+        if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
+            allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
+            raise ValueError(f"widget '{widget.id}' style.unit_font_family must be one of: {allowed_values}")
 
-    weight_value = widget.style.get("font_weight", _theme_role_value(theme, f"{role}_font_weight", "font_weight"))
-    if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
-        allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_weight must be one of: {allowed_values}")
+        weight_value = widget.style.get("unit_font_weight", _theme_role_value(theme, "unit_font_weight", "font_weight"))
+        if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
+            allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
+            raise ValueError(f"widget '{widget.id}' style.unit_font_weight must be one of: {allowed_values}")
 
-    size_value = widget.style.get("font_size_px", _theme_role_value(theme, f"{role}_font_size_px", "font_size_px"))
-    size = _require_font_size_style(widget, size_value, "font_size_px")
+        size_value = widget.style.get("unit_font_size_px", _theme_role_value(theme, "unit_font_size_px", "font_size_px"))
+        size = _require_font_size_style(widget, size_value, "unit_font_size_px")
+    else:
+        # Title, value, etc. always use theme defaults, never widget overrides
+        family_value = _theme_role_value(theme, f"{role}_font_family", "font_family")
+        if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
+            allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
+            raise ValueError(f"theme {role}_font_family must be one of: {allowed_values}")
+
+        weight_value = _theme_role_value(theme, f"{role}_font_weight", "font_weight")
+        if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
+            allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
+            raise ValueError(f"theme {role}_font_weight must be one of: {allowed_values}")
+
+        size_value = _theme_role_value(theme, f"{role}_font_size_px", "font_size_px")
+        size = _require_font_size_style(widget, size_value, f"{role}_font_size_px")
+    
     return _scaled_font(scale, size, family_value, weight_value)
 
 
