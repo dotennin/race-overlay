@@ -299,9 +299,9 @@ def _require_widget_int(widget: HudWidgetConfig, field_name: str, *, minimum: in
 
 
 def _validate_widget_style(widget: HudWidgetConfig) -> None:
-    _validate_optional_enum_style(widget, "font_family", HUD_FONT_FAMILY_OPTIONS)
-    _validate_optional_enum_style(widget, "font_weight", HUD_FONT_WEIGHT_OPTIONS)
-    _validate_optional_font_size_style(widget, "font_size_px")
+    _validate_optional_enum_style(widget, "unit_font_family", HUD_FONT_FAMILY_OPTIONS)
+    _validate_optional_enum_style(widget, "unit_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+    _validate_optional_font_size_style(widget, "unit_font_size_px")
     _validate_optional_bool_style(widget, "show_panel")
     _validate_optional_bool_style(widget, "transparent_panel")
     _validate_optional_bool_style(widget, "show_unit")
@@ -409,15 +409,15 @@ def _style_bool(widget: HudWidgetConfig, key: str, default: bool) -> bool:
 
 
 def _style_font_size(widget: HudWidgetConfig, theme: HudThemeConfig, fallback: int) -> int:
-    value = widget.style.get("font_size_px", theme.font_size_px or fallback)
-    return _require_font_size_style(widget, value, "font_size_px")
+    value = widget.style.get("unit_font_size_px", theme.unit_font_size_px or fallback)
+    return _require_font_size_style(widget, value, "unit_font_size_px")
 
 
 def _style_font_family(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
-    value = widget.style.get("font_family", theme.font_family)
+    value = widget.style.get("unit_font_family", theme.unit_font_family)
     if not isinstance(value, str) or value not in HUD_FONT_FAMILY_OPTIONS:
         allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
+        raise ValueError(f"widget '{widget.id}' style.unit_font_family must be one of: {allowed_values}")
     return value
 
 
@@ -434,10 +434,10 @@ def _require_font_size_style(widget: HudWidgetConfig, value: object, key: str) -
 
 
 def _style_font_weight(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
-    value = widget.style.get("font_weight", theme.font_weight)
+    value = widget.style.get("unit_font_weight", theme.unit_font_weight)
     if not isinstance(value, str) or value not in HUD_FONT_WEIGHT_OPTIONS:
         allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_weight must be one of: {allowed_values}")
+        raise ValueError(f"widget '{widget.id}' style.unit_font_weight must be one of: {allowed_values}")
     return value
 
 
