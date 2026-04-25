@@ -284,7 +284,7 @@ def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fie
         unit_font_size_px=14,
     )
     route_map = next(widget for widget in payload["widgets"] if widget["id"] == "route-map")
-    route_map["style"].update(show_north_marker=True, show_bearing_label=False, show_heading_arrow=True)
+    route_map["style"].update(show_north_marker=True, show_bearing_label=False)
     time_card = next(widget for widget in payload["widgets"] if widget["id"] == "time-card")
     time_card["style"].update(variant="timestamp_chip", format="%H:%M")
 
@@ -305,7 +305,7 @@ def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fie
     assert reloaded.hud.theme.unit_font_size_px == 14
     assert route_map_reloaded.style["show_north_marker"] is True
     assert route_map_reloaded.style["show_bearing_label"] is False
-    assert route_map_reloaded.style["show_heading_arrow"] is True
+    
     assert time_card_reloaded.style["variant"] == "timestamp_chip"
     assert time_card_reloaded.style["format"] == "%H:%M"
 

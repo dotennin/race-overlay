@@ -41,7 +41,7 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert route_map.style["shape"] == "circle"
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
-    assert route_map.style["show_heading_arrow"] is True
+
     assert route_map.style["background_rgba"] == [6, 10, 18, 148]
     assert route_map.style["completed_rgba"] == [34, 255, 138, 255]
     assert route_map.style["remaining_rgba"] == [13, 144, 195, 255]
@@ -55,7 +55,7 @@ def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -
     assert route_map.style["show_panel"] is True
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
-    assert route_map.style["show_heading_arrow"] is True
+
 
 
 def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
@@ -67,7 +67,7 @@ def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
     assert route_map.style["show_panel"] is True
     assert route_map.style["show_north_marker"] is True
     assert route_map.style["show_bearing_label"] is True
-    assert route_map.style["show_heading_arrow"] is True
+
 
 
 def test_legacy_broadcast_runner_preset_leaves_progress_bar_color_defaults_unset() -> None:

@@ -303,7 +303,6 @@ def broadcast_runner_preset() -> HudConfig:
                     "show_panel": True,
                     "show_north_marker": True,
                     "show_bearing_label": True,
-                    "show_heading_arrow": True,
                     "background_rgba": [6, 10, 18, 148],
                     "completed_rgba": [34, 255, 138, 255],
                     "remaining_rgba": [13, 144, 195, 255],

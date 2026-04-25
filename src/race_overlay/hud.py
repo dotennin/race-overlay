@@ -1213,7 +1213,7 @@ def _draw_position_marker_arrow(
     vector: tuple[float, float],
     scale: RenderScale,
 ) -> None:
-    """Draw a navigation-style arrow marker showing current position and bearing."""
+    """Draw a compass-style navigation arrow marker showing current position and bearing."""
     dx, dy = vector
     length = math.hypot(dx, dy)
     if length <= 1e-12:
@@ -1223,35 +1223,44 @@ def _draw_position_marker_arrow(
     unit_y = dy / length
     center_x, center_y = center
     
-    # Larger arrow dimensions for prominent position marker
+    # Compass arrow dimensions
     arrow_length = _scale_draw(scale, 24)
-    arrow_width = _scale_draw(scale, 8)
-    head_length = _scale_draw(scale, 12)
+    arrow_width = _scale_draw(scale, 6)
+    tail_length = _scale_draw(scale, 12)
     
-    # Arrow tip point
+    # Arrow tip point (forward)
     tip_x = center_x + (unit_x * arrow_length)
     tip_y = center_y + (unit_y * arrow_length)
     
-    # Base point (center)
-    base_x = center_x
-    base_y = center_y
+    # Tail point (backward)
+    tail_x = center_x - (unit_x * tail_length)
+    tail_y = center_y - (unit_y * tail_length)
     
-    # Side vectors perpendicular to direction
+    # Perpendicular vectors for width
     side_x = -unit_y
     side_y = unit_x
     
-    # Arrow head points (filled triangle)
-    arrow_head = (
-        (tip_x, tip_y),
-        (tip_x - (unit_x * head_length) + (side_x * arrow_width), tip_y - (unit_y * head_length) + (side_y * arrow_width)),
-        (tip_x - (unit_x * head_length) - (side_x * arrow_width), tip_y - (unit_y * head_length) - (side_y * arrow_width)),
+    # Arrow body side points (wider body)
+    body_indent = _scale_draw(scale, 8)
+    left_x = center_x - (unit_x * body_indent) + (side_x * arrow_width)
+    left_y = center_y - (unit_y * body_indent) + (side_y * arrow_width)
+    
+    right_x = center_x - (unit_x * body_indent) - (side_x * arrow_width)
+    right_y = center_y - (unit_y * body_indent) - (side_y * arrow_width)
+    
+    # Compass arrow shape: pointed tip, angled body, pointed tail
+    arrow_points = (
+        (tip_x, tip_y),                           # Forward point
+        (left_x, left_y),                         # Left body
+        (tail_x, tail_y),                         # Tail point
+        (right_x, right_y),                       # Right body
     )
     
-    # Draw main arrow head (blue)
-    draw.polygon(arrow_head, fill=ROUTE_MAP_HEADING_ARROW_RGBA)
+    # Draw main arrow body (blue)
+    draw.polygon(arrow_points, fill=ROUTE_MAP_HEADING_ARROW_RGBA)
     
-    # Draw arrow head outline (white)
-    draw.polygon(arrow_head, outline=ROUTE_MAP_HEADING_ARROW_HEAD_RGBA, width=_scale_draw(scale, 1))
+    # Draw arrow outline (white)
+    draw.polygon(arrow_points, outline=ROUTE_MAP_HEADING_ARROW_HEAD_RGBA, width=_scale_draw(scale, 1))
 
 
 def _draw_heading_arrow(

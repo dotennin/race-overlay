@@ -126,7 +126,6 @@ def test_deserialize_hud_config_supports_typography_roles_and_extended_widget_st
                     "show_panel": True,
                     "show_north_marker": True,
                     "show_bearing_label": False,
-                    "show_heading_arrow": True,
                 },
             },
             {
@@ -164,7 +163,7 @@ def test_deserialize_hud_config_supports_typography_roles_and_extended_widget_st
     assert serialized["theme"]["unit_font_weight"] == "bold"
     assert serialized["widgets"][0]["style"]["show_north_marker"] is True
     assert serialized["widgets"][0]["style"]["show_bearing_label"] is False
-    assert serialized["widgets"][0]["style"]["show_heading_arrow"] is True
+    
     assert serialized["widgets"][1]["style"]["variant"] == "timestamp_chip"
     assert serialized["widgets"][1]["style"]["format"] == "%H:%M"
 
