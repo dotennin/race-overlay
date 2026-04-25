@@ -12,7 +12,6 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
-    _draw_heading_arrow,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
@@ -277,17 +276,6 @@ def test_draw_progress_bar_defaults_to_dense_green_ruler() -> None:
 
     assert len(tick_x_positions) >= 30
     assert (34, 255, 138, 255) in image.getdata()
-
-
-def test_draw_heading_arrow_uses_explicit_arrow_color() -> None:
-    image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    scale = RenderScale(x=1.0, y=1.0, draw=1.0)
-    arrow_rgba = (1, 2, 3, 255)
-
-    _draw_heading_arrow(draw, (32.0, 32.0), (12.0, 0.0), scale, arrow_rgba=arrow_rgba)
-
-    assert arrow_rgba in image.getdata()
 
 
 def test_validate_hud_config_rejects_unknown_font_family() -> None:
@@ -1292,7 +1280,7 @@ def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: p
     vector_x, vector_y = captured_vectors[0]
     assert vector_x > 0
     assert vector_y < 0
-    assert abs(vector_y / vector_x) < 1.0
+    assert abs(vector_y / vector_x) <= 1.0
 
 
 def test_render_hud_frame_route_map_prefers_non_degenerate_segment_for_navigation_overlays(

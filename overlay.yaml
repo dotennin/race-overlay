@@ -195,7 +195,7 @@ hud:
       value: route_points
     anchor: top-left
     x: 0
-    y: 524
+    y: 486
     width: 196
     height: 196
     z_index: 20
@@ -206,7 +206,6 @@ hud:
       show_panel: true
       show_north_marker: true
       show_bearing_label: true
-      show_heading_arrow: false
       background_rgba:
       - 6
       - 10
