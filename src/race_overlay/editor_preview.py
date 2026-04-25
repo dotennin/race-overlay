@@ -61,6 +61,7 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     "metric_card": {
         "label": {"kind": "text", "label": "Label"},
         "variant": {"kind": "selection", "label": "Variant", "options": ["compact"]},
+        "align": {"kind": "selection", "label": "Align", "options": ["left", "right"]},
         "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
         "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
         "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},

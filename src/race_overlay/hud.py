@@ -882,41 +882,77 @@ def _draw_metric_card(
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
     unit_font = _unit_font(widget, theme, scale)
+    label = str(widget.style.get("label", "Metric"))
+    align = str(widget.style.get("align", "left"))
+    
     if widget.style.get("variant") == "compact":
         if _widget_panel_enabled(widget):
             draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 20), fill=(6, 10, 18, 120))
-        label = str(widget.style.get("label", "Metric"))
-        draw.text((left + _scale_x(scale, 12), top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
-        draw.text(
-            (left + _scale_x(scale, 12), top + _scale_y(scale, 30)),
-            _metric_value(widget, hud_value, elapsed_seconds),
-            fill=tuple(theme.text_rgba),
-            font=value_font,
-        )
-        suffix = _metric_suffix(widget, theme)
-        if suffix:
-            draw.text(
-                (right - _scale_x(scale, 12), bottom - _scale_y(scale, 12)),
-                suffix,
-                fill=(255, 255, 255, 160),
-                anchor="rs",
-                font=unit_font,
-            )
+        value_text = _metric_value(widget, hud_value, elapsed_seconds)
+        
+        if align == "right":
+            # Right-aligned: label and value on right side
+            value_right = right - _scale_x(scale, 12)
+            value_y = top + _scale_y(scale, 30)
+            draw.text((value_right, top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), anchor="ra", font=title_font)
+            draw.text((value_right, value_y), value_text, fill=tuple(theme.text_rgba), anchor="ra", font=value_font)
+            suffix = _metric_suffix(widget, theme)
+            if suffix:
+                value_bbox = draw.textbbox((value_right, value_y), value_text, font=value_font, anchor="ra")
+                suffix_x = value_bbox[2] + _scale_x(scale, 6)
+                suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
+                value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
+                suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
+                draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+        else:
+            # Left-aligned: label and value on left side (default)
+            value_x = left + _scale_x(scale, 12)
+            value_y = top + _scale_y(scale, 30)
+            draw.text((value_x, top + _scale_y(scale, 12)), label, fill=tuple(theme.text_rgba), font=title_font)
+            draw.text((value_x, value_y), value_text, fill=tuple(theme.text_rgba), font=value_font)
+            suffix = _metric_suffix(widget, theme)
+            if suffix:
+                value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font, anchor="la")
+                suffix_x = value_bbox[2] + _scale_x(scale, 6)
+                suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
+                value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
+                suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
+                draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
         return
 
+    # Non-compact variant
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
-    label = str(widget.style.get("label", "Metric"))
-    draw.text((left + _scale_x(scale, 16), top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=title_font)
-    draw.text(
-        (left + _scale_x(scale, 16), top + _scale_y(scale, 48)),
-        _metric_value(widget, hud_value, elapsed_seconds),
-        fill=tuple(theme.text_rgba),
-        font=value_font,
-    )
-    suffix = _metric_suffix(widget, theme)
-    if suffix:
-        draw.text((left + _scale_x(scale, 16), bottom - _scale_y(scale, 20)), suffix, fill=(255, 255, 255, 160), font=unit_font)
+    value_text = _metric_value(widget, hud_value, elapsed_seconds)
+    
+    if align == "right":
+        # Right-aligned: label and value on right side
+        value_right = right - _scale_x(scale, 16)
+        value_y = top + _scale_y(scale, 48)
+        draw.text((value_right, top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), anchor="ra", font=title_font)
+        draw.text((value_right, value_y), value_text, fill=tuple(theme.text_rgba), anchor="ra", font=value_font)
+        suffix = _metric_suffix(widget, theme)
+        if suffix:
+            value_bbox = draw.textbbox((value_right, value_y), value_text, font=value_font, anchor="ra")
+            suffix_x = value_bbox[2] + _scale_x(scale, 6)
+            suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
+            value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
+            suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
+            draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
+    else:
+        # Left-aligned: label and value on left side (default)
+        value_x = left + _scale_x(scale, 16)
+        value_y = top + _scale_y(scale, 48)
+        draw.text((value_x, top + _scale_y(scale, 16)), label, fill=tuple(theme.text_rgba), font=title_font)
+        draw.text((value_x, value_y), value_text, fill=tuple(theme.text_rgba), font=value_font)
+        suffix = _metric_suffix(widget, theme)
+        if suffix:
+            value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font, anchor="la")
+            suffix_x = value_bbox[2] + _scale_x(scale, 6)
+            suffix_bbox_origin = draw.textbbox((0, 0), suffix, font=unit_font, anchor="la")
+            value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
+            suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
+            draw.text((suffix_x, suffix_y), suffix, fill=(255, 255, 255, 160), anchor="la", font=unit_font)
 
 
 def _draw_context_card(
