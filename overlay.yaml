@@ -91,7 +91,6 @@ hud:
     style:
       label: Elevation
       unit: M
-      decimals: 1
       show_unit: true
       transparent_panel: true
   - id: distance-stat
@@ -108,7 +107,6 @@ hud:
     style:
       label: Distance
       unit: KM
-      decimals: 2
   - id: heart-rate-stat
     type: stat_block
     bindings:

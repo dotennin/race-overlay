@@ -50,8 +50,8 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     "stat_block": {
         "label": {"kind": "text", "label": "Label"},
         "unit": {"kind": "text", "label": "Unit", "hidden": True},
+        "variant": {"kind": "selection", "label": "Variant", "options": ["standard", "compact"]},
         "align": {"kind": "selection", "label": "Align", "options": ["left", "right"]},
-        "decimals": {"kind": "integer", "label": "Decimals", "min": 0},
         "font_family": {"kind": "enum", "label": "Font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
         "font_weight": {"kind": "enum", "label": "Font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
         "font_size_px": {"kind": "integer", "label": "Font size", "min": 8},

@@ -647,21 +647,73 @@ def _draw_stat_block(
     left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
+    right, bottom = left + w, top + h
+    variant = str(widget.style.get("variant", "standard"))
+    
     if _widget_panel_enabled(widget):
         draw.rounded_rectangle(
-            (left, top, left + w, top + h),
+            (left, top, right, bottom),
             radius=_scale_draw(scale, 20),
             fill=(6, 10, 18, 120),
         )
+    
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
     unit_font = _unit_font(widget, theme, scale)
     label = str(widget.style.get("label", "Metric"))
     unit = str(widget.style.get("unit", "")) if _style_bool(widget, "show_unit", theme.show_units) else ""
     align = str(widget.style.get("align", "left"))
-    value_text = _stat_block_value(binding, hud_value, decimals=int(widget.style.get("decimals", 0)))
+    value_text = _stat_block_value(binding, hud_value)
+    
+    # Compact variant: reduced spacing
+    if variant == "compact":
+        if align == "right":
+            value_right = right - _scale_x(scale, 12)
+            value_y = top + _scale_y(scale, 28)
+            draw.text(
+                (value_right, top + _scale_y(scale, 8)),
+                label,
+                fill=tuple(theme.text_rgba),
+                anchor="ra",
+                font=title_font,
+            )
+            draw.text(
+                (value_right, value_y),
+                value_text,
+                fill=tuple(theme.text_rgba),
+                anchor="ra",
+                font=value_font,
+            )
+            if unit:
+                value_bbox = draw.textbbox((value_right, value_y), value_text, font=value_font, anchor="ra")
+                unit_x = value_bbox[2] + _scale_x(scale, 6)
+                unit_bbox_origin = draw.textbbox((0, 0), unit, font=unit_font, anchor="la")
+                value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="ra")
+                unit_y = value_y + (value_bbox_origin[3] - unit_bbox_origin[3])
+                draw.text(
+                    (unit_x, unit_y),
+                    unit,
+                    fill=tuple(theme.text_rgba),
+                    anchor="la",
+                    font=unit_font,
+                )
+        else:
+            value_x = left + _scale_x(scale, 12)
+            value_y = top + _scale_y(scale, 28)
+            draw.text((value_x, top + _scale_y(scale, 8)), label, fill=tuple(theme.text_rgba), font=title_font)
+            draw.text((value_x, value_y), value_text, fill=tuple(theme.text_rgba), font=value_font)
+            if unit:
+                value_bbox = draw.textbbox((value_x, value_y), value_text, font=value_font, anchor="la")
+                unit_x = value_bbox[2] + _scale_x(scale, 6)
+                unit_bbox_origin = draw.textbbox((0, 0), unit, font=unit_font, anchor="la")
+                value_bbox_origin = draw.textbbox((0, 0), value_text, font=value_font, anchor="la")
+                unit_y = value_y + (value_bbox_origin[3] - unit_bbox_origin[3])
+                draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
+        return
+    
+    # Standard variant: original spacing
     if align == "right":
-        value_right = left + w - _scale_x(scale, 12)
+        value_right = right - _scale_x(scale, 12)
         value_y = top + _scale_y(scale, 34)
         draw.text(
             (value_right, top + _scale_y(scale, 12)),
@@ -705,13 +757,13 @@ def _draw_stat_block(
         draw.text((unit_x, unit_y), unit, fill=tuple(theme.text_rgba), anchor="la", font=unit_font)
 
 
-def _stat_block_value(binding: str, hud_value: HudSample, decimals: int) -> str:
+def _stat_block_value(binding: str, hud_value: HudSample) -> str:
     if binding == "altitude_m":
         return "--" if hud_value.altitude_m is None else f"{hud_value.altitude_m:.0f}"
     if binding == "distance_m":
         if hud_value.distance_m is None:
             return "--"
-        return f"{hud_value.distance_m / 1000:.{decimals}f}"
+        return f"{hud_value.distance_m / 1000:.1f}"
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     raise AssertionError(f"unsupported stat_block binding '{binding}'")
