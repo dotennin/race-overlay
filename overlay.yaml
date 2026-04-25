@@ -138,6 +138,7 @@ hud:
     style:
       label: Pace
       variant: compact
+      align: left
   - id: cadence-chip
     type: metric_card
     bindings:
@@ -152,6 +153,7 @@ hud:
     style:
       label: Cadence
       variant: compact
+      align: left
   - id: elapsed-chip
     type: metric_card
     bindings:
@@ -180,6 +182,7 @@ hud:
     style:
       label: Speed
       variant: compact
+      align: left
   - id: route-map
     type: route_map
     bindings:
