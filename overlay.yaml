@@ -27,7 +27,7 @@ hud:
     value_font_size_px: 32
     unit_font_family: broadcast_value
     unit_font_weight: regular
-    unit_font_size_px: 15
+    unit_font_size_px: 17
     show_units: true
   widgets:
   - id: time-chip
@@ -44,6 +44,11 @@ hud:
     style:
       variant: timestamp_chip
       format: '%Y/%m/%d %H:%M:%S'
+      transparent_panel: true
+      unit_font_size_px: 10
+      unit_font_weight: regular
+      unit_font_family: broadcast_value
+      label: DD
   - id: distance-ruler
     type: progress_bar
     bindings:
@@ -76,14 +81,15 @@ hud:
       - 0
       - 168
       transparent_panel: true
-      font_size_px: 16
+      unit_font_size_px: 17
+      current_font_size_px: 15
   - id: elevation-stat
     type: stat_block
     bindings:
       value: altitude_m
     anchor: top-left
     x: 1153
-    y: 571
+    y: 76
     width: 127
     height: 73
     z_index: 30
@@ -93,6 +99,7 @@ hud:
       unit: M
       show_unit: true
       transparent_panel: true
+      align: left
   - id: distance-stat
     type: stat_block
     bindings:
@@ -114,7 +121,7 @@ hud:
       value: heart_rate_bpm
     anchor: top-right
     x: 1152
-    y: 232
+    y: 305
     width: 128
     height: 76
     z_index: 30
@@ -129,7 +136,7 @@ hud:
       value: pace_seconds_per_km
     anchor: bottom-right
     x: 1154
-    y: 308
+    y: 568
     width: 126
     height: 76
     z_index: 20
@@ -144,7 +151,7 @@ hud:
       value: cadence_spm
     anchor: bottom-right
     x: 1152
-    y: 384
+    y: 381
     width: 126
     height: 76
     z_index: 20

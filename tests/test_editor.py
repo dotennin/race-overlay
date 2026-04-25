@@ -68,9 +68,9 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert state["schema"]["theme"]["show_units"] == {"kind": "boolean", "label": "Show units"}
 
     ruler_style = state["schema"]["widgets"]["distance-ruler"]["style"]
-    assert ruler_style["font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
-    assert ruler_style["font_weight"]["options"] == ["regular", "bold"]
-    assert ruler_style["font_size_px"]["min"] == 8
+    assert ruler_style["unit_font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
+    assert ruler_style["unit_font_weight"]["options"] == ["regular", "bold"]
+    assert ruler_style["unit_font_size_px"]["min"] == 8
     assert ruler_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
     assert ruler_style["show_current_value"] == {"kind": "boolean", "label": "Show current value"}
     assert ruler_style["show_total_value"] == {"kind": "boolean", "label": "Show total value"}
@@ -80,9 +80,9 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert ruler_style["tick_rgba"] == {"kind": "rgba", "label": "Tick RGBA"}
 
     pace_chip_style = state["schema"]["widgets"]["pace-chip"]["style"]
-    assert pace_chip_style["font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
-    assert pace_chip_style["font_weight"]["options"] == ["regular", "bold"]
-    assert pace_chip_style["font_size_px"]["min"] == 8
+    assert pace_chip_style["unit_font_family"]["options"] == list(HUD_FONT_FAMILY_OPTIONS)
+    assert pace_chip_style["unit_font_weight"]["options"] == ["regular", "bold"]
+    assert pace_chip_style["unit_font_size_px"]["min"] == 8
     assert pace_chip_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
 
 
@@ -317,7 +317,7 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
         show_units=False,
     )
     pace_chip = next(widget for widget in payload["widgets"] if widget["id"] == "pace-chip")
-    pace_chip["style"].update(font_family="mono", font_weight="bold", font_size_px=26, show_unit=False)
+    pace_chip["style"].update(unit_font_family="mono", unit_font_weight="bold", unit_font_size_px=26, show_unit=False)
     distance_ruler = next(widget for widget in payload["widgets"] if widget["id"] == "distance-ruler")
     distance_ruler["style"].update(
         show_current_value=False,
@@ -338,9 +338,9 @@ def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path:
     assert reloaded.hud.theme.font_weight == "bold"
     assert reloaded.hud.theme.font_size_px == 24
     assert reloaded.hud.theme.show_units is False
-    assert reloaded_pace_chip.style["font_family"] == "mono"
-    assert reloaded_pace_chip.style["font_weight"] == "bold"
-    assert reloaded_pace_chip.style["font_size_px"] == 26
+    assert reloaded_pace_chip.style["unit_font_family"] == "mono"
+    assert reloaded_pace_chip.style["unit_font_weight"] == "bold"
+    assert reloaded_pace_chip.style["unit_font_size_px"] == 26
     assert reloaded_pace_chip.style["show_unit"] is False
     assert reloaded_ruler.style["show_current_value"] is False
     assert reloaded_ruler.style["show_total_value"] is False
