@@ -499,26 +499,26 @@ def _progress_bar_value_font(
     *,
     current: bool = False,
 ) -> ImageFont.FreeTypeFont:
-    family_value = widget.style.get("font_family", _theme_role_value(theme, "value_font_family", "font_family"))
+    family_value = widget.style.get("unit_font_family", _theme_role_value(theme, "value_font_family", "font_family"))
     if not isinstance(family_value, str) or family_value not in HUD_FONT_FAMILY_OPTIONS:
         allowed_values = ", ".join(HUD_FONT_FAMILY_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_family must be one of: {allowed_values}")
+        raise ValueError(f"widget '{widget.id}' style.unit_font_family must be one of: {allowed_values}")
 
-    weight_value = widget.style.get("font_weight", _theme_role_value(theme, "value_font_weight", "font_weight"))
+    weight_value = widget.style.get("unit_font_weight", _theme_role_value(theme, "value_font_weight", "font_weight"))
     if not isinstance(weight_value, str) or weight_value not in HUD_FONT_WEIGHT_OPTIONS:
         allowed_values = ", ".join(HUD_FONT_WEIGHT_OPTIONS)
-        raise ValueError(f"widget '{widget.id}' style.font_weight must be one of: {allowed_values}")
+        raise ValueError(f"widget '{widget.id}' style.unit_font_weight must be one of: {allowed_values}")
 
     if current:
         size_value = widget.style.get("current_font_size_px")
         if size_value is None:
-            size_value = widget.style.get("font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
-            size = max(_require_font_size_style(widget, size_value, "font_size_px") - 2, 8)
+            size_value = widget.style.get("unit_font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
+            size = max(_require_font_size_style(widget, size_value, "unit_font_size_px") - 2, 8)
         else:
             size = _require_font_size_style(widget, size_value, "current_font_size_px")
     else:
-        size_value = widget.style.get("font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
-        size = _require_font_size_style(widget, size_value, "font_size_px")
+        size_value = widget.style.get("unit_font_size_px", _theme_role_value(theme, "value_font_size_px", "font_size_px"))
+        size = _require_font_size_style(widget, size_value, "unit_font_size_px")
     return _scaled_font(scale, size, family_value, weight_value)
 
 
