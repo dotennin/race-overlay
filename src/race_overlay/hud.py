@@ -341,7 +341,8 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_rgba_style(widget, "rail_rgba")
     _validate_optional_rgba_style(widget, "tick_rgba")
     _validate_optional_non_negative_int_style(widget, "decimals")
-    _validate_optional_non_negative_int_style(widget, "zoom_percent")
+    if widget.type == "route_map":
+        _route_map_zoom_percent(widget)
     _validate_optional_text_style(widget, "format")
 
 
