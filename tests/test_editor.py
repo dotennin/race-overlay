@@ -205,6 +205,7 @@ def test_build_editor_state_exposes_time_chip_and_navigation_schema_for_broadcas
     }
     assert state["schema"]["widgets"]["time-chip"]["style"]["format"] == {"kind": "text", "label": "Format"}
 
+
 def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:
     """Verify time-chip uses value_font_* fields (not unit_font_*) in editor schema."""
     state = build_editor_state(
@@ -212,9 +213,9 @@ def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:
         width=1280,
         height=720,
     )
-    
+
     time_chip_style = state["schema"]["widgets"]["time-chip"]["style"]
-    
+
     # Verify value_font fields are exposed
     assert "value_font_family" in time_chip_style
     assert time_chip_style["value_font_family"]["kind"] == "enum"
@@ -222,15 +223,14 @@ def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:
     assert time_chip_style["value_font_weight"]["kind"] == "enum"
     assert "value_font_size_px" in time_chip_style
     assert time_chip_style["value_font_size_px"]["kind"] == "integer"
-    
+
     # Verify unit_font fields are NOT exposed for time-chip
     assert "unit_font_family" not in time_chip_style
     assert "unit_font_weight" not in time_chip_style
     assert "unit_font_size_px" not in time_chip_style
-    
+
     # Verify label is hidden
     assert time_chip_style.get("label", {}).get("hidden") is True
-
 
 
 def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fields(tmp_path: Path) -> None:
@@ -306,7 +306,7 @@ def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fie
     assert route_map_reloaded.style["show_north_marker"] is True
     assert route_map_reloaded.style["show_bearing_label"] is False
     assert route_map_reloaded.style["zoom_percent"] == 118
-    
+
     assert time_card_reloaded.style["variant"] == "timestamp_chip"
     assert time_card_reloaded.style["format"] == "%H:%M"
 
