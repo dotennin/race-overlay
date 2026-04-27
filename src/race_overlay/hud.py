@@ -26,6 +26,7 @@ SUPPORTED_WIDGET_ANCHORS = {"top-left",
                             "top-right", "bottom-left", "bottom-right"}
 LEGACY_DEFAULT_FONT_SIZE_PX = 18
 ROUTE_MAP_DEFAULT_SHAPE = "circle"
+ROUTE_MAP_ZOOM_PERCENT_MAX = 500
 WIDGET_PANEL_RGBA = (12, 18, 28, 168)
 ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 148)
 ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
@@ -86,6 +87,8 @@ def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
         raise ValueError(f"widget '{widget.id}' style.zoom_percent must be an integer")
     if value < 1:
         raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at least 1")
+    if value > ROUTE_MAP_ZOOM_PERCENT_MAX:
+        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at most {ROUTE_MAP_ZOOM_PERCENT_MAX}")
     return value
 
 
