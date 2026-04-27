@@ -300,6 +300,7 @@ def broadcast_runner_preset() -> HudConfig:
                 {
                     "label": "",
                     "shape": "circle",
+                    "zoom_percent": 90,
                     "show_panel": True,
                     "show_north_marker": True,
                     "show_bearing_label": True,

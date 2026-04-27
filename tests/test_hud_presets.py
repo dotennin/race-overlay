@@ -57,6 +57,12 @@ def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -
     assert route_map.style["show_bearing_label"] is True
 
 
+def test_broadcast_runner_preset_sets_route_map_zoom_percent_default() -> None:
+    route_map = next(widget for widget in broadcast_runner_preset().widgets if widget.id == "route-map")
+
+    assert route_map.style["zoom_percent"] == 90
+
+
 
 def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
     config = broadcast_runner_preset()

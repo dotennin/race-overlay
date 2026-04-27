@@ -1988,6 +1988,68 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
     assert (74, 155, 255, 255) in polygon_fills
 
 
+def test_render_hud_frame_route_map_zoom_percent_insets_route_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_lines: list[list[tuple[float, float]]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if fill in {(34, 255, 138, 255), (13, 144, 195, 255)}:
+            recorded_lines.append([(float(x), float(y)) for x, y in xy])
+        return original_line(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    def route_span(zoom_percent: int) -> tuple[float, float]:
+        recorded_lines.clear()
+        render_hud_frame(
+            width=220,
+            height=220,
+            hud_value=HudSample(
+                timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+                latitude=35.5,
+                longitude=139.5,
+                altitude_m=25.0,
+                distance_m=24600.0,
+                speed_mps=3.58,
+                pace_seconds_per_km=278.0,
+                heart_rate_bpm=162,
+                cadence_spm=178,
+            ),
+            route_points=[(35.0, 139.0), (35.4, 139.7), (36.0, 140.0)],
+            hud_config=HudConfig(
+                preset="route-only",
+                theme=HudThemeConfig(),
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=0,
+                        y=0,
+                        width=220,
+                        height=220,
+                        style={"label": "", "shape": "circle", "zoom_percent": zoom_percent},
+                    )
+                ],
+            ),
+            elapsed_seconds=6852,
+        )
+        points = [point for line in recorded_lines for point in line]
+        xs = [x for x, _ in points]
+        ys = [y for _, y in points]
+        return (max(xs) - min(xs), max(ys) - min(ys))
+
+    width_100, height_100 = route_span(100)
+    width_90, height_90 = route_span(90)
+
+    assert width_90 < width_100
+    assert height_90 < height_100
+
+
 def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

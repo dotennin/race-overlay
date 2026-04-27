@@ -341,6 +341,7 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_rgba_style(widget, "rail_rgba")
     _validate_optional_rgba_style(widget, "tick_rgba")
     _validate_optional_non_negative_int_style(widget, "decimals")
+    _validate_optional_non_negative_int_style(widget, "zoom_percent")
     _validate_optional_text_style(widget, "format")
 
 
@@ -439,6 +440,15 @@ def _style_bool(widget: HudWidgetConfig, key: str, default: bool) -> bool:
     value = widget.style.get(key, default)
     if not isinstance(value, bool):
         raise ValueError(f"widget '{widget.id}' style.{key} must be a boolean")
+    return value
+
+
+def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
+    value = widget.style.get("zoom_percent", 90)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be an integer")
+    if value < 1:
+        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at least 1")
     return value
 
 
@@ -929,14 +939,18 @@ def _draw_route_map(
     lat_max += lat_padding
     lon_min -= lon_padding
     lon_max += lon_padding
+    zoom_scale = _route_map_zoom_percent(widget) / 100.0
+    center_x = map_left + inner_width / 2
+    center_y = map_top + inner_height / 2
 
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        x = map_left + ((lon - lon_min) /
-                        max(lon_max - lon_min, 1e-9)) * inner_width
-        y = map_bottom - ((lat - lat_min) / max(lat_max -
-                          lat_min, 1e-9)) * inner_height
-        return (x, y)
+        raw_x = map_left + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * inner_width
+        raw_y = map_bottom - ((lat - lat_min) / max(lat_max - lat_min, 1e-9)) * inner_height
+        return (
+            center_x + (raw_x - center_x) * zoom_scale,
+            center_y + (raw_y - center_y) * zoom_scale,
+        )
 
     completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
     remaining_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
