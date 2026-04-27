@@ -30,6 +30,7 @@ WIDGET_PANEL_RGBA = (12, 18, 28, 168)
 ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 148)
 ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
 ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
+ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
 ROUTE_MAP_MARKER_RGBA = (228, 255, 238, 255)
 ROUTE_MAP_HEADING_ARROW_RGBA = (34, 125, 255, 255)
 ROUTE_MAP_HEADING_ARROW_TEAL_RGBA = (0, 215, 180, 255)
@@ -938,8 +939,21 @@ def _draw_route_map(
         return (x, y)
 
     projected = [project(point) for point in route_points]
-    widget_draw.line(projected, fill=ROUTE_MAP_ROUTE_RGBA,
-                     width=_scale_draw(scale, 4))
+    completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
+    remaining_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
+    if route_projection is None:
+        widget_draw.line(projected, fill=remaining_rgba,
+                         width=_scale_draw(scale, 4))
+    else:
+        completed_points, remaining_points = _split_route_points(route_points, route_projection)
+        completed_projected = [project(point) for point in completed_points]
+        remaining_projected = [project(point) for point in remaining_points]
+        if len(completed_projected) >= 2:
+            widget_draw.line(completed_projected, fill=completed_rgba,
+                             width=_scale_draw(scale, 4))
+        if len(remaining_projected) >= 2:
+            widget_draw.line(remaining_projected, fill=remaining_rgba,
+                             width=_scale_draw(scale, 4))
     if route_projection is not None:
         x, y = project(route_projection.point)
         heading_vector = _projected_route_vector(route_projection, project)
@@ -1316,6 +1330,17 @@ def _projected_route_vector(
     start_x, start_y = project(route_projection.segment_start)
     end_x, end_y = project(route_projection.segment_end)
     return (end_x - start_x, end_y - start_y)
+
+
+def _split_route_points(
+    route_points: list[tuple[float, float]],
+    route_projection: RouteProjection,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    split_point = route_projection.point
+    start_index = route_projection.segment_index
+    completed = [*route_points[: start_index + 1], split_point]
+    remaining = [split_point, *route_points[start_index + 1 :]]
+    return completed, remaining
 
 
 def _is_zero_vector(vector: tuple[float, float]) -> bool:

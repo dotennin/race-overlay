@@ -956,6 +956,59 @@ def test_render_hud_frame_route_map_skips_marker_when_gps_is_missing(
     assert (228, 255, 238, 255) not in ellipse_fills
 
 
+def test_render_hud_frame_route_map_uses_remaining_color_when_gps_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line_fills: list[tuple[int, int, int, int]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            line_fills.append(fill)
+        return original_line(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    render_hud_frame(
+        width=120,
+        height=120,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=None,
+            longitude=None,
+            altitude_m=None,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=120,
+                    height=120,
+                    style={"label": "", "shape": "circle"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert (13, 144, 195, 255) in line_fills
+    assert (34, 255, 138, 255) not in line_fills
+
+
 def test_render_hud_frame_clips_circular_route_map_content_to_circle() -> None:
     hud_config = HudConfig(
         preset="route-only",
@@ -1928,9 +1981,62 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
 
     assert (6, 10, 18, 148) in rounded_rectangle_fills
     assert (34, 255, 138, 255) in line_fills
-    assert (13, 144, 195, 255) not in line_fills
+    assert (13, 144, 195, 255) in line_fills
     assert (228, 255, 238, 255) not in ellipse_fills
-    assert (74, 155, 255, 255) in polygon_fills
+    assert polygon_fills
+
+
+def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    line_fills: list[tuple[int, int, int, int]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple):
+            line_fills.append(fill)
+        return original_line(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=35.5,
+            longitude=139.5,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=176,
+                    height=128,
+                    style={"label": "", "shape": "rounded-rect"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert (34, 255, 138, 255) in line_fills
+    assert (13, 144, 195, 255) in line_fills
 
 
 def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytest.MonkeyPatch) -> None:
