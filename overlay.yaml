@@ -221,4 +221,5 @@ hud:
       - 247
       - 249
       - 255
+      zoom_percent: 90
 overrides: {}
