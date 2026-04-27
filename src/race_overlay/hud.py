@@ -1278,7 +1278,7 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if binding == "heart_rate_bpm":
         return "bpm"
     if binding == "cadence_spm":
-        return "spm"
+        return "SPM"
     if binding == "elapsed_seconds":
         return ""
     if binding == "speed_mps":
