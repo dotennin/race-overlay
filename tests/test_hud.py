@@ -358,6 +358,24 @@ def test_validate_hud_config_rejects_non_positive_route_map_zoom_percent() -> No
         validate_hud_config(preset)
 
 
+def test_validate_hud_config_rejects_bool_route_map_zoom_percent() -> None:
+    preset = broadcast_runner_preset()
+    route_map = next(widget for widget in preset.widgets if widget.id == "route-map")
+    route_map.style["zoom_percent"] = True
+
+    with pytest.raises(ValueError, match="zoom_percent"):
+        validate_hud_config(preset)
+
+
+def test_validate_hud_config_rejects_non_integer_route_map_zoom_percent() -> None:
+    preset = broadcast_runner_preset()
+    route_map = next(widget for widget in preset.widgets if widget.id == "route-map")
+    route_map.style["zoom_percent"] = 90.0
+
+    with pytest.raises(ValueError, match="zoom_percent"):
+        validate_hud_config(preset)
+
+
 def test_validate_hud_config_rejects_non_string_context_format() -> None:
     config = HudConfig(
         preset="context-only",
