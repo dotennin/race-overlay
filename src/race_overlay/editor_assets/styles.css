@@ -399,6 +399,23 @@ button:disabled {
   text-align: center;
 }
 
+.range-input {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.range-input input[type="range"] {
+  width: 100%;
+}
+
+.range-input span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
 #snap-guides {
   position: absolute;
   pointer-events: none;

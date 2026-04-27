@@ -1498,11 +1498,16 @@ def test_editor_asset_uses_slider_controls_for_range_fields() -> None:
     from importlib.resources import files
 
     app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
 
     assert "function buildRangeInput(" in app_js
+    assert 'className = "range-input"' in app_js
     assert 'input.type = "range"' in app_js
     assert 'metadata?.kind === "range"' in app_js
+    assert "buildRangeInput(value, onChange, {" in app_js
+    assert "buildRangeInput(value, onChange, metadata, onInput)" not in app_js
     assert 'options.suffix ?? ""' in app_js
+    assert ".range-input" in css
 
 
 def test_editor_assets_remove_duplicate_layer_actions_and_overlay_titles() -> None:

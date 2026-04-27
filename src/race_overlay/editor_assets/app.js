@@ -503,6 +503,7 @@ function buildNumberInput(value, onChange, options = {}, onInput = null) {
 
 function buildRangeInput(value, onChange, options = {}, onInput = null) {
   const wrapper = document.createElement("div");
+  wrapper.className = "range-input";
   const input = document.createElement("input");
   const valueText = document.createElement("span");
   let currentValue = Number(value);
@@ -610,7 +611,17 @@ function renderFieldControl(parent, key, metadata, value, onChange, onInput = nu
     return;
   }
   if (metadata?.kind === "range") {
-    appendField(parent, fieldLabel, buildRangeInput(value, onChange, metadata, onInput), true);
+    appendField(
+      parent,
+      fieldLabel,
+      buildRangeInput(value, onChange, {
+        min: metadata?.min,
+        max: metadata?.max,
+        step: metadata?.step,
+        suffix: metadata?.suffix,
+      }, onInput),
+      true,
+    );
     return;
   }
   if (metadata?.kind === "integer" || typeof value === "number") {
