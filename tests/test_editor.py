@@ -1494,6 +1494,17 @@ def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
     assert ".color-alpha-input" in css
 
 
+def test_editor_asset_uses_slider_controls_for_range_fields() -> None:
+    from importlib.resources import files
+
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    assert "function buildRangeInput(" in app_js
+    assert 'input.type = "range"' in app_js
+    assert 'metadata?.kind === "range"' in app_js
+    assert 'options.suffix ?? ""' in app_js
+
+
 def test_editor_assets_remove_duplicate_layer_actions_and_overlay_titles() -> None:
     from importlib.resources import files
 

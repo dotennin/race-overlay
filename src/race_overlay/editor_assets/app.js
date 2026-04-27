@@ -501,6 +501,31 @@ function buildNumberInput(value, onChange, options = {}, onInput = null) {
   return input;
 }
 
+function buildRangeInput(value, onChange, options = {}, onInput = null) {
+  const wrapper = document.createElement("div");
+  const input = document.createElement("input");
+  const valueText = document.createElement("span");
+  let currentValue = Number(value);
+
+  input.type = "range";
+  input.min = String(options.min ?? 0);
+  input.max = String(options.max ?? 100);
+  input.step = String(options.step ?? 1);
+  input.value = String(currentValue);
+  valueText.textContent = `${currentValue}${options.suffix ?? ""}`;
+
+  function emit(nextValue, live) {
+    currentValue = nextValue;
+    valueText.textContent = `${currentValue}${options.suffix ?? ""}`;
+    (live ? (onInput ?? onChange) : onChange)(currentValue);
+  }
+
+  input.addEventListener("input", () => emit(Number(input.value), true));
+  input.addEventListener("change", () => emit(Number(input.value), false));
+  wrapper.append(input, valueText);
+  return wrapper;
+}
+
 function buildCheckbox(value, onChange) {
   const input = document.createElement("input");
   input.type = "checkbox";
@@ -582,6 +607,10 @@ function renderFieldControl(parent, key, metadata, value, onChange, onInput = nu
   }
   if (metadata?.kind === "enum" || metadata?.kind === "selection") {
     appendField(parent, fieldLabel, buildSelectInput(value, metadata.options ?? [], onChange, onInput), true);
+    return;
+  }
+  if (metadata?.kind === "range") {
+    appendField(parent, fieldLabel, buildRangeInput(value, onChange, metadata, onInput), true);
     return;
   }
   if (metadata?.kind === "integer" || typeof value === "number") {
