@@ -1983,7 +1983,7 @@ def test_render_hud_frame_route_map_uses_refreshed_default_route_and_marker_colo
     assert (34, 255, 138, 255) in line_fills
     assert (13, 144, 195, 255) in line_fills
     assert (228, 255, 238, 255) not in ellipse_fills
-    assert polygon_fills
+    assert (74, 155, 255, 255) in polygon_fills
 
 
 def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
