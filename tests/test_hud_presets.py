@@ -62,8 +62,6 @@ def test_broadcast_runner_preset_sets_route_map_zoom_percent_default() -> None:
 
     assert route_map.style["zoom_percent"] == 90
 
-
-
 def test_broadcast_runner_preset_uses_explicit_route_map_panel_toggle() -> None:
     config = broadcast_runner_preset()
     ruler = next(widget for widget in config.widgets if widget.id == "distance-ruler")

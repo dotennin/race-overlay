@@ -80,6 +80,15 @@ def _route_map_shape(widget: HudWidgetConfig) -> str:
     return shape
 
 
+def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
+    value = widget.style.get("zoom_percent", 90)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be an integer")
+    if value < 1:
+        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at least 1")
+    return value
+
+
 def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
     value_baseline_y = top + 14
     current_x = left + 16 + (80 if label else 0)
@@ -444,15 +453,6 @@ def _style_bool(widget: HudWidgetConfig, key: str, default: bool) -> bool:
     value = widget.style.get(key, default)
     if not isinstance(value, bool):
         raise ValueError(f"widget '{widget.id}' style.{key} must be a boolean")
-    return value
-
-
-def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
-    value = widget.style.get("zoom_percent", 90)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be an integer")
-    if value < 1:
-        raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at least 1")
     return value
 
 

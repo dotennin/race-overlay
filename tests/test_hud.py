@@ -27,6 +27,9 @@ from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.models import HudSample
 
+ROUTE_MAP_COMPLETED_RGBA = (34, 255, 138, 255)
+ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
+
 
 def _rendered_text_labels(
     monkeypatch: pytest.MonkeyPatch,
@@ -2023,7 +2026,7 @@ def test_render_hud_frame_route_map_zoom_percent_insets_route_projection(
 
     def record_line(self, xy, *args, **kwargs):
         fill = kwargs.get("fill")
-        if fill in {(34, 255, 138, 255), (13, 144, 195, 255)}:
+        if fill in {ROUTE_MAP_COMPLETED_RGBA, ROUTE_MAP_REMAINING_RGBA}:
             recorded_lines.append([(float(x), float(y)) for x, y in xy])
         return original_line(self, xy, *args, **kwargs)
 
@@ -2065,6 +2068,7 @@ def test_render_hud_frame_route_map_zoom_percent_insets_route_projection(
             ),
             elapsed_seconds=6852,
         )
+        assert recorded_lines, "expected route-map line draws to match the color filter"
         points = [point for line in recorded_lines for point in line]
         xs = [x for x, _ in points]
         ys = [y for _, y in points]
