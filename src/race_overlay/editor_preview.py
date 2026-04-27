@@ -88,6 +88,14 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     "route_map": {
         "label": {"kind": "text", "label": "Label"},
         "shape": {"kind": "enum", "label": "Shape", "options": ["circle", "rounded-rect", "square"]},
+        "zoom_percent": {
+            "kind": "range",
+            "label": "Route scale",
+            "min": 70,
+            "max": 140,
+            "step": 1,
+            "suffix": "%",
+        },
         "show_panel": {"kind": "boolean", "label": "Show panel"},
         "background_rgba": {"kind": "rgba", "label": "Background RGBA"},
         "completed_rgba": {"kind": "rgba", "label": "Completed RGBA"},
@@ -105,8 +113,8 @@ class StaleHudSaveError(ValueError):
 def _sample_hud_value() -> HudSample:
     return HudSample(
         timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
-        latitude=36.0833,
-        longitude=140.2106,
+        latitude=36.08358,
+        longitude=140.20992,
         altitude_m=25.0,
         distance_m=5210.0,
         speed_mps=3.58,
@@ -114,6 +122,24 @@ def _sample_hud_value() -> HudSample:
         heart_rate_bpm=133,
         cadence_spm=178,
     )
+
+
+def _sample_route_points() -> list[list[float]]:
+    return [
+        [36.08320, 140.20990],
+        [36.08320, 140.21025],
+        [36.08326, 140.21042],
+        [36.08340, 140.21052],
+        [36.08356, 140.21052],
+        [36.08370, 140.21042],
+        [36.08376, 140.21025],
+        [36.08376, 140.20990],
+        [36.08370, 140.20973],
+        [36.08356, 140.20963],
+        [36.08340, 140.20963],
+        [36.08326, 140.20973],
+        [36.08320, 140.20990],
+    ]
 
 
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
@@ -124,7 +150,7 @@ def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[s
         "preview": {
             "width": width,
             "height": height,
-            "route_points": [[36.0832, 140.2106], [36.0834, 140.2108]],
+            "route_points": _sample_route_points(),
         },
     }
 
@@ -166,7 +192,7 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
         width,
         height,
         _sample_hud_value(),
-        [(36.0832, 140.2106), (36.0834, 140.2108)],
+        [tuple(point) for point in _sample_route_points()],
         config.hud,
         6852,
         total_distance_m=10000.0,

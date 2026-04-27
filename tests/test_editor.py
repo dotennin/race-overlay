@@ -284,7 +284,7 @@ def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fie
         unit_font_size_px=14,
     )
     route_map = next(widget for widget in payload["widgets"] if widget["id"] == "route-map")
-    route_map["style"].update(show_north_marker=True, show_bearing_label=False)
+    route_map["style"].update(show_north_marker=True, show_bearing_label=False, zoom_percent=118)
     time_card = next(widget for widget in payload["widgets"] if widget["id"] == "time-card")
     time_card["style"].update(variant="timestamp_chip", format="%H:%M")
 
@@ -305,6 +305,7 @@ def test_save_editor_payload_round_trips_navigation_timestamp_and_typography_fie
     assert reloaded.hud.theme.unit_font_size_px == 14
     assert route_map_reloaded.style["show_north_marker"] is True
     assert route_map_reloaded.style["show_bearing_label"] is False
+    assert route_map_reloaded.style["zoom_percent"] == 118
     
     assert time_card_reloaded.style["variant"] == "timestamp_chip"
     assert time_card_reloaded.style["format"] == "%H:%M"
@@ -1455,6 +1456,27 @@ def test_build_editor_state_hides_removed_theme_colors_and_exposes_route_map_fie
     assert route_map_style["background_rgba"] == {"kind": "rgba", "label": "Background RGBA"}
     assert route_map_style["completed_rgba"] == {"kind": "rgba", "label": "Completed RGBA"}
     assert route_map_style["remaining_rgba"] == {"kind": "rgba", "label": "Remaining RGBA"}
+    assert route_map_style["zoom_percent"] == {
+        "kind": "range",
+        "label": "Route scale",
+        "min": 70,
+        "max": 140,
+        "step": 1,
+        "suffix": "%",
+    }
+
+
+def test_build_editor_state_uses_track_style_route_map_preview() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    route_points = state["preview"]["route_points"]
+    assert len(route_points) >= 8
+    assert route_points[0] != route_points[1]
+    assert len({tuple(point) for point in route_points}) >= 8
 
 
 def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
