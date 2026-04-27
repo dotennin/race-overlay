@@ -1477,6 +1477,11 @@ def test_build_editor_state_uses_track_style_route_map_preview() -> None:
     assert len(route_points) >= 8
     assert route_points[0] != route_points[1]
     assert len({tuple(point) for point in route_points}) >= 8
+    turn_cross_products = [
+        (mid[0] - start[0]) * (end[1] - mid[1]) - (mid[1] - start[1]) * (end[0] - mid[0])
+        for start, mid, end in zip(route_points, route_points[1:], route_points[2:])
+    ]
+    assert any(cross != 0 for cross in turn_cross_products), "expected a non-straight track-style route preview"
 
 
 def test_editor_asset_uses_color_picker_controls_for_rgba_fields() -> None:
