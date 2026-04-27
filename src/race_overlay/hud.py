@@ -938,10 +938,10 @@ def _draw_route_map(
                           lat_min, 1e-9)) * inner_height
         return (x, y)
 
-    projected = [project(point) for point in route_points]
     completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
     remaining_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
     if route_projection is None:
+        projected = [project(point) for point in route_points]
         widget_draw.line(projected, fill=remaining_rgba,
                          width=_scale_draw(scale, 4))
     else:

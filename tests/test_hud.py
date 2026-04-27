@@ -12,11 +12,13 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
+    RouteProjection,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
     _progress_bar_text_layout,
     _scaled_font,
+    _split_route_points,
     _widget_panel_enabled,
     render_hud_frame,
     validate_hud_config,
@@ -2037,6 +2039,42 @@ def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
 
     assert (34, 255, 138, 255) in line_fills
     assert (13, 144, 195, 255) in line_fills
+
+
+def test_split_route_points_at_first_segment() -> None:
+    split = RouteProjection(
+        point=(35.1, 139.1),
+        tangent=(0.5, 0.5),
+        segment_start=(35.0, 139.0),
+        segment_end=(35.5, 139.5),
+        segment_index=0,
+    )
+
+    completed, remaining = _split_route_points(
+        [(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        split,
+    )
+
+    assert completed == [(35.0, 139.0), (35.1, 139.1)]
+    assert remaining == [(35.1, 139.1), (35.5, 139.5), (36.0, 140.0)]
+
+
+def test_split_route_points_at_last_segment() -> None:
+    split = RouteProjection(
+        point=(35.9, 139.9),
+        tangent=(0.5, 0.5),
+        segment_start=(35.5, 139.5),
+        segment_end=(36.0, 140.0),
+        segment_index=1,
+    )
+
+    completed, remaining = _split_route_points(
+        [(35.0, 139.0), (35.5, 139.5), (36.0, 140.0)],
+        split,
+    )
+
+    assert completed == [(35.0, 139.0), (35.5, 139.5), (35.9, 139.9)]
+    assert remaining == [(35.9, 139.9), (36.0, 140.0)]
 
 
 def test_render_hud_frame_honors_explicit_show_panel_override(monkeypatch: pytest.MonkeyPatch) -> None:
