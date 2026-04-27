@@ -148,7 +148,7 @@ def _reject_invalid_json_constant(value: str) -> object:
 def launch_editor(config_path: Path, width: int, height: int) -> str:
     _validate_preview_dimensions(width, height)
     load_editor_config(config_path)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _build_handler(config_path, width, height))
+    server = ThreadingHTTPServer(("127.0.0.1", 10086), _build_handler(config_path, width, height))
     thread = Thread(target=server.serve_forever)
     thread.start()
     _ACTIVE_SERVERS.append(server)
