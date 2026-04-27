@@ -2344,3 +2344,80 @@ def test_progress_bar_text_layout_aligns_current_and_total_values(monkeypatch: p
     assert current_xy[1] == total_xy[1] == layout.current_anchor[1]
     assert current_xy[0] > 150
     assert total_xy[0] > current_xy[0]
+
+
+def test_render_hud_frame_accepts_lap_state_kwarg() -> None:
+    """render_hud_frame must accept lap_state= without raising, and produce an image."""
+    from race_overlay.sampling import LapWaterfallState, LapWaterfallRow
+    from race_overlay.models import ActivityLap
+    from datetime import datetime, timezone
+
+    lap = ActivityLap(
+        start_time=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+        total_time_seconds=300.0,
+        distance_m=1000.0,
+        avg_heart_rate_bpm=None,
+        max_heart_rate_bpm=None,
+        max_speed_mps=None,
+        elevation_delta_m=None,
+        calories=None,
+    )
+    row = LapWaterfallRow(lap=lap, lap_index=0, is_dimmed=False)
+    state = LapWaterfallState(
+        completed_laps=[lap],
+        visible_rows=[row],
+        newest_lap_index=0,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value,
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=broadcast_runner_preset(),
+        elapsed_seconds=6852,
+        total_distance_m=42195.0,
+        lap_state=state,
+    )
+    assert image.size == (1280, 720)
+
+
+def test_render_hud_frame_accepts_lap_state_none() -> None:
+    """render_hud_frame must accept lap_state=None (default) without raising."""
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value,
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=broadcast_runner_preset(),
+        elapsed_seconds=6852,
+        total_distance_m=42195.0,
+        lap_state=None,
+    )
+    assert image.size == (1280, 720)

@@ -21,7 +21,7 @@ from race_overlay.ffmpeg import (
     resolve_output_encoding_plan,
 )
 from race_overlay.hud import render_hud_frame
-from race_overlay.sampling import sample_at
+from race_overlay.sampling import lap_waterfall_state, sample_at
 from race_overlay.video_probe import probe_video
 
 ProgressReporter = Callable[[str], None]
@@ -66,6 +66,7 @@ def _render_overlay_frame(
         return Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
 
     hud_value = sample_at(activity, when)
+    lap_state = lap_waterfall_state(activity.laps, when)
     return render_hud_frame(
         width=clip.width,
         height=clip.height,
@@ -74,6 +75,7 @@ def _render_overlay_frame(
         hud_config=hud_config,
         elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
         total_distance_m=total_distance_m,
+        lap_state=lap_state,
     )
 
 

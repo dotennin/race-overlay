@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -16,9 +16,22 @@ class ActivitySample:
 
 
 @dataclass(slots=True, frozen=True)
+class ActivityLap:
+    start_time: datetime
+    total_time_seconds: float
+    distance_m: float
+    avg_heart_rate_bpm: int | None
+    max_heart_rate_bpm: int | None
+    max_speed_mps: float | None
+    elevation_delta_m: float | None
+    calories: int | None
+
+
+@dataclass(slots=True, frozen=True)
 class ActivityTrack:
     sport: str
     samples: list[ActivitySample]
+    laps: list[ActivityLap] = field(default_factory=list)
 
 
 @dataclass(slots=True, frozen=True)

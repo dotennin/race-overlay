@@ -839,6 +839,30 @@ def test_render_preview_payload_uses_unsaved_draft_without_touching_overlay_yaml
     assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
 
 
+def test_render_preview_png_passes_lap_state_to_render_hud_frame(monkeypatch, tmp_path: Path) -> None:
+    """editor_preview.render_preview_png must pass lap_state to render_hud_frame."""
+    from race_overlay.editor_preview import render_preview_png
+    from race_overlay.sampling import LapWaterfallState
+
+    config = ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset())
+
+    captured_kwargs: list[dict] = []
+
+    original_render = __import__("race_overlay.hud", fromlist=["render_hud_frame"]).render_hud_frame
+
+    def capturing_render(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        return original_render(*args, **{k: v for k, v in kwargs.items() if k != "lap_state"})
+
+    monkeypatch.setattr("race_overlay.editor_preview.render_hud_frame", capturing_render)
+
+    render_preview_png(config, width=1280, height=720)
+
+    assert captured_kwargs, "render_hud_frame was not called"
+    assert "lap_state" in captured_kwargs[0], "lap_state was not passed to render_hud_frame"
+    assert isinstance(captured_kwargs[0]["lap_state"], LapWaterfallState)
+
+
 @contextmanager
 def running_editor(config_path: Path) -> str:
     base_url = launch_editor(config_path, width=1280, height=720)

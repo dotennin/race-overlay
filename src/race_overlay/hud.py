@@ -165,6 +165,7 @@ def render_hud_frame(
     *,
     total_distance_m: float | None = None,
     layout: HudLayout | None = None,
+    lap_state=None,
 ) -> Image.Image:
     """Render a HUD frame.
 

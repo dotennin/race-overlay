@@ -10,8 +10,9 @@ from race_overlay.config import ProjectConfig, load_config, save_config
 from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, serialize_hud_config
-from race_overlay.models import ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
+from race_overlay.models import ActivityLap, ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
 from race_overlay.pipeline import FatalStreamingComposeError, run_pipeline
+from race_overlay.sampling import LapWaterfallState
 
 
 def test_render_runs_pipeline_with_config(tmp_path: Path, monkeypatch) -> None:
@@ -433,3 +434,55 @@ def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, mo
     run_pipeline(config_path, only="clip.MP4")
 
     assert captured == ["Kasumigaura"]
+
+
+def test_run_pipeline_passes_lap_state_to_renderer(tmp_path: Path, monkeypatch) -> None:
+    """render_hud_frame must receive a lap_state kwarg computed from activity laps."""
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
+    activity_with_laps = ActivityTrack(
+        sport="running",
+        samples=[
+            ActivitySample(start, 36.0832, 140.2106, 5.0, 0.0, 3.5, 150, 176),
+            ActivitySample(start + timedelta(seconds=10), 36.0834, 140.2108, 5.2, 35.0, 3.6, 152, 178),
+        ],
+        laps=[
+            ActivityLap(
+                start_time=start - timedelta(seconds=300),
+                total_time_seconds=300.0,
+                distance_m=1000.0,
+                avg_heart_rate_bpm=None,
+                max_heart_rate_bpm=None,
+                max_speed_mps=None,
+                elevation_delta_m=None,
+                calories=None,
+            )
+        ],
+    )
+
+    captured_kwargs: list[dict] = []
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: activity_with_laps)
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: captured_kwargs.append(kwargs) or Image.new("RGBA", (1280, 720), (0, 0, 0, 0)),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess([]),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4")
+
+    assert captured_kwargs, "render_hud_frame was not called"
+    kwargs = captured_kwargs[0]
+    assert "lap_state" in kwargs, "lap_state kwarg was not passed to render_hud_frame"
+    assert isinstance(kwargs["lap_state"], LapWaterfallState)

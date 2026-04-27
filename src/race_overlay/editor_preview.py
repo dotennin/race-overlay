@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -10,7 +10,8 @@ import yaml
 from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_save, load_config, save_config
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, serialize_hud_config
-from race_overlay.models import HudSample
+from race_overlay.models import ActivityLap, HudSample
+from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
@@ -142,6 +143,50 @@ def _sample_route_points() -> list[tuple[float, float]]:
     ]
 
 
+def _sample_lap_state() -> LapWaterfallState:
+    base = datetime(2026, 4, 19, 8, 0, 0, tzinfo=timezone.utc)
+    laps = [
+        ActivityLap(
+            start_time=base,
+            total_time_seconds=360.0,
+            distance_m=1000.0,
+            avg_heart_rate_bpm=148,
+            max_heart_rate_bpm=158,
+            max_speed_mps=4.2,
+            elevation_delta_m=2.0,
+            calories=52,
+        ),
+        ActivityLap(
+            start_time=base + timedelta(seconds=360),
+            total_time_seconds=355.0,
+            distance_m=1000.0,
+            avg_heart_rate_bpm=151,
+            max_heart_rate_bpm=161,
+            max_speed_mps=4.3,
+            elevation_delta_m=-1.0,
+            calories=51,
+        ),
+        ActivityLap(
+            start_time=base + timedelta(seconds=715),
+            total_time_seconds=350.0,
+            distance_m=1000.0,
+            avg_heart_rate_bpm=154,
+            max_heart_rate_bpm=164,
+            max_speed_mps=4.4,
+            elevation_delta_m=1.5,
+            calories=50,
+        ),
+    ]
+    rows = [LapWaterfallRow(lap=lap, lap_index=i, is_dimmed=False) for i, lap in enumerate(laps)]
+    return LapWaterfallState(
+        completed_laps=laps,
+        visible_rows=rows,
+        newest_lap_index=len(laps) - 1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+
+
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
@@ -196,6 +241,7 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
         config.hud,
         6852,
         total_distance_m=10000.0,
+        lap_state=_sample_lap_state(),
     )
     buffer = BytesIO()
     image.save(buffer, format="PNG")
