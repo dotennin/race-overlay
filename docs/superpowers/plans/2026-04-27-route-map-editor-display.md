@@ -319,7 +319,7 @@ def project(point: tuple[float, float]) -> tuple[float, float]:
 Also update `_validate_widget_style()` to validate the new field and set the preset default in `src/race_overlay/hud_presets.py`:
 
 ```python
-_validate_optional_non_negative_int_style(widget, "zoom_percent")
+_route_map_zoom_percent(widget)
 ```
 
 ```python

@@ -287,8 +287,7 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
         _require_supported_binding(
             widget, {"altitude_m", "distance_m", "heart_rate_bpm"})
     elif widget.type == "route_map":
-        _require_supported_binding(widget, {"route_points"})
-        _route_map_shape(widget)  # Validate shape enum
+        _validate_route_map_widget(widget)
     elif widget.type == "hero_metric":
         _require_supported_binding(widget, {"pace_seconds_per_km"})
     elif widget.type == "metric_card":
@@ -341,8 +340,6 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_rgba_style(widget, "rail_rgba")
     _validate_optional_rgba_style(widget, "tick_rgba")
     _validate_optional_non_negative_int_style(widget, "decimals")
-    if widget.type == "route_map":
-        _route_map_zoom_percent(widget)
     _validate_optional_text_style(widget, "format")
 
 
@@ -354,6 +351,12 @@ def _validate_progress_bar_widget(widget: HudWidgetConfig) -> None:
             f"(got {widget.width}px)"
         )
     _validate_optional_font_size_style(widget, "current_font_size_px")
+
+
+def _validate_route_map_widget(widget: HudWidgetConfig) -> None:
+    _require_supported_binding(widget, {"route_points"})
+    _route_map_shape(widget)
+    _route_map_zoom_percent(widget)
 
 
 def _require_supported_binding(widget: HudWidgetConfig, supported_bindings: set[str]) -> str:
