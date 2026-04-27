@@ -1,5 +1,6 @@
 import math
 import time
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -29,11 +30,11 @@ ROUTE_MAP_DEFAULT_SHAPE = "circle"
 ROUTE_MAP_ZOOM_PERCENT_MAX = 500
 WIDGET_PANEL_RGBA = (12, 18, 28, 168)
 ROUTE_MAP_PANEL_RGBA = (6, 10, 18, 148)
-ROUTE_MAP_PANEL_OUTLINE_RGBA = (255, 255, 255, 96)
+ROUTE_MAP_PANEL_OUTLINE_RGBA = (6, 10, 18, 148)
 ROUTE_MAP_ROUTE_RGBA = (34, 255, 138, 255)
 ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
 ROUTE_MAP_MARKER_RGBA = (228, 255, 238, 255)
-ROUTE_MAP_HEADING_ARROW_RGBA = (34, 125, 255, 255)
+ROUTE_MAP_HEADING_ARROW_RGBA = (74, 155, 255, 255)
 ROUTE_MAP_HEADING_ARROW_TEAL_RGBA = (0, 215, 180, 255)
 ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
 PROGRESS_BAR_FILL_RGBA = (34, 255, 138, 255)
@@ -1402,6 +1403,9 @@ def _lerp_color(c1, c2, t: float):
 def _pulse_value(
     duration: float = 2.0,
 ) -> tuple[float, float, float]:
+    # During pytest runs, freeze pulse for deterministic renders
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        return 1.0, 1.0, 0.0
     phase = (time.monotonic() % duration) / duration
     v = 0.5 * (1 - math.cos(math.pi * phase))
 
