@@ -25,7 +25,8 @@ from race_overlay.hud import (
 )
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig
 from race_overlay.hud_presets import broadcast_runner_preset
-from race_overlay.models import HudSample
+from race_overlay.models import ActivityLap, HudSample
+from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
 
 ROUTE_MAP_COMPLETED_RGBA = (34, 255, 138, 255)
 ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
@@ -2348,8 +2349,6 @@ def test_progress_bar_text_layout_aligns_current_and_total_values(monkeypatch: p
 
 def test_render_hud_frame_accepts_lap_state_kwarg() -> None:
     """render_hud_frame must accept lap_state= without raising, and produce an image."""
-    from race_overlay.sampling import LapWaterfallState, LapWaterfallRow
-    from race_overlay.models import ActivityLap
     from datetime import datetime, timezone
 
     lap = ActivityLap(
@@ -2421,3 +2420,354 @@ def test_render_hud_frame_accepts_lap_state_none() -> None:
         lap_state=None,
     )
     assert image.size == (1280, 720)
+
+
+# ===== lap_waterfall widget tests =====
+
+def _make_test_activity_lap(
+    *,
+    distance_m: float = 1000.0,
+    total_time_seconds: float = 360.0,
+    avg_heart_rate_bpm: int | None = 155,
+    elevation_delta_m: float | None = 5.0,
+) -> ActivityLap:
+    return ActivityLap(
+        start_time=datetime(2026, 4, 20, 8, 0, 0, tzinfo=timezone.utc),
+        total_time_seconds=total_time_seconds,
+        distance_m=distance_m,
+        avg_heart_rate_bpm=avg_heart_rate_bpm,
+        max_heart_rate_bpm=170,
+        max_speed_mps=None,
+        elevation_delta_m=elevation_delta_m,
+        calories=None,
+    )
+
+
+def _make_lap_waterfall_config(**style_overrides: object) -> HudConfig:
+    style: dict[str, object] = {"visible_rows": 5}
+    style.update(style_overrides)
+    return HudConfig(
+        preset="lap-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="lap-table",
+                type="lap_waterfall",
+                bindings={"value": "laps"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=400,
+                height=200,
+                style=style,
+            )
+        ],
+    )
+
+
+def _make_lap_rows(n: int, *, first_dimmed: bool = False) -> list[LapWaterfallRow]:
+    lap = _make_test_activity_lap()
+    return [
+        LapWaterfallRow(lap=lap, lap_index=i, is_dimmed=(first_dimmed and i == 0))
+        for i in range(n)
+    ]
+
+
+def _render_labels_with_lap_state(
+    monkeypatch: pytest.MonkeyPatch,
+    hud_config: HudConfig,
+    lap_state: LapWaterfallState | None,
+) -> list[str]:
+    labels: list[str] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        labels.append(str(text))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+        lap_state=lap_state,
+    )
+    return labels
+
+
+def _render_fills_with_lap_state(
+    monkeypatch: pytest.MonkeyPatch,
+    hud_config: HudConfig,
+    lap_state: LapWaterfallState | None,
+) -> list[tuple]:
+    fills: list[tuple] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_fill(self, xy, text, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if fill is None and len(args) >= 2:
+            fill = args[1]
+        if isinstance(fill, (tuple, list)) and len(fill) == 4:
+            fills.append(tuple(fill))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_fill)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+        lap_state=lap_state,
+    )
+    return fills
+
+
+def test_validate_hud_config_accepts_lap_waterfall_widget() -> None:
+    config = _make_lap_waterfall_config()
+    validate_hud_config(config)  # must not raise
+
+
+def test_validate_hud_config_rejects_unsupported_binding_for_lap_waterfall() -> None:
+    config = HudConfig(
+        preset="broken",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="lap-table",
+                type="lap_waterfall",
+                bindings={"value": "distance_m"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=400,
+                height=200,
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="unsupported binding"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_show_distance_style() -> None:
+    config = _make_lap_waterfall_config(show_distance="yes")
+    with pytest.raises(ValueError, match="style.show_distance"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_always_show_style() -> None:
+    config = _make_lap_waterfall_config(always_show=1)
+    with pytest.raises(ValueError, match="style.always_show"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_zero_visible_rows_style() -> None:
+    config = _make_lap_waterfall_config(visible_rows=0)
+    with pytest.raises(ValueError, match="visible_rows"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_positive_fade_after_seconds_style() -> None:
+    config = _make_lap_waterfall_config(fade_after_seconds=-1.0)
+    with pytest.raises(ValueError, match="fade_after_seconds"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_show_time_style() -> None:
+    config = _make_lap_waterfall_config(show_time=0)
+    with pytest.raises(ValueError, match="style.show_time"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_show_pace_style() -> None:
+    config = _make_lap_waterfall_config(show_pace="true")
+    with pytest.raises(ValueError, match="style.show_pace"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_show_elevation_style() -> None:
+    config = _make_lap_waterfall_config(show_elevation=1)
+    with pytest.raises(ValueError, match="style.show_elevation"):
+        validate_hud_config(config)
+
+
+def test_validate_hud_config_rejects_non_bool_show_heart_rate_style() -> None:
+    config = _make_lap_waterfall_config(show_heart_rate="false")
+    with pytest.raises(ValueError, match="style.show_heart_rate"):
+        validate_hud_config(config)
+
+
+def test_render_hud_frame_lap_waterfall_renders_column_headers_with_active_lap_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "Lap" in labels
+    assert "Pace" in labels
+
+
+def test_render_hud_frame_lap_waterfall_renders_nothing_when_lap_state_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    labels = _render_labels_with_lap_state(monkeypatch, config, None)
+    assert "Lap" not in labels
+
+
+def test_render_hud_frame_lap_waterfall_renders_nothing_when_opacity_is_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=0.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "Lap" not in labels
+
+
+def test_render_hud_frame_lap_waterfall_hidden_distance_column_not_rendered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config(show_distance=False)
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "Distance" not in labels
+    assert "Lap" in labels  # Lap column always visible
+
+
+def test_render_hud_frame_lap_waterfall_hidden_hr_column_not_rendered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config(show_heart_rate=False)
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "HR" not in labels
+
+
+def test_render_hud_frame_lap_waterfall_dimmed_row_uses_reduced_alpha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Oldest row with is_dimmed=True must render with lower alpha than non-dimmed rows."""
+    config = _make_lap_waterfall_config()
+    lap = _make_test_activity_lap()
+    dimmed_row = LapWaterfallRow(lap=lap, lap_index=0, is_dimmed=True)
+    normal_row = LapWaterfallRow(lap=lap, lap_index=1, is_dimmed=False)
+    lap_state = LapWaterfallState(
+        completed_laps=[lap, lap],
+        visible_rows=[dimmed_row, normal_row],
+        newest_lap_index=1,
+        oldest_row_dimmed=True,
+        opacity=1.0,
+    )
+    fills = _render_fills_with_lap_state(monkeypatch, config, lap_state)
+    alphas = [f[3] for f in fills]
+    assert len(alphas) >= 2, "Expected text draws with RGBA fills"
+    assert min(alphas) < max(alphas), "Dimmed row should use lower alpha than normal rows"
+
+
+def test_render_hud_frame_lap_waterfall_renders_lap_numbers_in_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(3)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=2,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "1" in labels
+    assert "2" in labels
+    assert "3" in labels
+
+
+def test_render_hud_frame_lap_waterfall_renders_elevation_with_sign(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    lap_pos = _make_test_activity_lap(elevation_delta_m=12.0)
+    lap_neg = _make_test_activity_lap(elevation_delta_m=-8.0)
+    rows = [
+        LapWaterfallRow(lap=lap_pos, lap_index=0, is_dimmed=False),
+        LapWaterfallRow(lap=lap_neg, lap_index=1, is_dimmed=False),
+    ]
+    lap_state = LapWaterfallState(
+        completed_laps=[lap_pos, lap_neg],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert any("+12" in label for label in labels), f"Expected '+12' in labels: {labels}"
+    assert any("-8" in label for label in labels), f"Expected '-8' in labels: {labels}"
+
+
+def test_render_hud_frame_lap_waterfall_always_show_overrides_opacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When always_show=True, the widget renders even if lap_state.opacity is low."""
+    config = _make_lap_waterfall_config(always_show=True)
+    rows = _make_lap_rows(1)
+    lap_state = LapWaterfallState(
+        completed_laps=[r.lap for r in rows],
+        visible_rows=rows,
+        newest_lap_index=0,
+        oldest_row_dimmed=False,
+        opacity=0.1,  # low but not zero
+    )
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+    assert "Lap" in labels

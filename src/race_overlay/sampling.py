@@ -28,6 +28,9 @@ def lap_waterfall_state(
     always_show: bool = False,
     fade_after_seconds: float = 10.0,
 ) -> LapWaterfallState:
+    if visible_rows < 1:
+        raise ValueError(f"visible_rows must be >= 1, got {visible_rows}")
+
     completed = [
         (i, lap)
         for i, lap in enumerate(laps)

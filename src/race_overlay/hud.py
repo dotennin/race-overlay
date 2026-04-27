@@ -19,6 +19,7 @@ from race_overlay.hud_schema import (
     validate_hud_theme_config,
 )
 from race_overlay.models import HudSample
+from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
 
 HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
@@ -165,7 +166,7 @@ def render_hud_frame(
     *,
     total_distance_m: float | None = None,
     layout: HudLayout | None = None,
-    lap_state=None,
+    lap_state: LapWaterfallState | None = None,
 ) -> Image.Image:
     """Render a HUD frame.
 
@@ -197,6 +198,7 @@ def render_hud_frame(
             height,
             total_distance_m,
             scale,
+            lap_state=lap_state,
         )
     return image
 
@@ -257,6 +259,8 @@ def _render_widget(
     frame_height: int,
     total_distance_m: float | None,
     scale: RenderScale,
+    *,
+    lap_state: LapWaterfallState | None = None,
 ) -> None:
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m,
@@ -276,6 +280,8 @@ def _render_widget(
     elif widget.type == "context_card":
         _draw_context_card(draw, widget, hud_value.timestamp,
                            theme, frame_width, frame_height, scale)
+    elif widget.type == "lap_waterfall":
+        _draw_lap_waterfall(image, widget, lap_state, theme, frame_width, frame_height, scale)
     else:
         raise ValueError(f"unknown widget type '{
                          widget.type}' for widget '{widget.id}'")
@@ -309,6 +315,9 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
                                    "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
     elif widget.type == "context_card":
         _require_supported_binding(widget, {"timestamp"})
+    elif widget.type == "lap_waterfall":
+        _require_supported_binding(widget, {"laps"})
+        _validate_lap_waterfall_widget_style(widget)
     else:
         raise ValueError(f"unknown widget type '{
                          widget.type}' for widget '{widget.id}'")
@@ -371,6 +380,24 @@ def _validate_route_map_widget(widget: HudWidgetConfig) -> None:
     _require_supported_binding(widget, {"route_points"})
     _route_map_shape(widget)
     _route_map_zoom_percent(widget)
+
+
+def _validate_lap_waterfall_widget_style(widget: HudWidgetConfig) -> None:
+    visible_rows = widget.style.get("visible_rows")
+    if visible_rows is not None:
+        if isinstance(visible_rows, bool) or not isinstance(visible_rows, int) or visible_rows < 1:
+            raise ValueError(
+                f"widget '{widget.id}' style.visible_rows must be a positive integer")
+    fade_after_seconds = widget.style.get("fade_after_seconds")
+    if fade_after_seconds is not None:
+        if isinstance(fade_after_seconds, bool) or not isinstance(fade_after_seconds, (int, float)) or fade_after_seconds <= 0:
+            raise ValueError(
+                f"widget '{widget.id}' style.fade_after_seconds must be a positive number")
+    for key in ("always_show", "show_distance", "show_time", "show_pace", "show_elevation", "show_heart_rate"):
+        val = widget.style.get(key)
+        if val is not None and not isinstance(val, bool):
+            raise ValueError(
+                f"widget '{widget.id}' style.{key} must be a boolean")
 
 
 def _require_supported_binding(widget: HudWidgetConfig, supported_bindings: set[str]) -> str:
@@ -1223,6 +1250,139 @@ def _draw_context_card(
         fill=tuple(theme.text_rgba),
         font=unit_font,
     )
+
+
+def _draw_lap_waterfall(
+    image: Image.Image,
+    widget: HudWidgetConfig,
+    lap_state: LapWaterfallState | None,
+    theme: HudThemeConfig,
+    frame_width: int,
+    frame_height: int,
+    scale: RenderScale,
+) -> None:
+    if lap_state is None:
+        return
+    always_show = widget.style.get("always_show", False)
+    opacity = 1.0 if always_show else lap_state.opacity
+    if opacity <= 0:
+        return
+
+    left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
+    w = _scale_x(scale, widget.width)
+    h = _scale_y(scale, widget.height)
+    widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    widget_draw = ImageDraw.Draw(widget_image)
+
+    title_font = _title_font(widget, theme, scale)
+    value_font = _value_font(widget, theme, scale)
+    header_color = tuple(theme.text_rgba)
+    row_color = tuple(theme.text_rgba)
+
+    columns = _lap_waterfall_columns(widget)
+    col_widths = _lap_waterfall_column_widths(columns, w, scale)
+
+    pad_x = _scale_x(scale, 10)
+    pad_y = _scale_y(scale, 8)
+    row_h = _scale_y(scale, 26)
+
+    # Header row
+    x = pad_x
+    for col, cw in zip(columns, col_widths):
+        label = _LAP_WATERFALL_COLUMN_LABELS.get(col, col)
+        widget_draw.text((x, pad_y), label, fill=header_color, font=title_font)
+        x += cw
+
+    # Data rows
+    dimmed_alpha = round(255 * 0.65)
+    for i, row in enumerate(lap_state.visible_rows):
+        y = pad_y + row_h + i * row_h
+        alpha = dimmed_alpha if row.is_dimmed else 255
+        color = (row_color[0], row_color[1], row_color[2], alpha)
+        values = _lap_waterfall_row_values(row, columns)
+        x = pad_x
+        for val, cw in zip(values, col_widths):
+            widget_draw.text((x, y), val, fill=color, font=value_font)
+            x += cw
+
+    # Apply overall widget opacity
+    if opacity < 1.0:
+        r, g, b, a = widget_image.split()
+        a = a.point(lambda v: round(v * opacity))
+        widget_image = Image.merge("RGBA", (r, g, b, a))
+
+    image.alpha_composite(widget_image, (left, top))
+
+
+_LAP_WATERFALL_COLUMN_LABELS: dict[str, str] = {
+    "lap": "Lap",
+    "distance": "Dist",
+    "time": "Time",
+    "pace": "Pace",
+    "elevation": "Elev",
+    "heart_rate": "HR",
+}
+
+_LAP_WATERFALL_COLUMN_STYLE_KEYS: dict[str, str] = {
+    "distance": "show_distance",
+    "time": "show_time",
+    "pace": "show_pace",
+    "elevation": "show_elevation",
+    "heart_rate": "show_heart_rate",
+}
+
+
+def _lap_waterfall_columns(widget: HudWidgetConfig) -> list[str]:
+    cols = ["lap"]
+    for col in ("distance", "time", "pace", "elevation", "heart_rate"):
+        style_key = _LAP_WATERFALL_COLUMN_STYLE_KEYS[col]
+        if widget.style.get(style_key, True):
+            cols.append(col)
+    return cols
+
+
+def _lap_waterfall_column_widths(columns: list[str], total_width: int, scale: RenderScale) -> list[int]:
+    lap_w = _scale_x(scale, 36)
+    remaining = total_width - lap_w
+    other_count = max(len(columns) - 1, 1)
+    other_w = remaining // other_count
+    widths = []
+    for col in columns:
+        widths.append(lap_w if col == "lap" else other_w)
+    return widths
+
+
+def _lap_waterfall_row_values(row: LapWaterfallRow, columns: list[str]) -> list[str]:
+    from math import isfinite
+    lap = row.lap
+    values: list[str] = []
+    for col in columns:
+        if col == "lap":
+            values.append(str(row.lap_index + 1))
+        elif col == "distance":
+            values.append(f"{lap.distance_m / 1000:.2f}")
+        elif col == "time":
+            t = int(lap.total_time_seconds)
+            values.append(f"{t // 60}:{t % 60:02d}")
+        elif col == "pace":
+            if lap.distance_m > 0:
+                pace = (lap.total_time_seconds / lap.distance_m) * 1000
+                values.append(_format_pace(pace))
+            else:
+                values.append("--")
+        elif col == "elevation":
+            elev = lap.elevation_delta_m
+            if elev is None:
+                values.append("--")
+            else:
+                sign = "+" if elev >= 0 else ""
+                values.append(f"{sign}{round(elev)}m")
+        elif col == "heart_rate":
+            hr = lap.avg_heart_rate_bpm
+            values.append(str(round(hr)) if hr is not None else "--")
+        else:
+            values.append("--")
+    return values
 
 
 def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[float, float]], map_box: tuple[int, int, int, int]) -> None:

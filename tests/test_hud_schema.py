@@ -272,3 +272,68 @@ def test_removed_theme_color_keys_rejected_by_direct_schema_deserialization() ->
                 "widgets": [],
             }
         )
+
+
+def test_deserialize_hud_config_round_trips_lap_waterfall_widget() -> None:
+    payload = {
+        "preset": "lap-only",
+        "theme": {},
+        "widgets": [
+            {
+                "id": "lap-table",
+                "type": "lap_waterfall",
+                "bindings": {"value": "laps"},
+                "anchor": "top-left",
+                "x": 24,
+                "y": 400,
+                "width": 400,
+                "height": 200,
+                "style": {
+                    "visible_rows": 5,
+                    "always_show": False,
+                    "fade_after_seconds": 10,
+                    "show_distance": True,
+                    "show_time": True,
+                    "show_pace": True,
+                    "show_elevation": True,
+                    "show_heart_rate": True,
+                },
+            }
+        ],
+    }
+    config = deserialize_hud_config(payload)
+    serialized = serialize_hud_config(config)
+
+    assert config.widgets[0].type == "lap_waterfall"
+    assert config.widgets[0].bindings == {"value": "laps"}
+    assert config.widgets[0].style["visible_rows"] == 5
+    assert config.widgets[0].style["always_show"] is False
+    assert config.widgets[0].style["show_distance"] is True
+    assert serialized["widgets"][0]["type"] == "lap_waterfall"
+    assert serialized["widgets"][0]["style"]["visible_rows"] == 5
+    assert serialized["widgets"][0]["style"]["show_heart_rate"] is True
+    assert serialized["widgets"][0]["style"]["fade_after_seconds"] == 10
+
+
+def test_deserialize_hud_config_accepts_lap_waterfall_minimal_style() -> None:
+    """lap_waterfall with no style keys should deserialize without error."""
+    payload = {
+        "preset": "lap-only",
+        "theme": {},
+        "widgets": [
+            {
+                "id": "lap-table",
+                "type": "lap_waterfall",
+                "bindings": {"value": "laps"},
+                "anchor": "top-right",
+                "x": 24,
+                "y": 400,
+                "width": 400,
+                "height": 200,
+                "style": {},
+            }
+        ],
+    }
+    config = deserialize_hud_config(payload)
+    assert config.widgets[0].type == "lap_waterfall"
+    assert config.widgets[0].style == {}

@@ -11,7 +11,7 @@ from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, HudSample
-from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
+from race_overlay.sampling import LapWaterfallState, lap_waterfall_state
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
@@ -177,14 +177,8 @@ def _sample_lap_state() -> LapWaterfallState:
             calories=50,
         ),
     ]
-    rows = [LapWaterfallRow(lap=lap, lap_index=i, is_dimmed=False) for i, lap in enumerate(laps)]
-    return LapWaterfallState(
-        completed_laps=laps,
-        visible_rows=rows,
-        newest_lap_index=len(laps) - 1,
-        oldest_row_dimmed=False,
-        opacity=1.0,
-    )
+    when = base + timedelta(seconds=1200)
+    return lap_waterfall_state(laps, when, always_show=True)
 
 
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:

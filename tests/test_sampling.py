@@ -138,6 +138,20 @@ def test_lap_waterfall_state_newest_lap_index_is_last_completed() -> None:
     assert state.newest_lap_index == 1
 
 
+def test_lap_waterfall_state_visible_rows_zero_raises() -> None:
+    """visible_rows=0 must raise ValueError; slicing with [-0:] would silently return all rows."""
+    when = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="visible_rows"):
+        lap_waterfall_state([], when, visible_rows=0)
+
+
+def test_lap_waterfall_state_visible_rows_negative_raises() -> None:
+    """visible_rows < 1 must always raise ValueError."""
+    when = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="visible_rows"):
+        lap_waterfall_state([], when, visible_rows=-3)
+
+
 def test_lap_waterfall_state_visible_rows_fewer_than_completed() -> None:
     """Fewer completed laps than visible_rows: all laps are shown, none dimmed."""
     start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)

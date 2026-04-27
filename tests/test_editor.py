@@ -863,6 +863,30 @@ def test_render_preview_png_passes_lap_state_to_render_hud_frame(monkeypatch, tm
     assert isinstance(captured_kwargs[0]["lap_state"], LapWaterfallState)
 
 
+def test_sample_lap_state_uses_lap_waterfall_state_helper(monkeypatch) -> None:
+    """_sample_lap_state must delegate to lap_waterfall_state() not build state manually."""
+    import race_overlay.editor_preview as ep
+    from race_overlay.sampling import LapWaterfallState
+
+    call_args: list[tuple] = []
+    call_kwargs: list[dict] = []
+    original = __import__("race_overlay.sampling", fromlist=["lap_waterfall_state"]).lap_waterfall_state
+
+    def capturing(*args, **kwargs):
+        call_args.append(args)
+        call_kwargs.append(kwargs)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("race_overlay.editor_preview.lap_waterfall_state", capturing)
+
+    result = ep._sample_lap_state()
+
+    assert call_args, "lap_waterfall_state() was not called by _sample_lap_state()"
+    assert isinstance(result, LapWaterfallState)
+    laps_arg = call_args[0][0]
+    assert len(laps_arg) > 0, "no ActivityLap values passed to lap_waterfall_state"
+
+
 @contextmanager
 def running_editor(config_path: Path) -> str:
     base_url = launch_editor(config_path, width=1280, height=720)
