@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from datetime import timedelta
 from glob import glob
+import os
+import fnmatch
 from pathlib import Path
 import subprocess
 
@@ -45,10 +47,34 @@ def _emit(progress: ProgressReporter | None, message: str) -> None:
 
 
 def _discover_videos(patterns: list[str]) -> list[Path]:
-    paths: list[Path] = []
+    """Discover files matching patterns, treating filename matching as case-insensitive.
+
+    glob.glob() is used to respect directory patterns, but filesystems may be case-sensitive
+    so also scan the candidate directory tree and match filenames case-insensitively
+    against the pattern's name component.
+    """
+    matches: set[Path] = set()
     for pattern in patterns:
-        paths.extend(Path(match) for match in glob(pattern))
-    return sorted(set(paths))
+        # Add any exact glob matches first (respects directories/recursive globs)
+        for match in glob(pattern):
+            matches.add(Path(match))
+
+        # Fall back to case-insensitive name matching within the pattern's directory
+        dirpart, name_pat = os.path.split(pattern)
+        # If the directory part contains glob meta-chars, search from repo root
+        if dirpart and not any(ch in dirpart for ch in "*?["):
+            base = Path(dirpart)
+        else:
+            base = Path('.')
+
+        lower_name_pat = name_pat.lower()
+        for candidate in base.rglob("*"):
+            if not candidate.is_file():
+                continue
+            if fnmatch.fnmatch(candidate.name.lower(), lower_name_pat):
+                matches.add(candidate)
+
+    return sorted(matches)
 
 
 def _render_overlay_frame(
