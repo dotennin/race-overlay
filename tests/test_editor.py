@@ -96,6 +96,19 @@ def test_build_editor_state_exposes_overlay_library_with_lap_waterfall() -> None
     }
 
 
+def test_build_editor_state_exposes_stride_card_overlay_library_entry() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    stride_entry = next(item for item in state["overlay_library"] if item["defaults"]["id"] == "stride-chip")
+    assert stride_entry["type"] == "metric_card"
+    assert stride_entry["defaults"]["bindings"] == {"value": "stride_length_m"}
+    assert stride_entry["defaults"]["style"] == {"label": "Stride", "variant": "compact"}
+
+
 def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     state = build_editor_state(
         config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),

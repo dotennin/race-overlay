@@ -19,7 +19,7 @@ from race_overlay.hud_schema import (
     validate_hud_theme_config,
 )
 from race_overlay.models import HudSample
-from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
+from race_overlay.sampling import LAP_WATERFALL_DEFAULT_VISIBLE_ROWS, LapWaterfallRow, LapWaterfallState
 
 HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
@@ -165,6 +165,33 @@ def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
     if value > ROUTE_MAP_ZOOM_PERCENT_MAX:
         raise ValueError(f"widget '{widget.id}' style.zoom_percent must be at most {ROUTE_MAP_ZOOM_PERCENT_MAX}")
     return value
+
+
+def _route_map_projection_bounds(
+    route_points: list[tuple[float, float]],
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    zoom_percent: int,
+) -> tuple[float, float, float, float, float, float, float]:
+    latitudes = [point[0] for point in route_points]
+    longitudes = [point[1] for point in route_points]
+    lat_min, lat_max = min(latitudes), max(latitudes)
+    lon_min, lon_max = min(longitudes), max(longitudes)
+
+    lat_range = max(lat_max - lat_min, 1e-9)
+    lon_range = max(lon_max - lon_min, 1e-9)
+    zoom_scale = zoom_percent / 100.0
+
+    inner_width = max(right - left, 1)
+    inner_height = max(bottom - top, 1)
+    projection_scale = min(inner_width / lon_range, inner_height / lat_range) * zoom_scale
+    content_width = lon_range * projection_scale
+    content_height = lat_range * projection_scale
+    offset_x = left + (inner_width - content_width) / 2
+    offset_y = top + (inner_height - content_height) / 2
+    return lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y
 
 
 def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
@@ -452,7 +479,7 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
         _require_supported_binding(widget, {"pace_seconds_per_km"})
     elif widget.type == "metric_card":
         _require_supported_binding(widget, {
-                                   "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                   "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     elif widget.type == "context_card":
         _require_supported_binding(widget, {"timestamp"})
     elif widget.type == "lap_waterfall":
@@ -1204,32 +1231,21 @@ def _create_route_map_cache(
     map_bottom = h - _scale_y(scale, 12)
     inner_width = max(w - _scale_x(scale, 24), 1)
     inner_height = max(map_bottom - map_top, 1)
-    
-    latitudes = [point[0] for point in route_points]
-    longitudes = [point[1] for point in route_points]
-    lat_min, lat_max = min(latitudes), max(latitudes)
-    lon_min, lon_max = min(longitudes), max(longitudes)
-    
-    lat_range = max(lat_max - lat_min, 1e-9)
-    lon_range = max(lon_max - lon_min, 1e-9)
-    lat_padding = lat_range * 0.05
-    lon_padding = lon_range * 0.05
-    lat_min -= lat_padding
-    lat_max += lat_padding
-    lon_min -= lon_padding
-    lon_max += lon_padding
-    zoom_scale = _route_map_zoom_percent(widget) / 100.0
-    center_x = map_left + inner_width / 2
-    center_y = map_top + inner_height / 2
-    
+    lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y = _route_map_projection_bounds(
+        route_points,
+        map_left,
+        map_top,
+        map_left + inner_width,
+        map_top + inner_height,
+        _route_map_zoom_percent(widget),
+    )
+
     # Create projection function
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        raw_x = map_left + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * inner_width
-        raw_y = map_bottom - ((lat - lat_min) / max(lat_max - lat_min, 1e-9)) * inner_height
         return (
-            center_x + (raw_x - center_x) * zoom_scale,
-            center_y + (raw_y - center_y) * zoom_scale,
+            offset_x + ((lon - lon_min) * projection_scale),
+            offset_y + ((lat_max - lat) * projection_scale),
         )
     
     # Pre-project all route points
@@ -1522,7 +1538,10 @@ def _draw_lap_waterfall(
         _lap_waterfall_text_height(widget_draw, _LAP_WATERFALL_COLUMN_MEASURE_SAMPLES.get(col, "00"), value_font)
         for col in columns
     )
-    visible_row_slots = max(len(lap_state.visible_rows), 1)
+    configured_visible_rows = widget.style.get("visible_rows", LAP_WATERFALL_DEFAULT_VISIBLE_ROWS)
+    if isinstance(configured_visible_rows, bool) or not isinstance(configured_visible_rows, int) or configured_visible_rows < 1:
+        configured_visible_rows = LAP_WATERFALL_DEFAULT_VISIBLE_ROWS
+    visible_row_slots = max(configured_visible_rows, 1)
     available_rows_height = max(h - (pad_y * 2) - header_text_h - _scale_y(scale, 6), row_text_h)
     row_h = max(available_rows_height // visible_row_slots, row_text_h)
     header_y = pad_y
@@ -1812,18 +1831,21 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
     if len(route_points) < 2:
         return
 
-    latitudes = [point[0] for point in route_points]
-    longitudes = [point[1] for point in route_points]
-    lat_min, lat_max = min(latitudes), max(latitudes)
-    lon_min, lon_max = min(longitudes), max(longitudes)
+    lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y = _route_map_projection_bounds(
+        route_points,
+        left + 12,
+        top + 12,
+        right - 12,
+        bottom - 12,
+        100,
+    )
 
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        x = left + 12 + ((lon - lon_min) / max(lon_max -
-                         lon_min, 1e-9)) * ((right - left) - 24)
-        y = bottom - 12 - ((lat - lat_min) / max(lat_max -
-                           lat_min, 1e-9)) * ((bottom - top) - 24)
-        return (x, y)
+        return (
+            offset_x + ((lon - lon_min) * projection_scale),
+            offset_y + ((lat_max - lat) * projection_scale),
+        )
 
     projected = [project(point) for point in route_points]
     draw.line(projected, fill=(0, 200, 255, 255), width=4)
@@ -1831,15 +1853,24 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
     draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
 
 
+def _stride_length_m(hud_value: HudSample) -> float | None:
+    if hud_value.speed_mps is None or hud_value.cadence_spm is None or hud_value.cadence_spm <= 0:
+        return None
+    return (hud_value.speed_mps * 60.0) / hud_value.cadence_spm
+
+
 def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds: int) -> str:
     binding = _require_supported_binding(widget, {
-                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     if binding == "pace_seconds_per_km":
         return _format_pace(hud_value.pace_seconds_per_km)
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     if binding == "cadence_spm":
         return "--" if hud_value.cadence_spm is None else str(hud_value.cadence_spm)
+    if binding == "stride_length_m":
+        stride_length_m = _stride_length_m(hud_value)
+        return "--" if stride_length_m is None else f"{stride_length_m:.2f}"
     if binding == "elapsed_seconds":
         hours, remainder = divmod(elapsed_seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -1853,13 +1884,15 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if not _style_bool(widget, "show_unit", theme.show_units):
         return ""
     binding = _require_supported_binding(widget, {
-                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     if binding == "pace_seconds_per_km":
         return "/km"
     if binding == "heart_rate_bpm":
         return "bpm"
     if binding == "cadence_spm":
         return "SPM"
+    if binding == "stride_length_m":
+        return "m"
     if binding == "elapsed_seconds":
         return ""
     if binding == "speed_mps":

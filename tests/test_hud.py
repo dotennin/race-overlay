@@ -1259,6 +1259,59 @@ def test_metric_value_returns_placeholder_for_missing_speed() -> None:
     assert _metric_value(widget, hud_value, elapsed_seconds=6852) == "--"
 
 
+def test_metric_value_returns_stride_length_from_speed_and_cadence() -> None:
+    widget = HudWidgetConfig(
+        id="metric-stride",
+        type="metric_card",
+        bindings={"value": "stride_length_m"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=160,
+        height=96,
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    assert _metric_value(widget, hud_value, elapsed_seconds=6852) == "1.21"
+
+
+def test_render_hud_frame_renders_stride_metric_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="stride-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="stride-chip",
+                    type="metric_card",
+                    bindings={"value": "stride_length_m"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=160,
+                    height=96,
+                    style={"label": "Stride", "variant": "compact"},
+                )
+            ],
+        ),
+    )
+
+    assert "Stride" in labels
+    assert "1.21" in labels
+    assert "m" in labels
+
+
 def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _rendered_text_labels(
         monkeypatch,
@@ -1427,7 +1480,7 @@ def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: p
     vector_x, vector_y = captured_vectors[0]
     assert vector_x > 0
     assert vector_y < 0
-    assert abs(vector_y / vector_x) <= 1.0
+    assert abs(vector_y / vector_x) > 10.0
 
 
 def test_render_hud_frame_route_map_prefers_non_degenerate_segment_for_navigation_overlays(
@@ -2143,6 +2196,70 @@ def test_render_hud_frame_route_map_zoom_percent_insets_route_projection(
     assert height_90 < height_100
 
 
+def test_render_hud_frame_route_map_preserves_route_aspect_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_points: list[tuple[float, float]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if fill in {ROUTE_MAP_COMPLETED_RGBA, ROUTE_MAP_REMAINING_RGBA}:
+            recorded_points.extend([(float(x), float(y)) for x, y in xy])
+        return original_line(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    render_hud_frame(
+        width=220,
+        height=220,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=0.5,
+            longitude=1.0,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[
+            (0.0, 0.0),
+            (0.0, 2.0),
+            (1.0, 2.0),
+            (1.0, 0.0),
+            (0.0, 0.0),
+        ],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=220,
+                    height=220,
+                    style={"label": "", "shape": "circle"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    xs = [x for x, _ in recorded_points]
+    ys = [y for _, y in recorded_points]
+    assert xs and ys, "expected route-map line draws to be recorded"
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+
+    assert width > height * 1.5
+
+
 def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2828,6 +2945,54 @@ def test_render_hud_frame_lap_waterfall_renders_lap_numbers_in_rows(
     assert "1" in labels
     assert "2" in labels
     assert "3" in labels
+
+
+def test_render_hud_frame_lap_waterfall_keeps_rows_compact_before_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[row.lap for row in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    calls: list[tuple[int, int, int, int]] = []
+    original_composite = hud_module._alpha_composite_clipped
+
+    def record_composite(image, overlay, left, top):
+        calls.append((left, top, overlay.width, overlay.height))
+        return original_composite(image, overlay, left, top)
+
+    monkeypatch.setattr(hud_module, "_alpha_composite_clipped", record_composite)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=config,
+        elapsed_seconds=6852,
+        lap_state=lap_state,
+    )
+
+    data_row_height = max(height for _left, _top, _width, height in calls)
+    first_column_left = min(left for left, _top, _width, height in calls if height == data_row_height)
+    row_tops = sorted({top for left, top, _width, height in calls if left == first_column_left and height == data_row_height})
+
+    assert len(row_tops) == 2
+    assert row_tops[1] - row_tops[0] < 50
 
 
 def test_render_hud_frame_lap_waterfall_slides_rows_during_transition(
