@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import timedelta
 from glob import glob
 import os
@@ -22,11 +23,75 @@ from race_overlay.ffmpeg import (
     open_stream_compose_process,
     resolve_output_encoding_plan,
 )
-from race_overlay.hud import render_hud_frame
-from race_overlay.sampling import lap_waterfall_states_for_widgets, sample_at
+from race_overlay.hud import (
+    prime_route_map_caches,
+    render_hud_frame as _render_hud_frame,
+    render_prepared_hud_frame,
+    validate_hud_config,
+)
+from race_overlay.hud_schema import HudConfig, HudWidgetConfig
+from race_overlay.sampling import lap_waterfall_states_for_widgets, sample_at, SampleCursor
 from race_overlay.video_probe import probe_video
 
 ProgressReporter = Callable[[str], None]
+
+
+@dataclass(slots=True, frozen=True)
+class RenderContext:
+    """Clip-level render context with precomputed/validated data.
+    
+    Created once per clip to move repeated work out of per-frame rendering.
+    Contains validated config, visible widgets, route data, and sample cursor.
+    """
+    hud_config: HudConfig
+    visible_widgets: list[HudWidgetConfig]
+    route_points: list[tuple[float, float]]
+    sample_cursor: SampleCursor
+    total_distance_m: float | None
+    route_map_cache_keys: dict[str, str]
+
+
+def create_render_context(
+    hud_config: HudConfig,
+    samples: list,
+    route_points: list[tuple[float, float]],
+    frame_width: int,
+    frame_height: int,
+    total_distance_m: float | None = None,
+) -> RenderContext:
+    """Create a render context with precomputed data for a clip.
+    
+    Args:
+        hud_config: Validated HUD configuration
+        samples: Activity samples for cursor initialization
+        route_points: GPS route points for the map
+        total_distance_m: Optional total distance for progress bars
+        
+    Returns:
+        RenderContext with visible widgets and sample cursor
+    """
+    validated_hud_config = validate_hud_config(hud_config)
+    visible_widgets = sorted(
+        (widget for widget in validated_hud_config.widgets if widget.visible),
+        key=lambda widget: widget.z_index,
+    )
+    sample_cursor = SampleCursor(samples)
+    route_map_cache_keys = prime_route_map_caches(
+        widgets=visible_widgets,
+        route_points=route_points,
+        theme=validated_hud_config.theme,
+        frame_width=frame_width,
+        frame_height=frame_height,
+    )
+    
+    return RenderContext(
+        hud_config=validated_hud_config,
+        visible_widgets=visible_widgets,
+        route_points=route_points,
+        sample_cursor=sample_cursor,
+        total_distance_m=total_distance_m,
+        route_map_cache_keys=route_map_cache_keys,
+    )
 
 
 class StreamingComposeError(OSError):
@@ -39,6 +104,44 @@ class RecoverableStreamingComposeError(StreamingComposeError):
 
 class FatalStreamingComposeError(StreamingComposeError):
     """ffmpeg setup or process failure that should abort instead of falling back."""
+
+
+def render_hud_frame(
+    *,
+    width: int,
+    height: int,
+    hud_value,
+    route_points: list[tuple[float, float]],
+    hud_config: HudConfig,
+    elapsed_seconds: int = 0,
+    total_distance_m: float | None = None,
+    lap_states=None,
+    visible_widgets: list[HudWidgetConfig] | None = None,
+    route_map_cache_keys: dict[str, str] | None = None,
+):
+    if visible_widgets is None:
+        return _render_hud_frame(
+            width=width,
+            height=height,
+            hud_value=hud_value,
+            route_points=route_points,
+            hud_config=hud_config,
+            elapsed_seconds=elapsed_seconds,
+            total_distance_m=total_distance_m,
+            lap_states=lap_states,
+        )
+    return render_prepared_hud_frame(
+        width=width,
+        height=height,
+        hud_value=hud_value,
+        route_points=route_points,
+        theme=hud_config.theme,
+        widgets=visible_widgets,
+        elapsed_seconds=elapsed_seconds,
+        total_distance_m=total_distance_m,
+        lap_states=lap_states,
+        route_map_cache_keys=route_map_cache_keys,
+    )
 
 
 def _emit(progress: ProgressReporter | None, message: str) -> None:
@@ -83,25 +186,25 @@ def _render_overlay_frame(
     clip,
     alignment,
     index: int,
-    route_points: list[tuple[float, float]],
-    hud_config,
-    total_distance_m: float | None,
+    context: RenderContext,
 ) -> Image.Image:
     when = alignment.clip_start + timedelta(seconds=index / clip.fps)
     if alignment.overlay_start is None or when < alignment.overlay_start or when > alignment.overlay_end:
         return Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
 
-    hud_value = sample_at(activity, when)
-    lap_states = lap_waterfall_states_for_widgets(hud_config, activity.laps, when)
+    hud_value = sample_at(activity, when, cursor=context.sample_cursor)
+    lap_states = lap_waterfall_states_for_widgets(context.hud_config, activity.laps, when)
     return render_hud_frame(
         width=clip.width,
         height=clip.height,
         hud_value=hud_value,
-        route_points=route_points,
-        hud_config=hud_config,
+        route_points=context.route_points,
+        hud_config=context.hud_config,
         elapsed_seconds=int((when - activity.samples[0].timestamp).total_seconds()),
-        total_distance_m=total_distance_m,
+        total_distance_m=context.total_distance_m,
         lap_states=lap_states,
+        visible_widgets=context.visible_widgets,
+        route_map_cache_keys=context.route_map_cache_keys,
     )
 
 
@@ -187,9 +290,7 @@ def _render_clip_streaming(
     activity,
     clip,
     alignment,
-    route_points: list[tuple[float, float]],
-    hud_config,
-    total_distance_m: float | None,
+    context: RenderContext,
     output_path: Path,
     plan,
 ) -> None:
@@ -209,9 +310,7 @@ def _render_clip_streaming(
                 clip=clip,
                 alignment=alignment,
                 index=index,
-                route_points=route_points,
-                hud_config=hud_config,
-                total_distance_m=total_distance_m,
+                context=context,
             )
             try:
                 process.stdin.write(image.tobytes())
@@ -242,9 +341,7 @@ def _render_clip_via_cache(
     activity,
     clip,
     alignment,
-    route_points: list[tuple[float, float]],
-    hud_config,
-    total_distance_m: float | None,
+    context: RenderContext,
     cache_dir: Path,
     output_dir: Path,
     progress: ProgressReporter | None,
@@ -259,9 +356,7 @@ def _render_clip_via_cache(
             clip=clip,
             alignment=alignment,
             index=index,
-            route_points=route_points,
-            hud_config=hud_config,
-            total_distance_m=total_distance_m,
+            context=context,
         )
         image.save(frame_dir / f"{index:06d}.png")
 
@@ -317,15 +412,23 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
         plan = resolve_output_encoding_plan(clip)
         _emit_encoding_plan(progress, clip, plan)
 
+        # Create render context once per clip to avoid repeated per-frame work
+        context = create_render_context(
+            hud_config=config.hud,
+            samples=activity.samples,
+            route_points=route_points,
+            frame_width=clip.width,
+            frame_height=clip.height,
+            total_distance_m=total_distance_m,
+        )
+
         try:
             _emit(progress, f"Render path: streaming for {clip.path.name}")
             _render_clip_streaming(
                 activity=activity,
                 clip=clip,
                 alignment=alignment,
-                route_points=route_points,
-                hud_config=config.hud,
-                total_distance_m=total_distance_m,
+                context=context,
                 output_path=output_path,
                 plan=plan,
             )
@@ -336,9 +439,7 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
                 activity=activity,
                 clip=clip,
                 alignment=alignment,
-                route_points=route_points,
-                hud_config=config.hud,
-                total_distance_m=total_distance_m,
+                context=context,
                 cache_dir=cache_dir,
                 output_dir=output_dir,
                 progress=progress,

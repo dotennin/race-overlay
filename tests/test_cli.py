@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -7,6 +8,7 @@ import yaml
 
 from race_overlay.cli import app
 from race_overlay.config import ProjectConfig, save_config, write_default_config
+from race_overlay.models import ActivitySample, ActivityTrack
 from race_overlay.hud_presets import broadcast_runner_preset
 
 
@@ -15,6 +17,12 @@ def test_cli_shows_top_level_help() -> None:
     assert result.exit_code == 0
     assert "init" in result.stdout
     assert "render" in result.stdout
+
+
+def test_cli_shows_benchmark_render_command() -> None:
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "benchmark-render" in result.stdout
 
 
 def test_cli_shows_edit_hud_command() -> None:
@@ -124,3 +132,117 @@ def test_init_writes_default_overlay_without_removed_theme_colors(tmp_path: Path
     assert "panel_rgba" not in payload["hud"]["theme"]
     assert "accent_rgba" not in payload["hud"]["theme"]
     assert route_map["style"]["background_rgba"] == [6, 10, 18, 148]
+
+
+def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> None:
+    """Benchmark command should output baseline and variant comparisons."""
+    from race_overlay.hud_schema import HudConfig, HudWidgetConfig
+    import shutil
+    
+    config_path = tmp_path / "overlay.yaml"
+    activity_src = Path(__file__).parent.parent / "activity_22577902433.tcx"
+    activity_path = tmp_path / "activity.tcx"
+    
+    # Copy existing activity file
+    shutil.copy(activity_src, activity_path)
+    
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=activity_path.name,
+            hud=HudConfig(
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=0,
+                        y=0,
+                        width=200,
+                        height=200,
+                        visible=True,
+                    ),
+                    HudWidgetConfig(
+                        id="lap-waterfall",
+                        type="lap_waterfall",
+                        bindings={"value": "laps"},
+                        anchor="bottom-left",
+                        x=0,
+                        y=0,
+                        width=300,
+                        height=150,
+                        visible=True,
+                    ),
+                ]
+            ),
+        ),
+    )
+    
+    result = CliRunner().invoke(
+        app,
+        ["benchmark-render", "--config-path", str(config_path), "--num-frames", "10"],
+    )
+    
+    assert result.exit_code == 0
+    # Should show baseline
+    assert "baseline" in result.stdout.lower()
+    # Should show at least one variant
+    assert "no-route-map" in result.stdout.lower() or "no-lap-waterfall" in result.stdout.lower()
+    # Should show comparison percentages
+    assert "%" in result.stdout
+
+
+def test_benchmark_render_rejects_single_sample_activity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from race_overlay.hud_schema import HudConfig, HudWidgetConfig
+
+    config_path = tmp_path / "overlay.yaml"
+    activity_path = tmp_path / "activity.tcx"
+    activity_path.write_text("<TrainingCenterDatabase/>", encoding="utf-8")
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=activity_path.name,
+            hud=HudConfig(
+                widgets=[
+                    HudWidgetConfig(
+                        id="route-map",
+                        type="route_map",
+                        bindings={"value": "route_points"},
+                        anchor="top-left",
+                        x=0,
+                        y=0,
+                        width=200,
+                        height=200,
+                        visible=True,
+                    ),
+                ]
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "race_overlay.cli.load_activity",
+        lambda path: ActivityTrack(
+            sport="Running",
+            samples=[
+                ActivitySample(
+                    datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+                    36.0,
+                    140.0,
+                    10.0,
+                    0.0,
+                    4.0,
+                    120,
+                    90,
+                )
+            ],
+        ),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        ["benchmark-render", "--config-path", str(config_path), "--num-frames", "10"],
+    )
+
+    assert result.exit_code != 0
+    assert "at least 2 samples" in result.output.lower()

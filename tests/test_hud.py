@@ -20,6 +20,7 @@ from race_overlay.hud import (
     _scaled_font,
     _split_route_points,
     _widget_panel_enabled,
+    render_prepared_hud_frame,
     render_hud_frame,
     validate_hud_config,
 )
@@ -30,6 +31,14 @@ from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
 
 ROUTE_MAP_COMPLETED_RGBA = (34, 255, 138, 255)
 ROUTE_MAP_REMAINING_RGBA = (13, 144, 195, 255)
+
+
+@pytest.fixture(autouse=True)
+def clear_route_map_cache():
+    """Clear route map cache before each test to prevent cross-test pollution."""
+    hud_module._clear_route_map_cache()
+    yield
+    hud_module._clear_route_map_cache()
 
 
 def _rendered_text_labels(
@@ -108,6 +117,49 @@ def _rendered_text_calls(
         total_distance_m=total_distance_m,
     )
     return calls
+
+
+def test_render_prepared_hud_frame_matches_public_render_output() -> None:
+    config = broadcast_runner_preset()
+    validated_config = validate_hud_config(config)
+    visible_widgets = sorted(
+        (widget for widget in validated_config.widgets if widget.visible),
+        key=lambda widget: widget.z_index,
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    route_points = [(36.0832, 140.2106), (36.0834, 140.2108)]
+
+    public_image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value,
+        route_points=route_points,
+        hud_config=config,
+        elapsed_seconds=6852,
+        total_distance_m=42195.0,
+    )
+    prepared_image = render_prepared_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=hud_value,
+        route_points=route_points,
+        theme=validated_config.theme,
+        widgets=visible_widgets,
+        elapsed_seconds=6852,
+        total_distance_m=42195.0,
+    )
+
+    assert prepared_image.tobytes() == public_image.tobytes()
 
 
 def _rendered_text_draws(
@@ -2972,3 +3024,648 @@ def test_lap_waterfall_column_widths_do_not_exceed_available_width() -> None:
 
     assert sum(widths) == 180
     assert all(width >= 1 for width in widths)
+
+
+def test_route_map_cache_is_created_and_reused() -> None:
+    """Route map should create and reuse a static cache for repeated renders."""
+    config = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+        (36.0833, 140.2106),
+        (36.0834, 140.2108),
+    ]
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0832,
+        longitude=140.2104,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    # First render should create cache
+    frame1 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+    
+    # Check that cache was created
+    cache = hud_module._get_route_map_cache()
+    assert len(cache) > 0, "Cache should be created after first render"
+    
+    # Second render with different GPS position should reuse cache
+    hud_value2 = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 15, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=1020.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    frame2 = render_hud_frame(1280, 720, hud_value2, route_points, hud_config=config)
+    
+    # Cache should still have one entry (reused)
+    cache_after = hud_module._get_route_map_cache()
+    assert len(cache_after) == len(cache), "Cache should be reused for same config"
+    
+    # Clean up
+    hud_module._clear_route_map_cache()
+
+
+def test_route_map_cache_invalidated_when_remaining_color_changes() -> None:
+    """Route map cache should be invalidated when remaining_rgba changes."""
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+    ]
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0831,
+        longitude=140.2102,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    config1 = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    # First render
+    frame1 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config1)
+    cache_keys_1 = set(hud_module._get_route_map_cache().keys())
+    
+    # Change only the cached base-route color
+    config2 = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+                style={"remaining_rgba": [255, 0, 0, 255]},
+            )
+        ],
+    )
+    
+    # Second render with different config
+    frame2 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config2)
+    cache_keys_2 = set(hud_module._get_route_map_cache().keys())
+    
+    # Cache should have new entry for different config
+    assert cache_keys_1 != cache_keys_2, "Cache key should change when widget config changes"
+    
+    # Clean up
+    hud_module._clear_route_map_cache()
+
+
+def test_route_map_cache_invalidated_when_title_font_changes() -> None:
+    """Route map cache should be invalidated when cached label font changes."""
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+    ]
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0831,
+        longitude=140.2102,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    config1 = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    render_hud_frame(1280, 720, hud_value, route_points, hud_config=config1)
+    cache_keys_1 = set(hud_module._get_route_map_cache().keys())
+
+    config2 = HudConfig(
+        theme=HudThemeConfig(title_font_family="mono"),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    render_hud_frame(1280, 720, hud_value, route_points, hud_config=config2)
+    cache_keys_2 = set(hud_module._get_route_map_cache().keys())
+
+    assert cache_keys_1 != cache_keys_2, "Cache key should change when cached label font changes"
+
+
+def test_route_map_output_parity_with_caching() -> None:
+    """Route map output should be identical with or without cache."""
+    config = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+        (36.0833, 140.2106),
+    ]
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0831,
+        longitude=140.2102,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    # Clear cache before first render
+    hud_module._clear_route_map_cache()
+    
+    # First render (no cache)
+    frame1 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+    
+    # Clear cache
+    hud_module._clear_route_map_cache()
+    
+    # Second render (also no cache, for comparison)
+    frame2 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+    
+    # Frames should be identical
+    assert frame1.tobytes() == frame2.tobytes(), "Renders without cache should be identical"
+    
+    # Third render (with cache from frame2)
+    frame3 = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+    
+    # Frame with cache should match frame without cache
+    assert frame2.tobytes() == frame3.tobytes(), "Render with cache should match render without cache"
+    
+    # Clean up
+    hud_module._clear_route_map_cache()
+
+
+def test_route_map_cache_evicts_oldest_entries_when_limit_exceeded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Route map cache should stay bounded instead of growing forever."""
+    monkeypatch.setattr(hud_module, "ROUTE_MAP_CACHE_MAX_ENTRIES", 2)
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+    ]
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0831,
+        longitude=140.2102,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    def render_with_remaining_color(color: list[int]) -> set[str]:
+        config = HudConfig(
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=10,
+                    y=10,
+                    width=200,
+                    height=200,
+                    style={"remaining_rgba": color},
+                )
+            ],
+        )
+        render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+        return set(hud_module._get_route_map_cache().keys())
+
+    first_keys = render_with_remaining_color([255, 0, 0, 255])
+    second_keys = render_with_remaining_color([0, 255, 0, 255])
+    third_keys = render_with_remaining_color([0, 0, 255, 255])
+    first_key = next(iter(first_keys))
+
+    assert len(third_keys) == 2
+    assert first_key not in third_keys
+    assert third_keys != second_keys
+
+
+def test_route_map_cache_contains_static_components() -> None:
+    """Route map cache should contain background and projected route."""
+    config = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    route_points = [
+        (36.0830, 140.2100),
+        (36.0831, 140.2102),
+        (36.0832, 140.2104),
+    ]
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0831,
+        longitude=140.2102,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    # Clear cache before render
+    hud_module._clear_route_map_cache()
+    
+    # Render to create cache
+    frame = render_hud_frame(1280, 720, hud_value, route_points, hud_config=config)
+    
+    # Check cache contents
+    cache = hud_module._get_route_map_cache()
+    assert len(cache) > 0, "Cache should exist"
+    
+    # Get the cache entry
+    cache_entry = next(iter(cache.values()))
+    
+    # Cache should have required components
+    assert hasattr(cache_entry, "background_image"), "Cache should contain background image"
+    assert hasattr(cache_entry, "projected_points"), "Cache should contain projected points"
+    assert hasattr(cache_entry, "project_fn"), "Cache should contain projection function"
+    
+    # Validate components
+    assert cache_entry.background_image is not None
+    assert len(cache_entry.projected_points) == len(route_points)
+    assert callable(cache_entry.project_fn)
+    
+    # Clean up
+    hud_module._clear_route_map_cache()
+
+
+def test_route_map_uses_cached_projected_points_without_reprojection_on_large_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test that route_map uses cached projected points directly without
+    reprojecting all points every frame on large routes.
+    
+    This is the key optimization for Task 2: avoid O(n) reprojection by
+    using cached projected_points via slicing.
+    """
+    # Create a large route (simulating the 9343-point route)
+    route_points = [(35.0 + i * 0.001, 139.0 + i * 0.001) for i in range(1000)]
+    
+    hud_config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    # First render to populate cache
+    first_sample = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.1,
+        longitude=139.1,
+        altitude_m=25.0,
+        distance_m=10000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    render_hud_frame(
+        width=200,
+        height=200,
+        hud_value=first_sample,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=3000,
+    )
+    
+    # Track how many times project_fn is called on second render
+    cache = hud_module._get_route_map_cache()
+    cache_entry = next(iter(cache.values()))
+    original_project_fn = cache_entry.project_fn
+    projection_call_count = [0]
+    
+    def counting_project_fn(point):
+        projection_call_count[0] += 1
+        return original_project_fn(point)
+    
+    # Replace project_fn with counting version
+    cache_entry.project_fn = counting_project_fn
+    
+    # Second render at different position
+    second_sample = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 20, tzinfo=timezone.utc),
+        latitude=35.2,
+        longitude=139.2,
+        altitude_m=25.0,
+        distance_m=15000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    render_hud_frame(
+        width=200,
+        height=200,
+        hud_value=second_sample,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=3010,
+    )
+    
+    # After optimization, should only project:
+    # 1. The split point itself (1 call)
+    # 2. The heading vector endpoints (2 calls for segment_start and segment_end)
+    # Total: ~3 calls, NOT 1000 calls (all route points)
+    assert projection_call_count[0] <= 5, (
+        f"Expected minimal projections (~3), but got {projection_call_count[0]}. "
+        "route_map should use cached projected_points directly via slicing, "
+        "not reproject all points every frame."
+    )
+
+
+def test_route_map_preserves_visual_output_after_projection_optimization() -> None:
+    """
+    Test that visual output remains identical after optimizing projection logic.
+    This ensures we maintain render parity while improving performance.
+    """
+    route_points = [(35.0 + i * 0.01, 139.0 + i * 0.01) for i in range(100)]
+    
+    hud_config = HudConfig(
+        preset="route-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=0,
+                y=0,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.5,
+        longitude=139.5,
+        altitude_m=25.0,
+        distance_m=50000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    # Render twice with cache clear in between
+    image1 = render_hud_frame(
+        width=200,
+        height=200,
+        hud_value=hud_value,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=10000,
+    )
+    
+    hud_module._clear_route_map_cache()
+    
+    image2 = render_hud_frame(
+        width=200,
+        height=200,
+        hud_value=hud_value,
+        route_points=route_points,
+        hud_config=hud_config,
+        elapsed_seconds=10000,
+    )
+    
+    # Images should be identical
+    assert list(image1.getdata()) == list(image2.getdata()), (
+        "Visual output changed after optimization. "
+        "Optimization must preserve render parity."
+    )
+
+
+def test_route_map_cache_contains_pre_rendered_base_layer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test that the route base layer (static route polyline) is pre-rendered
+    into the cached background image, not redrawn every frame.
+    
+    This is the remaining Task 2 spec gap: route_map should split work into
+    clip-static (route base layer rasterization in cache) vs frame-dynamic
+    (position/split/heading overlays only).
+    """
+    # Use a larger route to make the issue visible
+    route_points = [(35.0 + i * 0.001, 139.0 + i * 0.001) for i in range(100)]
+    
+    hud_config = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="route-map",
+                type="route_map",
+                bindings={"value": "route_points"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=200,
+            )
+        ],
+    )
+    
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=35.05,
+        longitude=139.05,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    # Clear cache before render
+    hud_module._clear_route_map_cache()
+    
+    # Render to create cache
+    render_hud_frame(1280, 720, hud_value, route_points, hud_config=hud_config)
+    
+    # Get cached background
+    cache = hud_module._get_route_map_cache()
+    cache_entry = next(iter(cache.values()))
+    cached_bg = cache_entry.background_image
+    
+    # The cached background should contain the pre-rendered route polyline
+    # Check for the base route color (remaining_rgba = blue: 13, 144, 195, 255)
+    pixels = list(cached_bg.getdata())
+    
+    # Count route color pixels (remaining/base route color)
+    route_pixels = sum(1 for r, g, b, a in pixels if r < 30 and g > 100 and b > 150 and a > 200)
+    
+    # After the fix, the static route should be pre-rendered in background
+    assert route_pixels > 50, (
+        f"Expected cached background to contain pre-rendered route polyline, "
+        f"but found only {route_pixels} route pixels. "
+        "The static route base layer should be rasterized into background_image."
+    )
+    
+    # Now check that per-frame drawing doesn't redraw the full route polyline
+    # by monitoring ImageDraw.line calls during a second render
+    line_calls = []
+    original_line = ImageDraw.ImageDraw.line
+    
+    def record_line(self, *args, **kwargs):
+        # Record the arguments (especially the points list length)
+        if args:
+            points = args[0]
+            if isinstance(points, list):
+                line_calls.append(len(points))
+        return original_line(self, *args, **kwargs)
+    
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+    
+    # Render a second frame at different position
+    hud_value2 = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 15, tzinfo=timezone.utc),
+        latitude=35.06,
+        longitude=139.06,
+        altitude_m=25.0,
+        distance_m=1500.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    
+    render_hud_frame(1280, 720, hud_value2, route_points, hud_config=hud_config)
+    
+    # After the fix, we should NOT draw the FULL route polyline
+    # We may draw the completed portion (which varies based on position)
+    # But the key is we're not redrawing the entire route base layer
+    # With 100 route points, drawing > 90 points means we're drawing almost the full route
+    max_line_length = max(line_calls) if line_calls else 0
+    assert max_line_length < 90, (
+        f"Found line() call with {max_line_length} points. "
+        "Static route base layer should be pre-rendered in cache. "
+        "Frame should only draw dynamic completed overlay (not full route)."
+    )
+    
+    # Clean up
+    hud_module._clear_route_map_cache()

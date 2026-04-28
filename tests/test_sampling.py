@@ -174,3 +174,74 @@ def test_lap_waterfall_state_visible_rows_fewer_than_completed() -> None:
     state = lap_waterfall_state(laps, when, visible_rows=5, always_show=True)
     assert len(state.visible_rows) == 2
     assert not state.oldest_row_dimmed
+
+
+# ── sample lookup optimization ───────────────────────────────────────────────
+
+
+def test_sample_at_with_cursor_finds_correct_samples_sequentially() -> None:
+    """Test that sample_at with cursor optimization correctly finds samples in sequential order."""
+    start = datetime(2026, 4, 19, 0, 45, 0, tzinfo=timezone.utc)
+    from race_overlay.sampling import SampleCursor
+    
+    activity = ActivityTrack(
+        sport="Running",
+        samples=[
+            ActivitySample(start, 36.0, 140.0, 0.0, 0.0, 4.0, 120, 90),
+            ActivitySample(start + timedelta(seconds=10), 36.1, 140.1, 10.0, 40.0, 5.0, 130, 92),
+            ActivitySample(start + timedelta(seconds=20), 36.2, 140.2, 20.0, 80.0, 4.5, 125, 91),
+            ActivitySample(start + timedelta(seconds=30), 36.3, 140.3, 30.0, 120.0, 4.8, 128, 93),
+        ],
+    )
+    
+    cursor = SampleCursor(activity.samples)
+    
+    # Sequential lookups should advance the cursor efficiently
+    result1 = sample_at(activity, start + timedelta(seconds=5), cursor=cursor)
+    assert round(result1.distance_m, 1) == 20.0
+    
+    result2 = sample_at(activity, start + timedelta(seconds=15), cursor=cursor)
+    assert round(result2.distance_m, 1) == 60.0
+    
+    result3 = sample_at(activity, start + timedelta(seconds=25), cursor=cursor)
+    assert round(result3.distance_m, 1) == 100.0
+
+
+def test_sample_at_without_cursor_still_works() -> None:
+    """Test that sample_at without cursor parameter maintains backward compatibility."""
+    start = datetime(2026, 4, 19, 0, 45, 0, tzinfo=timezone.utc)
+    activity = ActivityTrack(
+        sport="Running",
+        samples=[
+            ActivitySample(start, 36.0, 140.0, 0.0, 0.0, 4.0, 120, 90),
+            ActivitySample(start + timedelta(seconds=10), 36.1, 140.1, 10.0, 40.0, 5.0, 130, 92),
+        ],
+    )
+    
+    # Should work without cursor parameter (uses bisect internally)
+    result = sample_at(activity, start + timedelta(seconds=5))
+    assert round(result.distance_m, 1) == 20.0
+
+
+def test_sample_at_with_cursor_matches_bisect_before_first_sample() -> None:
+    from race_overlay.sampling import SampleCursor
+
+    start = datetime(2026, 4, 19, 0, 45, 0, tzinfo=timezone.utc)
+    activity = ActivityTrack(
+        sport="Running",
+        samples=[
+            ActivitySample(start, 36.0, 140.0, 0.0, 0.0, 4.0, 120, 90),
+            ActivitySample(start + timedelta(seconds=10), 36.1, 140.1, 10.0, 40.0, 5.0, 130, 92),
+            ActivitySample(start + timedelta(seconds=20), 36.2, 140.2, 20.0, 80.0, 4.5, 125, 91),
+        ],
+    )
+    when = start - timedelta(seconds=5)
+    cursor = SampleCursor(activity.samples)
+
+    expected = sample_at(activity, when)
+    result = sample_at(activity, when, cursor=cursor)
+
+    assert result.distance_m == pytest.approx(expected.distance_m)
+    assert result.latitude == pytest.approx(expected.latitude)
+    assert result.longitude == pytest.approx(expected.longitude)
+    assert result.speed_mps == pytest.approx(expected.speed_mps)
