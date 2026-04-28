@@ -242,4 +242,5 @@ hud:
       show_elevation: true
       show_time: true
       fade_after_seconds: 5
+      value_font_size_px: 24
 overrides: {}

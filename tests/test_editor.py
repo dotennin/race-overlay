@@ -288,6 +288,28 @@ def test_build_editor_state_exposes_lap_waterfall_schema() -> None:
     assert lap_style["show_pace"] == {"kind": "boolean", "label": "Show pace"}
     assert lap_style["show_elevation"] == {"kind": "boolean", "label": "Show elevation"}
     assert lap_style["show_heart_rate"] == {"kind": "boolean", "label": "Show heart rate"}
+    assert lap_style["value_font_family"] == {
+        "kind": "enum",
+        "label": "Value font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert lap_style["value_font_weight"] == {
+        "kind": "enum",
+        "label": "Value font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert lap_style["value_font_size_px"] == {"kind": "integer", "label": "Value font size", "min": 8}
+    assert lap_style["unit_font_family"] == {
+        "kind": "enum",
+        "label": "Unit font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert lap_style["unit_font_weight"] == {
+        "kind": "enum",
+        "label": "Unit font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert lap_style["unit_font_size_px"] == {"kind": "integer", "label": "Unit font size", "min": 8}
 
 
 def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:

@@ -358,6 +358,11 @@ def _validate_widget_style(widget: HudWidgetConfig) -> None:
     _validate_optional_enum_style(
         widget, "unit_font_weight", HUD_FONT_WEIGHT_OPTIONS)
     _validate_optional_font_size_style(widget, "unit_font_size_px")
+    _validate_optional_enum_style(
+        widget, "value_font_family", HUD_FONT_FAMILY_OPTIONS)
+    _validate_optional_enum_style(
+        widget, "value_font_weight", HUD_FONT_WEIGHT_OPTIONS)
+    _validate_optional_font_size_style(widget, "value_font_size_px")
     _validate_optional_bool_style(widget, "show_panel")
     _validate_optional_bool_style(widget, "transparent_panel")
     _validate_optional_bool_style(widget, "show_unit")
