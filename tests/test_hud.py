@@ -3066,6 +3066,118 @@ def test_render_hud_frame_lap_waterfall_slides_rows_during_transition(
     assert transition_bottom_top > settled_bottom_top
 
 
+def test_render_hud_frame_lap_waterfall_slides_newest_row_before_window_fills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config(visible_rows=8)
+    rows = _make_lap_rows(8)
+    entry_state = LapWaterfallState(
+        completed_laps=[row.lap for row in rows],
+        visible_rows=rows,
+        newest_lap_index=7,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+        transition_progress=0.5,
+    )
+    settled_state = LapWaterfallState(
+        completed_laps=[row.lap for row in rows],
+        visible_rows=rows,
+        newest_lap_index=7,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    original_composite = hud_module._alpha_composite_clipped
+
+    def capture_bottom_row_top(lap_state: LapWaterfallState) -> int:
+        calls: list[tuple[int, int, int, int]] = []
+
+        def record_composite(image, overlay, left, top):
+            calls.append((left, top, overlay.width, overlay.height))
+            return original_composite(image, overlay, left, top)
+
+        monkeypatch.setattr(hud_module, "_alpha_composite_clipped", record_composite)
+        render_hud_frame(
+            width=1280,
+            height=720,
+            hud_value=HudSample(
+                timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+                latitude=36.0833,
+                longitude=140.2106,
+                altitude_m=25.0,
+                distance_m=24600.0,
+                speed_mps=3.58,
+                pace_seconds_per_km=278.0,
+                heart_rate_bpm=162,
+                cadence_spm=178,
+            ),
+            route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+            hud_config=config,
+            elapsed_seconds=6852,
+            lap_state=lap_state,
+        )
+        data_row_height = max(height for _left, _top, _width, height in calls)
+        first_column_left = min(left for left, _top, _width, height in calls if height == data_row_height)
+        row_tops = [top for left, top, _width, height in calls if left == first_column_left and height == data_row_height]
+        return max(row_tops)
+
+    assert capture_bottom_row_top(entry_state) > capture_bottom_row_top(settled_state)
+
+
+def test_render_hud_frame_lap_waterfall_highlights_newest_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(3)
+    lap_state = LapWaterfallState(
+        completed_laps=[row.lap for row in rows],
+        visible_rows=rows,
+        newest_lap_index=2,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+        transition_progress=0.5,
+    )
+    fills: list[tuple[int, int, int, int]] = []
+    boxes: list[tuple[int, int, int, int]] = []
+    original_rounded_rectangle = ImageDraw.ImageDraw.rounded_rectangle
+
+    def record_rounded_rectangle(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if isinstance(fill, tuple) and len(fill) == 4:
+            fills.append(fill)
+            if isinstance(xy, tuple) and len(xy) == 4:
+                boxes.append(tuple(int(round(value)) for value in xy))
+        return original_rounded_rectangle(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "rounded_rectangle", record_rounded_rectangle)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=config,
+        elapsed_seconds=6852,
+        lap_state=lap_state,
+    )
+
+    assert fills
+    assert boxes
+    left, top, right, bottom = boxes[-1]
+    assert right > left
+    assert bottom > top
+    assert right - left < 500
+    assert bottom - top <= 40
+
+
 def test_render_hud_frame_lap_waterfall_renders_distance_and_pace_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -41,6 +41,9 @@ ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
 PROGRESS_BAR_FILL_RGBA = (34, 255, 138, 255)
 PROGRESS_BAR_RAIL_RGBA = (8, 12, 20, 220)
 PROGRESS_BAR_TICK_RGBA = (230, 238, 245, 168)
+LAP_WATERFALL_LATEST_FILL_RGBA = (24, 98, 166, 92)
+LAP_WATERFALL_LATEST_OUTLINE_RGBA = (34, 255, 138, 220)
+LAP_WATERFALL_LATEST_GLOW_RGBA = (74, 155, 255, 92)
 ROUTE_MAP_CACHE_MAX_ENTRIES = 32
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
@@ -1565,33 +1568,31 @@ def _draw_lap_waterfall(
 
     # Data rows
     dimmed_alpha = round(255 * 0.65)
-    if transition_rows is not None:
-        for i, row in enumerate(transition_rows):
-            y = first_row_y + int(round((i - transition_progress) * row_h))
-            alpha = dimmed_alpha if row.is_dimmed or i <= 1 else 255
-            color = (row_color[0], row_color[1], row_color[2], alpha)
-            values = _lap_waterfall_row_values(row, columns)
-            x = pad_x
-            for val, cw in zip(values, col_widths):
-                _draw_lap_waterfall_cell(
-                    widget_image,
-                    left=x,
-                    top=y,
-                    width=cw,
-                    height=row_h,
-                    text=val,
-                    fill=color,
-                    font=value_font,
-                    unit_font=unit_font,
-                    gap=_scale_x(scale, 6),
-                )
-                x += cw
 
-        new_row = lap_state.visible_rows[-1]
-        y = first_row_y + int(round((len(transition_rows) - transition_progress) * row_h))
-        alpha = dimmed_alpha if new_row.is_dimmed else 255
+    def draw_row(row: LapWaterfallRow, y: int, *, alpha: int, highlight_strength: float = 0.0) -> None:
+        if highlight_strength > 0.0 and lap_state.newest_lap_index == row.lap_index:
+            row_bounds = _lap_waterfall_row_text_bounds(
+                row,
+                columns,
+                col_widths,
+                left=pad_x,
+                top=y,
+                value_font=value_font,
+                unit_font=unit_font,
+                scale=scale,
+                gap=_scale_x(scale, 6),
+            )
+            _draw_lap_waterfall_row_highlight(
+                widget_draw,
+                left=row_bounds[0],
+                top=row_bounds[1],
+                right=row_bounds[2],
+                bottom=row_bounds[3],
+                scale=scale,
+                intensity=highlight_strength,
+            )
         color = (row_color[0], row_color[1], row_color[2], alpha)
-        values = _lap_waterfall_row_values(new_row, columns)
+        values = _lap_waterfall_row_values(row, columns)
         x = pad_x
         for val, cw in zip(values, col_widths):
             _draw_lap_waterfall_cell(
@@ -1607,27 +1608,27 @@ def _draw_lap_waterfall(
                 gap=_scale_x(scale, 6),
             )
             x += cw
+
+    if transition_rows is not None:
+        for i, row in enumerate(transition_rows):
+            y = first_row_y + int(round((i - transition_progress) * row_h))
+            alpha = dimmed_alpha if row.is_dimmed or i <= 1 else 255
+            draw_row(row, y, alpha=alpha)
+
+        new_row = lap_state.visible_rows[-1]
+        y = first_row_y + int(round((len(transition_rows) - transition_progress) * row_h))
+        alpha = dimmed_alpha if new_row.is_dimmed else 255
+        draw_row(new_row, y, alpha=alpha, highlight_strength=1.0)
     else:
         for i, row in enumerate(lap_state.visible_rows):
             y = first_row_y + i * row_h
+            if lap_state.transition_progress < 1.0 and lap_state.newest_lap_index == row.lap_index:
+                y += int(round((1.0 - lap_state.transition_progress) * row_h))
             alpha = dimmed_alpha if row.is_dimmed else 255
-            color = (row_color[0], row_color[1], row_color[2], alpha)
-            values = _lap_waterfall_row_values(row, columns)
-            x = pad_x
-            for val, cw in zip(values, col_widths):
-                _draw_lap_waterfall_cell(
-                    widget_image,
-                    left=x,
-                    top=y,
-                    width=cw,
-                    height=row_h,
-                    text=val,
-                    fill=color,
-                    font=value_font,
-                    unit_font=unit_font,
-                    gap=_scale_x(scale, 6),
-                )
-                x += cw
+            highlight_strength = 0.0
+            if lap_state.newest_lap_index == row.lap_index:
+                highlight_strength = max(0.35, 1.0 - lap_state.transition_progress)
+            draw_row(row, y, alpha=alpha, highlight_strength=highlight_strength)
 
     # Apply overall widget opacity
     if opacity < 1.0:
@@ -1793,6 +1794,122 @@ def _draw_lap_waterfall_cell(
     unit_y = value_y + (value_bbox[3] - unit_bbox[3])
     cell_draw.text((unit_x, unit_y), unit_text, fill=fill, font=unit_font)
     _alpha_composite_clipped(image, cell_image, left, top)
+
+
+def _lap_waterfall_row_text_bounds(
+    row: LapWaterfallRow,
+    columns: list[str],
+    col_widths: list[int],
+    *,
+    left: int,
+    top: int,
+    value_font: ImageFont.FreeTypeFont,
+    unit_font: ImageFont.FreeTypeFont,
+    scale: RenderScale,
+    gap: int,
+) -> tuple[int, int, int, int]:
+    scratch = ImageDraw.Draw(Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
+    values = _lap_waterfall_row_values(row, columns)
+    x = left
+    left_bound: int | None = None
+    top_bound: int | None = None
+    right_bound: int | None = None
+    bottom_bound: int | None = None
+    for val, cw in zip(values, col_widths):
+        cell_bounds = _lap_waterfall_cell_text_bounds(scratch, val, value_font, unit_font, gap)
+        cell_left = x + cell_bounds[0]
+        cell_top = top + cell_bounds[1]
+        cell_right = x + cell_bounds[2]
+        cell_bottom = top + cell_bounds[3]
+        left_bound = cell_left if left_bound is None else min(left_bound, cell_left)
+        top_bound = cell_top if top_bound is None else min(top_bound, cell_top)
+        right_bound = cell_right if right_bound is None else max(right_bound, cell_right)
+        bottom_bound = cell_bottom if bottom_bound is None else max(bottom_bound, cell_bottom)
+        x += cw
+    if left_bound is None or top_bound is None or right_bound is None or bottom_bound is None:
+        return (left, top, left, top)
+    pad = _scale_draw(scale, 2)
+    return (left_bound - pad, top_bound - pad, right_bound + pad, bottom_bound + pad)
+
+
+def _lap_waterfall_cell_text_bounds(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    unit_font: ImageFont.FreeTypeFont,
+    gap: int,
+) -> tuple[int, int, int, int]:
+    if " " in text:
+        value_text, unit_text = text.rsplit(" ", 1)
+    else:
+        i = len(text) - 1
+        while i >= 0 and (text[i].isalpha() or text[i] in ("/", "%")):
+            i -= 1
+        if i == len(text) - 1:
+            return draw.textbbox((0, 0), text, font=font)
+        value_text = text[: i + 1]
+        unit_text = text[i + 1 :]
+
+    value_bbox = draw.textbbox((0, 0), value_text, font=font)
+    unit_bbox = draw.textbbox((0, 0), unit_text, font=unit_font)
+    value_x = -value_bbox[0]
+    value_y = -value_bbox[1]
+    unit_x = value_x + (value_bbox[2] - value_bbox[0]) + gap
+    unit_y = value_y + (value_bbox[3] - unit_bbox[3])
+    left = min(value_x + value_bbox[0], unit_x + unit_bbox[0])
+    top = min(value_y + value_bbox[1], unit_y + unit_bbox[1])
+    right = max(value_x + value_bbox[2], unit_x + unit_bbox[2])
+    bottom = max(value_y + value_bbox[3], unit_y + unit_bbox[3])
+    return (left, top, right, bottom)
+
+
+def _draw_lap_waterfall_row_highlight(
+    draw: ImageDraw.ImageDraw,
+    *,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    scale: RenderScale,
+    intensity: float,
+) -> None:
+    intensity = max(0.0, min(intensity, 1.0))
+    if right <= left or bottom <= top or intensity <= 0.0:
+        return
+    glow = (
+        LAP_WATERFALL_LATEST_GLOW_RGBA[0],
+        LAP_WATERFALL_LATEST_GLOW_RGBA[1],
+        LAP_WATERFALL_LATEST_GLOW_RGBA[2],
+        int(round(LAP_WATERFALL_LATEST_GLOW_RGBA[3] * (0.5 + 0.5 * intensity))),
+    )
+    fill = (
+        LAP_WATERFALL_LATEST_FILL_RGBA[0],
+        LAP_WATERFALL_LATEST_FILL_RGBA[1],
+        LAP_WATERFALL_LATEST_FILL_RGBA[2],
+        int(round(LAP_WATERFALL_LATEST_FILL_RGBA[3] * (0.45 + 0.55 * intensity))),
+    )
+    outline = (
+        LAP_WATERFALL_LATEST_OUTLINE_RGBA[0],
+        LAP_WATERFALL_LATEST_OUTLINE_RGBA[1],
+        LAP_WATERFALL_LATEST_OUTLINE_RGBA[2],
+        int(round(LAP_WATERFALL_LATEST_OUTLINE_RGBA[3] * (0.35 + 0.65 * intensity))),
+    )
+    glow_inset = _scale_x(scale, 1)
+    inset_x = _scale_x(scale, 2)
+    inset_y = _scale_y(scale, 2)
+    radius = _scale_draw(scale, 9)
+    draw.rounded_rectangle(
+        (left - glow_inset, top - glow_inset, right + glow_inset, bottom + glow_inset),
+        radius=radius,
+        fill=glow,
+    )
+    draw.rounded_rectangle(
+        (left - inset_x, top - inset_y, right + inset_x, bottom + inset_y),
+        radius=radius,
+        fill=fill,
+        outline=outline,
+        width=_scale_draw(scale, 1),
+    )
 
 
 def _alpha_composite_clipped(image: Image.Image, overlay: Image.Image, left: int, top: int) -> None:

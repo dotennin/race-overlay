@@ -143,6 +143,18 @@ def test_lap_waterfall_state_scrolls_previous_rows_during_transition() -> None:
     assert state.transition_previous_rows[0].is_dimmed is True
 
 
+def test_lap_waterfall_state_animates_new_row_before_window_fills() -> None:
+    start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
+    laps = [_make_lap(start + timedelta(seconds=i * 300), duration_s=300.0) for i in range(8)]
+    lap_end = start + timedelta(seconds=8 * 300)
+    when = lap_end + timedelta(seconds=0.225)
+    state = lap_waterfall_state(laps, when, visible_rows=8, always_show=True)
+
+    assert state.transition_previous_rows is None
+    assert state.transition_progress == pytest.approx(0.5)
+    assert [row.lap_index for row in state.visible_rows] == list(range(8))
+
+
 def test_lap_waterfall_state_newest_lap_index_is_last_completed() -> None:
     start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
     laps = [_make_lap(start + timedelta(seconds=i * 300), duration_s=300.0) for i in range(3)]

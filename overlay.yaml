@@ -228,13 +228,13 @@ hud:
       value: laps
     anchor: bottom-right
     x: 0
-    y: 123
-    width: 480
-    height: 293
+    y: 168
+    width: 488
+    height: 169
     z_index: 30
     visible: true
     style:
-      visible_rows: 8
+      visible_rows: 5
       always_show: false
       show_distance: true
       show_pace: true

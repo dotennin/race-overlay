@@ -83,11 +83,11 @@ def lap_waterfall_state(
     window_full = len(completed) >= visible_rows
     transition_previous_rows: list[LapWaterfallRow] | None = None
     transition_progress = 1.0
+    elapsed_since_end = (when - newest_lap_end).total_seconds()
 
-    if window_full and len(completed) > visible_rows:
-        elapsed_since_end = (when - newest_lap_end).total_seconds()
-        if 0.0 <= elapsed_since_end < LAP_WATERFALL_SCROLL_SECONDS:
-            transition_progress = max(0.0, min(elapsed_since_end / LAP_WATERFALL_SCROLL_SECONDS, 1.0))
+    if 0.0 <= elapsed_since_end < LAP_WATERFALL_SCROLL_SECONDS:
+        transition_progress = max(0.0, min(elapsed_since_end / LAP_WATERFALL_SCROLL_SECONDS, 1.0))
+        if window_full and len(completed) > visible_rows:
             previous_window = completed[-visible_rows - 1:-1]
             transition_previous_rows = [
                 LapWaterfallRow(
