@@ -1,6 +1,6 @@
 activity_file: activity_22577902433.tcx
 video_globs:
-- inputs/*.MP4
+- inputs/*.mp4
 - inputs/*.mov
 output_dir: rendered
 cache_dir: cache
@@ -21,7 +21,7 @@ hud:
     font_size_px: 25
     title_font_family: broadcast_value
     title_font_weight: bold
-    title_font_size_px: 16
+    title_font_size_px: 17
     value_font_family: broadcast_value
     value_font_weight: bold
     value_font_size_px: 32
@@ -105,8 +105,8 @@ hud:
     bindings:
       value: distance_m
     anchor: top-left
-    x: 0
-    y: 208
+    x: 496
+    y: 632
     width: 196
     height: 84
     z_index: 30
@@ -222,4 +222,24 @@ hud:
       - 249
       - 255
       zoom_percent: 90
+  - id: lap-waterfall
+    type: lap_waterfall
+    bindings:
+      value: laps
+    anchor: bottom-right
+    x: 0
+    y: 176
+    width: 496
+    height: 217
+    z_index: 30
+    visible: true
+    style:
+      visible_rows: 5
+      always_show: false
+      show_distance: true
+      show_pace: true
+      show_heart_rate: true
+      show_elevation: true
+      show_time: true
+      fade_after_seconds: 5
 overrides: {}
