@@ -277,6 +277,23 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                     },
                 },
                 {
+                    "type": "metric_card",
+                    "label": "Stride card",
+                    "defaults": {
+                        "id": "stride-chip",
+                        "type": "metric_card",
+                        "bindings": {"value": "stride_length_m"},
+                        "anchor": "bottom-right",
+                        "x": 848,
+                        "y": 552,
+                        "width": 126,
+                        "height": 76,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Stride", "variant": "compact"},
+                    },
+                },
+                {
                     "type": "hero_metric",
                     "label": "Hero metric",
                     "defaults": {

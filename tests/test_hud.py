@@ -1259,6 +1259,59 @@ def test_metric_value_returns_placeholder_for_missing_speed() -> None:
     assert _metric_value(widget, hud_value, elapsed_seconds=6852) == "--"
 
 
+def test_metric_value_returns_stride_length_from_speed_and_cadence() -> None:
+    widget = HudWidgetConfig(
+        id="metric-stride",
+        type="metric_card",
+        bindings={"value": "stride_length_m"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=160,
+        height=96,
+    )
+    hud_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=24600.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+
+    assert _metric_value(widget, hud_value, elapsed_seconds=6852) == "1.21"
+
+
+def test_render_hud_frame_renders_stride_metric_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="stride-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="stride-chip",
+                    type="metric_card",
+                    bindings={"value": "stride_length_m"},
+                    anchor="top-left",
+                    x=24,
+                    y=24,
+                    width=160,
+                    height=96,
+                    style={"label": "Stride", "variant": "compact"},
+                )
+            ],
+        ),
+    )
+
+    assert "Stride" in labels
+    assert "1.21" in labels
+    assert "m" in labels
+
+
 def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _rendered_text_labels(
         monkeypatch,

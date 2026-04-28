@@ -479,7 +479,7 @@ def _validate_widget(widget: HudWidgetConfig) -> None:
         _require_supported_binding(widget, {"pace_seconds_per_km"})
     elif widget.type == "metric_card":
         _require_supported_binding(widget, {
-                                   "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                   "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     elif widget.type == "context_card":
         _require_supported_binding(widget, {"timestamp"})
     elif widget.type == "lap_waterfall":
@@ -1853,15 +1853,24 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
     draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=(255, 90, 90, 255))
 
 
+def _stride_length_m(hud_value: HudSample) -> float | None:
+    if hud_value.speed_mps is None or hud_value.cadence_spm is None or hud_value.cadence_spm <= 0:
+        return None
+    return (hud_value.speed_mps * 60.0) / hud_value.cadence_spm
+
+
 def _metric_value(widget: HudWidgetConfig, hud_value: HudSample, elapsed_seconds: int) -> str:
     binding = _require_supported_binding(widget, {
-                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     if binding == "pace_seconds_per_km":
         return _format_pace(hud_value.pace_seconds_per_km)
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     if binding == "cadence_spm":
         return "--" if hud_value.cadence_spm is None else str(hud_value.cadence_spm)
+    if binding == "stride_length_m":
+        stride_length_m = _stride_length_m(hud_value)
+        return "--" if stride_length_m is None else f"{stride_length_m:.2f}"
     if binding == "elapsed_seconds":
         hours, remainder = divmod(elapsed_seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -1875,13 +1884,15 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if not _style_bool(widget, "show_unit", theme.show_units):
         return ""
     binding = _require_supported_binding(widget, {
-                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps"})
+                                         "pace_seconds_per_km", "heart_rate_bpm", "cadence_spm", "elapsed_seconds", "speed_mps", "stride_length_m"})
     if binding == "pace_seconds_per_km":
         return "/km"
     if binding == "heart_rate_bpm":
         return "bpm"
     if binding == "cadence_spm":
         return "SPM"
+    if binding == "stride_length_m":
+        return "m"
     if binding == "elapsed_seconds":
         return ""
     if binding == "speed_mps":
