@@ -19,7 +19,7 @@ from race_overlay.hud_schema import (
     validate_hud_theme_config,
 )
 from race_overlay.models import HudSample
-from race_overlay.sampling import LapWaterfallRow, LapWaterfallState
+from race_overlay.sampling import LAP_WATERFALL_DEFAULT_VISIBLE_ROWS, LapWaterfallRow, LapWaterfallState
 
 HUD_REFERENCE_WIDTH = 1280
 HUD_REFERENCE_HEIGHT = 720
@@ -1522,7 +1522,10 @@ def _draw_lap_waterfall(
         _lap_waterfall_text_height(widget_draw, _LAP_WATERFALL_COLUMN_MEASURE_SAMPLES.get(col, "00"), value_font)
         for col in columns
     )
-    visible_row_slots = max(len(lap_state.visible_rows), 1)
+    configured_visible_rows = widget.style.get("visible_rows", LAP_WATERFALL_DEFAULT_VISIBLE_ROWS)
+    if isinstance(configured_visible_rows, bool) or not isinstance(configured_visible_rows, int) or configured_visible_rows < 1:
+        configured_visible_rows = LAP_WATERFALL_DEFAULT_VISIBLE_ROWS
+    visible_row_slots = max(configured_visible_rows, 1)
     available_rows_height = max(h - (pad_y * 2) - header_text_h - _scale_y(scale, 6), row_text_h)
     row_h = max(available_rows_height // visible_row_slots, row_text_h)
     header_y = pad_y

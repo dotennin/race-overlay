@@ -40,8 +40,7 @@ overrides:
 
 ## Render Benchmark
 ```
-uv run race-overlay benchmark-render
---config-path overlay.yaml --num-frames 50 --width 1920 --height 1080
+uv run race-overlay benchmark-render --config-path overlay.yaml --num-frames 50 --width 1920 --height 1080
 ```
 
 ## Output folders

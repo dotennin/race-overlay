@@ -2830,6 +2830,54 @@ def test_render_hud_frame_lap_waterfall_renders_lap_numbers_in_rows(
     assert "3" in labels
 
 
+def test_render_hud_frame_lap_waterfall_keeps_rows_compact_before_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    rows = _make_lap_rows(2)
+    lap_state = LapWaterfallState(
+        completed_laps=[row.lap for row in rows],
+        visible_rows=rows,
+        newest_lap_index=1,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    calls: list[tuple[int, int, int, int]] = []
+    original_composite = hud_module._alpha_composite_clipped
+
+    def record_composite(image, overlay, left, top):
+        calls.append((left, top, overlay.width, overlay.height))
+        return original_composite(image, overlay, left, top)
+
+    monkeypatch.setattr(hud_module, "_alpha_composite_clipped", record_composite)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=config,
+        elapsed_seconds=6852,
+        lap_state=lap_state,
+    )
+
+    data_row_height = max(height for _left, _top, _width, height in calls)
+    first_column_left = min(left for left, _top, _width, height in calls if height == data_row_height)
+    row_tops = sorted({top for left, top, _width, height in calls if left == first_column_left and height == data_row_height})
+
+    assert len(row_tops) == 2
+    assert row_tops[1] - row_tops[0] < 50
+
+
 def test_render_hud_frame_lap_waterfall_slides_rows_during_transition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
