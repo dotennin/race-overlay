@@ -511,3 +511,155 @@ def test_run_pipeline_passes_lap_state_to_renderer(tmp_path: Path, monkeypatch) 
     assert isinstance(kwargs["lap_states"], dict)
     assert isinstance(kwargs["lap_states"]["lap-table"], LapWaterfallState)
     assert len(kwargs["lap_states"]["lap-table"].visible_rows) == 1
+
+
+# ── Render Context ───────────────────────────────────────────────────────────
+
+
+def test_create_render_context_includes_visible_widgets() -> None:
+    """Test that render context filters visible widgets."""
+    from dataclasses import replace
+    from race_overlay.pipeline import create_render_context
+    from race_overlay.hud_schema import HudWidgetConfig
+    
+    config = broadcast_runner_preset()
+    # Make one widget invisible
+    modified_widgets = [
+        widget if widget.id != "pace" else replace(widget, visible=False)
+        for widget in config.widgets
+    ]
+    config = replace(config, widgets=modified_widgets)
+    
+    activity = fake_activity()
+    context = create_render_context(config, activity.samples, route_points=[], frame_width=1280, frame_height=720)
+    
+    assert context.hud_config == config
+    assert all(w.id != "pace" for w in context.visible_widgets)
+    assert all(w.visible for w in context.visible_widgets)
+    assert [widget.z_index for widget in context.visible_widgets] == sorted(widget.z_index for widget in context.visible_widgets)
+
+
+def test_create_render_context_includes_sample_cursor() -> None:
+    """Test that render context includes a sample cursor."""
+    from race_overlay.pipeline import create_render_context
+    from race_overlay.sampling import SampleCursor
+    
+    config = broadcast_runner_preset()
+    activity = fake_activity()
+    context = create_render_context(config, activity.samples, route_points=[], frame_width=1280, frame_height=720)
+    
+    assert isinstance(context.sample_cursor, SampleCursor)
+    assert context.sample_cursor.samples is activity.samples
+
+
+def test_create_render_context_validates_hud_config() -> None:
+    """Render context should validate HUD config up front."""
+    from dataclasses import replace
+    from race_overlay.pipeline import create_render_context
+
+    config = broadcast_runner_preset()
+    duplicate = replace(config.widgets[0], id=config.widgets[1].id)
+    invalid_config = replace(config, widgets=[duplicate, *config.widgets[1:]])
+
+    with pytest.raises(ValueError, match="duplicate HUD widget id"):
+        create_render_context(invalid_config, fake_activity().samples, route_points=[], frame_width=1280, frame_height=720)
+
+
+def test_create_render_context_primes_route_map_cache() -> None:
+    """Render context should prime clip-static route-map cache."""
+    from race_overlay import hud as hud_module
+    from race_overlay.pipeline import create_render_context
+
+    config = broadcast_runner_preset()
+    activity = fake_activity()
+    route_points = [
+        (sample.latitude, sample.longitude)
+        for sample in activity.samples
+        if sample.latitude is not None and sample.longitude is not None
+    ]
+
+    hud_module._clear_route_map_cache()
+    context = create_render_context(config, activity.samples, route_points=route_points, frame_width=1280, frame_height=720)
+
+    assert context.route_map_cache_keys
+    assert set(context.route_map_cache_keys.values()).issubset(set(hud_module._get_route_map_cache().keys()))
+
+
+def test_render_overlay_frame_uses_prevalidated_context_without_runtime_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Frame rendering should not revalidate HUD config after context creation."""
+    from race_overlay.pipeline import _render_overlay_frame, create_render_context
+
+    activity = fake_activity()
+    clip = fake_clip(Path("clip.MP4"))
+    alignment = fake_alignment()
+    config = broadcast_runner_preset()
+    route_points = [
+        (sample.latitude, sample.longitude)
+        for sample in activity.samples
+        if sample.latitude is not None and sample.longitude is not None
+    ]
+    context = create_render_context(
+        config,
+        activity.samples,
+        route_points=route_points,
+        frame_width=clip.width,
+        frame_height=clip.height,
+        total_distance_m=35.0,
+    )
+
+    def fail_validate(*args, **kwargs):
+        raise AssertionError("validate_hud_config should not run during frame rendering")
+
+    monkeypatch.setattr("race_overlay.hud.validate_hud_config", fail_validate)
+
+    image = _render_overlay_frame(
+        activity=activity,
+        clip=clip,
+        alignment=alignment,
+        index=0,
+        context=context,
+    )
+
+    assert image.size == (clip.width, clip.height)
+
+
+def test_render_overlay_frame_reuses_precomputed_route_map_cache_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared frame rendering should not recompute route-map cache keys."""
+    from race_overlay.pipeline import _render_overlay_frame, create_render_context
+
+    activity = fake_activity()
+    clip = fake_clip(Path("clip.MP4"))
+    alignment = fake_alignment()
+    config = broadcast_runner_preset()
+    route_points = [
+        (sample.latitude, sample.longitude)
+        for sample in activity.samples
+        if sample.latitude is not None and sample.longitude is not None
+    ]
+    context = create_render_context(
+        config,
+        activity.samples,
+        route_points=route_points,
+        frame_width=clip.width,
+        frame_height=clip.height,
+        total_distance_m=35.0,
+    )
+
+    def fail_cache_key(*args, **kwargs):
+        raise AssertionError("route-map cache key should not be recomputed during frame rendering")
+
+    monkeypatch.setattr("race_overlay.hud._route_map_cache_key", fail_cache_key)
+
+    image = _render_overlay_frame(
+        activity=activity,
+        clip=clip,
+        alignment=alignment,
+        index=0,
+        context=context,
+    )
+
+    assert image.size == (clip.width, clip.height)

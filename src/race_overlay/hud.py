@@ -41,6 +41,7 @@ ROUTE_MAP_HEADING_ARROW_HEAD_RGBA = (255, 255, 255, 255)
 PROGRESS_BAR_FILL_RGBA = (34, 255, 138, 255)
 PROGRESS_BAR_RAIL_RGBA = (8, 12, 20, 220)
 PROGRESS_BAR_TICK_RGBA = (230, 238, 245, 168)
+ROUTE_MAP_CACHE_MAX_ENTRIES = 32
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
@@ -64,6 +65,78 @@ class RouteProjection:
     segment_start: tuple[float, float]
     segment_end: tuple[float, float]
     segment_index: int
+
+
+@dataclass(slots=True, frozen=False)
+class RouteMapCache:
+    """Cache for static route map rendering data."""
+    background_image: Image.Image
+    projected_points: list[tuple[float, float]]
+    project_fn: object  # Callable, but we avoid typing.Callable for simplicity
+
+
+
+# Module-level cache for route map static data
+_route_map_cache: dict[str, RouteMapCache] = {}
+
+
+def _get_route_map_cache() -> dict[str, RouteMapCache]:
+    """Get the route map cache dictionary."""
+    return _route_map_cache
+
+
+def _clear_route_map_cache() -> None:
+    """Clear all route map cache entries."""
+    _route_map_cache.clear()
+
+
+def _store_route_map_cache_entry(cache_key: str, cache_entry: RouteMapCache) -> None:
+    if cache_key not in _route_map_cache and len(_route_map_cache) >= ROUTE_MAP_CACHE_MAX_ENTRIES:
+        oldest_key = next(iter(_route_map_cache))
+        _route_map_cache.pop(oldest_key, None)
+    _route_map_cache[cache_key] = cache_entry
+
+
+def _route_map_cache_key(
+    widget: HudWidgetConfig,
+    route_points: list[tuple[float, float]],
+    theme: HudThemeConfig,
+    frame_width: int,
+    frame_height: int,
+    scale: RenderScale,
+) -> str:
+    """Generate a cache key for route map static data."""
+    # Include all parameters that affect static rendering
+    route_hash = hash(tuple(route_points))
+    title_font_hash = hash((
+        widget.style.get("title_font_family", _theme_role_value(theme, "title_font_family", "font_family")),
+        widget.style.get("title_font_weight", _theme_role_value(theme, "title_font_weight", "font_weight")),
+        widget.style.get("title_font_size_px", _theme_role_value(theme, "title_font_size_px", "font_size_px")),
+    ))
+    widget_hash = hash((
+        widget.id,
+        widget.width,
+        widget.height,
+        widget.anchor,
+        widget.x,
+        widget.y,
+        str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE)),
+        tuple(widget.style.get("background_rgba", ROUTE_MAP_PANEL_RGBA)),
+        tuple(widget.style.get("remaining_rgba", ROUTE_MAP_REMAINING_RGBA)),
+        widget.style.get("zoom_percent", 100),
+        str(widget.style.get("label", "Route map")),
+        widget.style.get("show_panel", None),
+        widget.style.get("transparent_panel", None),
+        title_font_hash,
+    ))
+    theme_hash = hash((
+        tuple(theme.text_rgba),
+        _theme_role_value(theme, "title_font_family", "font_family"),
+        _theme_role_value(theme, "title_font_weight", "font_weight"),
+        _theme_role_value(theme, "title_font_size_px", "font_size_px"),
+    ))
+    scale_hash = hash((scale.x, scale.y, scale.draw))
+    return f"route_map_{frame_width}x{frame_height}_{widget_hash}_{route_hash}_{theme_hash}_{scale_hash}"
 
 
 ROUTE_MAP_SHAPES = ("circle", "rounded-rect", "square")
@@ -185,6 +258,36 @@ def render_hud_frame(
     resolved_hud_config = validate_hud_config(_resolve_hud_config(hud_config))
     widgets = sorted(
         (widget for widget in resolved_hud_config.widgets if widget.visible), key=lambda item: item.z_index)
+    return render_prepared_hud_frame(
+        width=width,
+        height=height,
+        hud_value=hud_value,
+        route_points=route_points,
+        theme=resolved_hud_config.theme,
+        widgets=widgets,
+        elapsed_seconds=elapsed_seconds,
+        total_distance_m=total_distance_m,
+        lap_state=lap_state,
+        lap_states=lap_states,
+    )
+
+
+def render_prepared_hud_frame(
+    width: int,
+    height: int,
+    hud_value: HudSample,
+    route_points: list[tuple[float, float]],
+    theme: HudThemeConfig,
+    widgets: list[HudWidgetConfig],
+    elapsed_seconds: int = 0,
+    *,
+    total_distance_m: float | None = None,
+    lap_state: LapWaterfallState | None = None,
+    lap_states: dict[str, LapWaterfallState] | None = None,
+    route_map_cache_keys: dict[str, str] | None = None,
+) -> Image.Image:
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
     scale = _render_scale(width, height)
     for widget in widgets:
         _render_widget(
@@ -194,13 +297,14 @@ def render_hud_frame(
             hud_value,
             route_points,
             elapsed_seconds,
-            resolved_hud_config.theme,
+            theme,
             width,
             height,
             total_distance_m,
             scale,
             lap_state=lap_state,
             lap_states=lap_states,
+            route_map_cache_key=route_map_cache_keys.get(widget.id) if route_map_cache_keys is not None else None,
         )
     return image
 
@@ -226,6 +330,35 @@ def validate_hud_config(hud_config: HudConfig) -> HudConfig:
     for widget in hud_config.widgets:
         _validate_widget(widget)
     return hud_config
+
+
+def prime_route_map_caches(
+    *,
+    widgets: list[HudWidgetConfig],
+    route_points: list[tuple[float, float]],
+    theme: HudThemeConfig,
+    frame_width: int,
+    frame_height: int,
+) -> dict[str, str]:
+    if len(route_points) < 2:
+        return {}
+
+    scale = _render_scale(frame_width, frame_height)
+    cache_keys: dict[str, str] = {}
+    for widget in widgets:
+        if widget.type != "route_map":
+            continue
+        w = _scale_x(scale, widget.width)
+        h = _scale_y(scale, widget.height)
+        shape = str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE))
+        cache_key = _route_map_cache_key(widget, route_points, theme, frame_width, frame_height, scale)
+        if cache_key not in _route_map_cache:
+            _store_route_map_cache_entry(
+                cache_key,
+                _create_route_map_cache(widget, route_points, w, h, shape, scale, theme),
+            )
+        cache_keys[widget.id] = cache_key
+    return cache_keys
 
 
 def _render_legacy_layout(
@@ -264,6 +397,7 @@ def _render_widget(
     *,
     lap_state: LapWaterfallState | None = None,
     lap_states: dict[str, LapWaterfallState] | None = None,
+    route_map_cache_key: str | None = None,
 ) -> None:
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m,
@@ -273,7 +407,7 @@ def _render_widget(
                          frame_width, frame_height, scale)
     elif widget.type == "route_map":
         _draw_route_map(image, draw, widget, route_points,
-                        hud_value, theme, frame_width, frame_height, scale)
+                        hud_value, theme, frame_width, frame_height, scale, route_map_cache_key=route_map_cache_key)
     elif widget.type == "hero_metric":
         _draw_hero_metric(draw, widget, hud_value.pace_seconds_per_km,
                           theme, frame_width, frame_height, scale)
@@ -927,16 +1061,106 @@ def _draw_route_map(
     frame_width: int,
     frame_height: int,
     scale: RenderScale,
+    *,
+    route_map_cache_key: str | None = None,
 ) -> None:
     left, top = _resolve_widget_origin(
         widget, frame_width, frame_height, scale)
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     shape = str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE))
-    background_rgba = _style_rgba(
-        widget, "background_rgba", ROUTE_MAP_PANEL_RGBA)
+    
+    # Early return if not enough points
+    if len(route_points) < 2:
+        # Still need to draw background and label
+        widget_image = _create_route_map_background(widget, w, h, shape, scale, theme)
+        image.alpha_composite(widget_image, (left, top))
+        return
+    
+    # Check cache
+    cache_key = route_map_cache_key or _route_map_cache_key(widget, route_points, theme, frame_width, frame_height, scale)
+    cache = _route_map_cache.get(cache_key)
+    
+    if cache is None:
+        # Create static components and cache them
+        cache = _create_route_map_cache(widget, route_points, w, h, shape, scale, theme)
+        _store_route_map_cache_entry(cache_key, cache)
+    
+    # Start with cached background (which already has the full route polyline)
+    widget_image = cache.background_image.copy()
+    widget_draw = ImageDraw.Draw(widget_image)
+    
+    # Compute dynamic components
+    show_north_marker = _style_bool(widget, "show_north_marker", True)
+    show_bearing_label = _style_bool(widget, "show_bearing_label", True)
+    route_projection = _resolve_route_projection(route_points, hud_value)
+    bearing_label = ""
+    if route_projection is not None and show_bearing_label:
+        bearing_label = _format_bearing_label(route_projection.tangent)
+    
+    unit_font = _unit_font(widget, theme, scale)
+    
+    # Draw dynamic route overlays (frame-dynamic work only)
+    completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
+    
+    if route_projection is not None:
+        # Have GPS position: overlay the completed portion in a different color
+        # The base route is already rendered in the cached background
+        split_index = route_projection.segment_index
+        split_point_projected = cache.project_fn(route_projection.point)
+        
+        # Build completed path using cached projections
+        completed_projected = [*cache.projected_points[:split_index + 1], split_point_projected]
+        
+        # Draw only the completed portion as a dynamic overlay
+        if len(completed_projected) >= 2:
+            widget_draw.line(completed_projected, fill=completed_rgba,
+                             width=_scale_draw(scale, 4))
+        
+        # Draw position marker
+        heading_vector = _projected_route_vector(route_projection, cache.project_fn)
+        _draw_position_marker_arrow(
+            widget_draw,
+            split_point_projected,
+            heading_vector,
+            scale,
+        )
+    
+    # Composite widget to frame
+    if shape == "circle":
+        mask = Image.new("L", (w, h), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse((0, 0, w, h), fill=255)
+        image.paste(widget_image, (left, top), mask)
+    else:
+        image.alpha_composite(widget_image, (left, top))
+    
+    # Draw north marker above the widget (outside background)
+    if show_north_marker:
+        north_y = top - _scale_y(scale, 10)
+        draw.text((left + w / 2, north_y), "N",
+                  fill=tuple(theme.text_rgba), anchor="ms", font=unit_font)
+    
+    # Draw bearing label below the widget (outside background)
+    if bearing_label:
+        bearing_y = top + h + _scale_y(scale, 10)
+        draw.text((left + w / 2, bearing_y), bearing_label,
+                  fill=tuple(theme.text_rgba), anchor="mt", font=unit_font)
+
+
+def _create_route_map_background(
+    widget: HudWidgetConfig,
+    w: int,
+    h: int,
+    shape: str,
+    scale: RenderScale,
+    theme: HudThemeConfig,
+) -> Image.Image:
+    """Create the static background panel for a route map widget."""
+    background_rgba = _style_rgba(widget, "background_rgba", ROUTE_MAP_PANEL_RGBA)
     widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     widget_draw = ImageDraw.Draw(widget_image)
+    
     if shape == "circle":
         if _widget_panel_enabled(widget):
             widget_draw.ellipse((0, 0, w, h), fill=background_rgba,
@@ -949,35 +1173,43 @@ def _draw_route_map(
                 fill=background_rgba,
                 outline=ROUTE_MAP_PANEL_OUTLINE_RGBA,
             )
+    
     label = str(widget.style.get("label", "Route map"))
     title_font = _title_font(widget, theme, scale)
-    value_font = _value_font(widget, theme, scale)
-    unit_font = _unit_font(widget, theme, scale)
     if label:
         widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)),
                          label, fill=tuple(theme.text_rgba), font=title_font)
-    if len(route_points) < 2:
-        image.alpha_composite(widget_image, (left, top))
-        return
+    
+    return widget_image
 
-    show_north_marker = _style_bool(widget, "show_north_marker", True)
-    show_bearing_label = _style_bool(widget, "show_bearing_label", True)
-    route_projection = _resolve_route_projection(route_points, hud_value)
-    bearing_label = ""
-    if route_projection is not None and show_bearing_label:
-        bearing_label = _format_bearing_label(route_projection.tangent)
+
+def _create_route_map_cache(
+    widget: HudWidgetConfig,
+    route_points: list[tuple[float, float]],
+    w: int,
+    h: int,
+    shape: str,
+    scale: RenderScale,
+    theme: HudThemeConfig,
+) -> RouteMapCache:
+    """Create a cache entry with static route map components."""
+    # Create background with label
+    background_image = _create_route_map_background(widget, w, h, shape, scale, theme)
+    
+    # Compute projection parameters
+    label = str(widget.style.get("label", "Route map"))
     show_top_overlays = bool(label)
-    show_bottom_overlay = False
     map_left = _scale_x(scale, 12)
     map_top = _scale_y(scale, 36) if show_top_overlays else _scale_y(scale, 12)
     map_bottom = h - _scale_y(scale, 12)
     inner_width = max(w - _scale_x(scale, 24), 1)
     inner_height = max(map_bottom - map_top, 1)
+    
     latitudes = [point[0] for point in route_points]
     longitudes = [point[1] for point in route_points]
     lat_min, lat_max = min(latitudes), max(latitudes)
     lon_min, lon_max = min(longitudes), max(longitudes)
-
+    
     lat_range = max(lat_max - lat_min, 1e-9)
     lon_range = max(lon_max - lon_min, 1e-9)
     lat_padding = lat_range * 0.05
@@ -989,7 +1221,8 @@ def _draw_route_map(
     zoom_scale = _route_map_zoom_percent(widget) / 100.0
     center_x = map_left + inner_width / 2
     center_y = map_top + inner_height / 2
-
+    
+    # Create projection function
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
         raw_x = map_left + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * inner_width
@@ -998,52 +1231,27 @@ def _draw_route_map(
             center_x + (raw_x - center_x) * zoom_scale,
             center_y + (raw_y - center_y) * zoom_scale,
         )
-
-    completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
-    remaining_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
-    if route_projection is None:
-        projected = [project(point) for point in route_points]
-        widget_draw.line(projected, fill=remaining_rgba,
-                         width=_scale_draw(scale, 4))
-    else:
-        completed_points, remaining_points = _split_route_points(route_points, route_projection)
-        completed_projected = [project(point) for point in completed_points]
-        remaining_projected = [project(point) for point in remaining_points]
-        if len(completed_projected) >= 2:
-            widget_draw.line(completed_projected, fill=completed_rgba,
-                             width=_scale_draw(scale, 4))
-        if len(remaining_projected) >= 2:
-            widget_draw.line(remaining_projected, fill=remaining_rgba,
-                             width=_scale_draw(scale, 4))
-    if route_projection is not None:
-        x, y = project(route_projection.point)
-        heading_vector = _projected_route_vector(route_projection, project)
-        _draw_position_marker_arrow(
-            widget_draw,
-            (x, y),
-            heading_vector,
-            scale,
-        )
-
-    if shape == "circle":
-        mask = Image.new("L", (w, h), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        mask_draw.ellipse((0, 0, w, h), fill=255)
-        image.paste(widget_image, (left, top), mask)
-    else:
-        image.alpha_composite(widget_image, (left, top))
-
-    # Draw north marker above the widget (outside background)
-    if show_north_marker:
-        north_y = top - _scale_y(scale, 10)
-        draw.text((left + w / 2, north_y), "N",
-                  fill=tuple(theme.text_rgba), anchor="ms", font=unit_font)
-
-    # Draw bearing label below the widget (outside background)
-    if bearing_label:
-        bearing_y = top + h + _scale_y(scale, 10)
-        draw.text((left + w / 2, bearing_y), bearing_label,
-                  fill=tuple(theme.text_rgba), anchor="mt", font=unit_font)
+    
+    # Pre-project all route points
+    projected_points = [project(point) for point in route_points]
+    
+    # Pre-render the full route polyline onto the background (clip-static work)
+    # This is the key Task 2 fix: rasterize the route base layer into the cache
+    background_with_route = background_image.copy()
+    background_draw = ImageDraw.Draw(background_with_route)
+    
+    # Get route color from widget style (use remaining color as the base/neutral color)
+    base_route_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
+    
+    # Draw the full route polyline once during cache creation
+    if len(projected_points) >= 2:
+        background_draw.line(projected_points, fill=base_route_rgba, width=_scale_draw(scale, 4))
+    
+    return RouteMapCache(
+        background_image=background_with_route,
+        projected_points=projected_points,
+        project_fn=project,
+    )
 
 
 def _draw_hero_metric(

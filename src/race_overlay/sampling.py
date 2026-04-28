@@ -1,3 +1,4 @@
+import bisect
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -7,6 +8,18 @@ from race_overlay.models import ActivityLap, ActivityTrack, HudSample
 LAP_WATERFALL_DEFAULT_VISIBLE_ROWS = 5
 LAP_WATERFALL_DEFAULT_FADE_AFTER_SECONDS = 5.0
 LAP_WATERFALL_SCROLL_SECONDS = 0.45
+
+
+@dataclass(slots=True, frozen=False)
+class SampleCursor:
+    """Cursor for efficient sequential sample lookups.
+    
+    Maintains state across sequential sample_at() calls to avoid O(n) 
+    linear search on each lookup. When rendering frames sequentially,
+    the cursor advances forward, making lookups O(1) amortized.
+    """
+    samples: list
+    index: int = 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -165,8 +178,74 @@ def _bounding_samples(samples, when):
     return samples[-2], samples[-1]
 
 
-def sample_at(activity: ActivityTrack, when):
-    before, after = _bounding_samples(activity.samples, when)
+def _bounding_samples_bisect(samples, when):
+    """Find bounding samples using binary search for O(log n) lookup."""
+    if len(samples) < 2:
+        raise ValueError("Need at least 2 samples")
+    
+    # Binary search for the insertion point
+    left, right = 0, len(samples)
+    while left < right:
+        mid = (left + right) // 2
+        if samples[mid].timestamp < when:
+            left = mid + 1
+        else:
+            right = mid
+    
+    idx = left
+    
+    # Handle edge cases
+    if idx == 0:
+        return samples[0], samples[1]
+    if idx >= len(samples):
+        return samples[-2], samples[-1]
+    
+    return samples[idx - 1], samples[idx]
+
+
+def _bounding_samples_cursor(samples, when, cursor: SampleCursor):
+    """Find bounding samples using cursor for O(1) amortized sequential lookup."""
+    if len(samples) < 2:
+        raise ValueError("Need at least 2 samples")
+
+    if when <= samples[0].timestamp:
+        cursor.index = 0
+        return samples[0], samples[1]
+    
+    # Start from cursor position
+    idx = cursor.index
+    
+    # If when is before current position, reset to beginning
+    if idx > 0 and when < samples[idx].timestamp:
+        idx = 0
+    
+    # Advance forward to find bounding samples
+    while idx < len(samples) - 1:
+        if samples[idx].timestamp <= when <= samples[idx + 1].timestamp:
+            cursor.index = idx
+            return samples[idx], samples[idx + 1]
+        idx += 1
+    
+    # Past end, use last two samples
+    cursor.index = len(samples) - 2
+    return samples[-2], samples[-1]
+
+
+def sample_at(activity: ActivityTrack, when, *, cursor: SampleCursor | None = None):
+    """Interpolate activity sample at a given timestamp.
+    
+    Args:
+        activity: The activity track with samples
+        when: The timestamp to interpolate at
+        cursor: Optional cursor for efficient sequential lookups
+        
+    Returns:
+        Interpolated HudSample at the given timestamp
+    """
+    if cursor is not None:
+        before, after = _bounding_samples_cursor(activity.samples, when, cursor)
+    else:
+        before, after = _bounding_samples_bisect(activity.samples, when)
     ratio = (when - before.timestamp).total_seconds() / (after.timestamp - before.timestamp).total_seconds()
     speed_mps = _lerp(before.speed_mps, after.speed_mps, ratio)
     return HudSample(
