@@ -167,6 +167,33 @@ def _route_map_zoom_percent(widget: HudWidgetConfig) -> int:
     return value
 
 
+def _route_map_projection_bounds(
+    route_points: list[tuple[float, float]],
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    zoom_percent: int,
+) -> tuple[float, float, float, float, float, float, float]:
+    latitudes = [point[0] for point in route_points]
+    longitudes = [point[1] for point in route_points]
+    lat_min, lat_max = min(latitudes), max(latitudes)
+    lon_min, lon_max = min(longitudes), max(longitudes)
+
+    lat_range = max(lat_max - lat_min, 1e-9)
+    lon_range = max(lon_max - lon_min, 1e-9)
+    zoom_scale = zoom_percent / 100.0
+
+    inner_width = max(right - left, 1)
+    inner_height = max(bottom - top, 1)
+    projection_scale = min(inner_width / lon_range, inner_height / lat_range) * zoom_scale
+    content_width = lon_range * projection_scale
+    content_height = lat_range * projection_scale
+    offset_x = left + (inner_width - content_width) / 2
+    offset_y = top + (inner_height - content_height) / 2
+    return lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y
+
+
 def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
     value_baseline_y = top + 14
     current_x = left + 16 + (80 if label else 0)
@@ -1204,32 +1231,21 @@ def _create_route_map_cache(
     map_bottom = h - _scale_y(scale, 12)
     inner_width = max(w - _scale_x(scale, 24), 1)
     inner_height = max(map_bottom - map_top, 1)
-    
-    latitudes = [point[0] for point in route_points]
-    longitudes = [point[1] for point in route_points]
-    lat_min, lat_max = min(latitudes), max(latitudes)
-    lon_min, lon_max = min(longitudes), max(longitudes)
-    
-    lat_range = max(lat_max - lat_min, 1e-9)
-    lon_range = max(lon_max - lon_min, 1e-9)
-    lat_padding = lat_range * 0.05
-    lon_padding = lon_range * 0.05
-    lat_min -= lat_padding
-    lat_max += lat_padding
-    lon_min -= lon_padding
-    lon_max += lon_padding
-    zoom_scale = _route_map_zoom_percent(widget) / 100.0
-    center_x = map_left + inner_width / 2
-    center_y = map_top + inner_height / 2
+    lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y = _route_map_projection_bounds(
+        route_points,
+        map_left,
+        map_top,
+        map_left + inner_width,
+        map_top + inner_height,
+        _route_map_zoom_percent(widget),
+    )
     
     # Create projection function
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        raw_x = map_left + ((lon - lon_min) / max(lon_max - lon_min, 1e-9)) * inner_width
-        raw_y = map_bottom - ((lat - lat_min) / max(lat_max - lat_min, 1e-9)) * inner_height
         return (
-            center_x + (raw_x - center_x) * zoom_scale,
-            center_y + (raw_y - center_y) * zoom_scale,
+            offset_x + ((lon - lon_min) * projection_scale),
+            offset_y + ((lat_max - lat) * projection_scale),
         )
     
     # Pre-project all route points
@@ -1815,18 +1831,21 @@ def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[f
     if len(route_points) < 2:
         return
 
-    latitudes = [point[0] for point in route_points]
-    longitudes = [point[1] for point in route_points]
-    lat_min, lat_max = min(latitudes), max(latitudes)
-    lon_min, lon_max = min(longitudes), max(longitudes)
+    lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y = _route_map_projection_bounds(
+        route_points,
+        left + 12,
+        top + 12,
+        right - 12,
+        bottom - 12,
+        100,
+    )
 
     def project(point: tuple[float, float]) -> tuple[float, float]:
         lat, lon = point
-        x = left + 12 + ((lon - lon_min) / max(lon_max -
-                         lon_min, 1e-9)) * ((right - left) - 24)
-        y = bottom - 12 - ((lat - lat_min) / max(lat_max -
-                           lat_min, 1e-9)) * ((bottom - top) - 24)
-        return (x, y)
+        return (
+            offset_x + ((lon - lon_min) * projection_scale),
+            offset_y + ((lat_max - lat) * projection_scale),
+        )
 
     projected = [project(point) for point in route_points]
     draw.line(projected, fill=(0, 200, 255, 255), width=4)

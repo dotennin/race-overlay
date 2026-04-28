@@ -1427,7 +1427,7 @@ def test_render_hud_frame_route_map_projects_heading_arrow_vector(monkeypatch: p
     vector_x, vector_y = captured_vectors[0]
     assert vector_x > 0
     assert vector_y < 0
-    assert abs(vector_y / vector_x) <= 1.0
+    assert abs(vector_y / vector_x) > 10.0
 
 
 def test_render_hud_frame_route_map_prefers_non_degenerate_segment_for_navigation_overlays(
@@ -2141,6 +2141,70 @@ def test_render_hud_frame_route_map_zoom_percent_insets_route_projection(
 
     assert width_90 < width_100
     assert height_90 < height_100
+
+
+def test_render_hud_frame_route_map_preserves_route_aspect_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_points: list[tuple[float, float]] = []
+    original_line = ImageDraw.ImageDraw.line
+
+    def record_line(self, xy, *args, **kwargs):
+        fill = kwargs.get("fill")
+        if fill in {ROUTE_MAP_COMPLETED_RGBA, ROUTE_MAP_REMAINING_RGBA}:
+            recorded_points.extend([(float(x), float(y)) for x, y in xy])
+        return original_line(self, xy, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "line", record_line)
+
+    render_hud_frame(
+        width=220,
+        height=220,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=0.5,
+            longitude=1.0,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[
+            (0.0, 0.0),
+            (0.0, 2.0),
+            (1.0, 2.0),
+            (1.0, 0.0),
+            (0.0, 0.0),
+        ],
+        hud_config=HudConfig(
+            preset="route-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="route-map",
+                    type="route_map",
+                    bindings={"value": "route_points"},
+                    anchor="top-left",
+                    x=0,
+                    y=0,
+                    width=220,
+                    height=220,
+                    style={"label": "", "shape": "circle"},
+                )
+            ],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    xs = [x for x, _ in recorded_points]
+    ys = [y for _, y in recorded_points]
+    assert xs and ys, "expected route-map line draws to be recorded"
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+
+    assert width > height * 1.5
 
 
 def test_render_hud_frame_route_map_splits_completed_and_remaining_segments(
