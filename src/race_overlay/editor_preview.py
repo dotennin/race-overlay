@@ -1,3 +1,4 @@
+from dataclasses import replace
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
@@ -9,9 +10,9 @@ import yaml
 
 from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_save, load_config, save_config
 from race_overlay.hud import render_hud_frame
-from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, serialize_hud_config
+from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, HudWidgetConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, HudSample
-from race_overlay.sampling import LapWaterfallState, lap_waterfall_state
+from race_overlay.sampling import LapWaterfallState, lap_waterfall_state_for_widget
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
@@ -104,6 +105,16 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
         "show_north_marker": {"kind": "boolean", "label": "Show north marker"},
         "show_bearing_label": {"kind": "boolean", "label": "Show bearing label"},
     },
+    "lap_waterfall": {
+        "visible_rows": {"kind": "integer", "label": "Visible rows", "min": 1},
+        "always_show": {"kind": "boolean", "label": "Always show"},
+        "fade_after_seconds": {"kind": "integer", "label": "Fade after seconds", "min": 1},
+        "show_distance": {"kind": "boolean", "label": "Show distance"},
+        "show_time": {"kind": "boolean", "label": "Show time"},
+        "show_pace": {"kind": "boolean", "label": "Show pace"},
+        "show_elevation": {"kind": "boolean", "label": "Show elevation"},
+        "show_heart_rate": {"kind": "boolean", "label": "Show heart rate"},
+    },
 }
 
 
@@ -143,9 +154,9 @@ def _sample_route_points() -> list[tuple[float, float]]:
     ]
 
 
-def _sample_lap_state() -> LapWaterfallState:
+def _sample_laps() -> list[ActivityLap]:
     base = datetime(2026, 4, 19, 8, 0, 0, tzinfo=timezone.utc)
-    laps = [
+    return [
         ActivityLap(
             start_time=base,
             total_time_seconds=360.0,
@@ -177,14 +188,174 @@ def _sample_lap_state() -> LapWaterfallState:
             calories=50,
         ),
     ]
-    when = base + timedelta(seconds=1200)
-    return lap_waterfall_state(laps, when, always_show=True)
+
+
+def _sample_lap_waterfall_states(hud_config: HudConfig) -> dict[str, LapWaterfallState]:
+    laps = _sample_laps()
+    last_lap = laps[-1]
+    when = last_lap.start_time + timedelta(seconds=last_lap.total_time_seconds, milliseconds=1)
+    return {
+        widget.id: lap_waterfall_state_for_widget(_preview_lap_waterfall_widget(widget), laps, when)
+        for widget in hud_config.widgets
+        if widget.visible and widget.type == "lap_waterfall"
+    }
+
+
+def _preview_lap_waterfall_widget(widget: HudWidgetConfig) -> HudWidgetConfig:
+    return replace(widget, style={**widget.style, "always_show": True})
+
+
+def _next_overlay_widget_id(base_id: str, existing_ids: set[str]) -> str:
+    candidate = base_id
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"{base_id}-{suffix}"
+        suffix += 1
+    existing_ids.add(candidate)
+    return candidate
+
+
+def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
+    catalog = json.loads(
+        json.dumps(
+            [
+                {
+                    "type": "progress_bar",
+                    "label": "Distance ruler",
+                    "defaults": {
+                        "id": "distance-ruler",
+                        "type": "progress_bar",
+                        "bindings": {"value": "distance_m"},
+                        "anchor": "bottom-left",
+                        "x": 40,
+                        "y": 56,
+                        "width": 420,
+                        "height": 72,
+                        "z_index": 10,
+                        "visible": True,
+                        "style": {"label": "Distance", "variant": "ruler"},
+                    },
+                },
+                {
+                    "type": "stat_block",
+                    "label": "Stat block",
+                    "defaults": {
+                        "id": "stat-block",
+                        "type": "stat_block",
+                        "bindings": {"value": "altitude_m"},
+                        "anchor": "top-left",
+                        "x": 44,
+                        "y": 146,
+                        "width": 160,
+                        "height": 86,
+                        "z_index": 30,
+                        "visible": True,
+                        "style": {"label": "Elevation", "unit": "M"},
+                    },
+                },
+                {
+                    "type": "metric_card",
+                    "label": "Metric card",
+                    "defaults": {
+                        "id": "metric-card",
+                        "type": "metric_card",
+                        "bindings": {"value": "pace_seconds_per_km"},
+                        "anchor": "bottom-right",
+                        "x": 980,
+                        "y": 560,
+                        "width": 120,
+                        "height": 72,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Pace", "variant": "compact"},
+                    },
+                },
+                {
+                    "type": "hero_metric",
+                    "label": "Hero metric",
+                    "defaults": {
+                        "id": "hero-metric",
+                        "type": "hero_metric",
+                        "bindings": {"value": "pace_seconds_per_km"},
+                        "anchor": "bottom-left",
+                        "x": 40,
+                        "y": 560,
+                        "width": 240,
+                        "height": 120,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Pace"},
+                    },
+                },
+                {
+                    "type": "context_card",
+                    "label": "Context card",
+                    "defaults": {
+                        "id": "context-card",
+                        "type": "context_card",
+                        "bindings": {"value": "timestamp"},
+                        "anchor": "top-left",
+                        "x": 44,
+                        "y": 40,
+                        "width": 292,
+                        "height": 56,
+                        "z_index": 36,
+                        "visible": True,
+                        "style": {
+                            "variant": "timestamp_chip",
+                            "format": "%Y/%m/%d %H:%M:%S",
+                        },
+                    },
+                },
+                {
+                    "type": "route_map",
+                    "label": "Route map",
+                    "defaults": {
+                        "id": "route-map",
+                        "type": "route_map",
+                        "bindings": {"value": "route_points"},
+                        "anchor": "top-left",
+                        "x": 26,
+                        "y": 514,
+                        "width": 180,
+                        "height": 180,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Route map", "shape": "circle", "show_panel": True},
+                    },
+                },
+                {
+                    "type": "lap_waterfall",
+                    "label": "Lap waterfall",
+                    "defaults": {
+                        "id": "lap-waterfall",
+                        "type": "lap_waterfall",
+                        "bindings": {"value": "laps"},
+                        "anchor": "bottom-right",
+                        "x": 40,
+                        "y": 120,
+                        "width": 420,
+                        "height": 220,
+                        "z_index": 30,
+                        "visible": True,
+                        "style": {"visible_rows": 5},
+                    },
+                },
+            ]
+        )
+    )
+    existing_ids = {widget.id for widget in hud_config.widgets}
+    for entry in catalog:
+        defaults = entry["defaults"]
+        defaults["id"] = _next_overlay_widget_id(defaults["id"], existing_ids)
+    return catalog
 
 
 def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
         "schema": _build_editor_schema(config.hud),
+        "overlay_library": _overlay_library(config.hud),
         "revision": _hud_revision(config.hud),
         "preview": {
             "width": width,
@@ -227,6 +398,7 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
     _validate_preview_dimensions(width, height)
+    lap_states = _sample_lap_waterfall_states(config.hud)
     image = render_hud_frame(
         width,
         height,
@@ -235,7 +407,7 @@ def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
         config.hud,
         6852,
         total_distance_m=10000.0,
-        lap_state=_sample_lap_state(),
+        lap_states=lap_states,
     )
     buffer = BytesIO()
     image.save(buffer, format="PNG")
@@ -273,32 +445,33 @@ def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, o
         raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
 
     widgets_payload = payload.get("widgets")
-    expected_widget_ids = [widget["id"] for widget in expected["widgets"]]
     if not isinstance(widgets_payload, list):
         raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
 
+    expected_widget_ids = [widget["id"] for widget in expected["widgets"]]
     payload_widget_ids = [widget.get("id") for widget in widgets_payload if isinstance(widget, dict)]
     if (
-        len(widgets_payload) != len(expected_widget_ids)
-        or len(payload_widget_ids) != len(expected_widget_ids)
-        or set(payload_widget_ids) != set(expected_widget_ids)
+        len(payload_widget_ids) != len(widgets_payload)
+        or not set(expected_widget_ids).issubset(set(payload_widget_ids))
     ):
         raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
 
     expected_widgets_by_id = {widget["id"]: widget for widget in expected["widgets"]}
     for widget_payload in widgets_payload:
-        if not isinstance(widget_payload, dict):
+        if not isinstance(widget_payload, dict) or set(widget_payload) != set(HudWidgetConfig.__dataclass_fields__):
             raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
-        widget_id = widget_payload.get("id")
-        expected_widget = expected_widgets_by_id.get(widget_id)
-        if expected_widget is None or set(widget_payload) != set(expected_widget):
-            raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
-        expected_style_keys = set(expected_widget["style"])
+        expected_widget = expected_widgets_by_id.get(widget_payload.get("id"))
         payload_style = widget_payload.get("style")
         if (
             not isinstance(widget_payload.get("bindings"), dict)
-            or set(widget_payload["bindings"]) != set(expected_widget["bindings"])
             or not isinstance(payload_style, dict)
+        ):
+            raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+        if expected_widget is None:
+            continue
+        expected_style_keys = set(expected_widget["style"])
+        if (
+            set(widget_payload["bindings"]) != set(expected_widget["bindings"])
             or (
                 not expected_style_keys.issubset(set(payload_style))
                 and not (
@@ -327,8 +500,16 @@ def _hud_revision(hud: HudConfig) -> str:
 
 
 def _build_editor_schema(hud: HudConfig) -> dict[str, object]:
+    widget_types = {widget.type for widget in hud.widgets} | set(_WIDGET_STYLE_SCHEMA_BY_TYPE)
     return {
         "theme": json.loads(json.dumps(_THEME_FIELD_SCHEMA)),
+        "widget_types": {
+            widget_type: {
+                "type": widget_type,
+                "style": _widget_type_style_schema(widget_type),
+            }
+            for widget_type in sorted(widget_types)
+        },
         "widgets": {
             widget.id: {
                 "type": widget.type,
@@ -339,7 +520,11 @@ def _build_editor_schema(hud: HudConfig) -> dict[str, object]:
     }
 
 
-def _widget_style_schema(widget) -> dict[str, object]:
+def _widget_type_style_schema(widget_type: str) -> dict[str, object]:
+    return json.loads(json.dumps(dict(_WIDGET_STYLE_SCHEMA_BY_TYPE.get(widget_type, {}))))
+
+
+def _widget_style_schema(widget: HudWidgetConfig) -> dict[str, object]:
     schema = dict(_WIDGET_STYLE_SCHEMA_BY_TYPE.get(widget.type, {}))
     for key, value in widget.style.items():
         schema.setdefault(key, _infer_style_field_schema(key, value))

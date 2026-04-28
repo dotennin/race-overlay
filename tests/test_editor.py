@@ -47,6 +47,55 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     assert state["revision"]
 
 
+def test_build_editor_state_exposes_overlay_library_with_lap_waterfall() -> None:
+    config = ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset())
+    state = build_editor_state(
+        config=config,
+        width=1280,
+        height=720,
+    )
+
+    catalog = state["overlay_library"]
+    widget_types = {item["type"] for item in catalog}
+    existing_ids = {widget.id for widget in config.hud.widgets}
+    catalog_ids = {item["defaults"]["id"] for item in catalog}
+
+    assert widget_types == {
+        "progress_bar",
+        "stat_block",
+        "metric_card",
+        "hero_metric",
+        "context_card",
+        "route_map",
+        "lap_waterfall",
+    }
+    assert catalog_ids.isdisjoint(existing_ids)
+
+    for entry in catalog:
+        assert isinstance(entry["label"], str) and entry["label"]
+        defaults = entry["defaults"]
+        assert defaults["type"] == entry["type"]
+        assert defaults["id"]
+        assert defaults["bindings"]
+        assert defaults["anchor"]
+        assert isinstance(defaults["x"], int)
+        assert isinstance(defaults["y"], int)
+        assert isinstance(defaults["width"], int)
+        assert isinstance(defaults["height"], int)
+        assert isinstance(defaults["z_index"], int)
+        assert isinstance(defaults["visible"], bool)
+        assert isinstance(defaults["style"], dict)
+
+    lap_entry = next(item for item in catalog if item["type"] == "lap_waterfall")
+    assert lap_entry["defaults"]["bindings"] == {"value": "laps"}
+    assert lap_entry["defaults"]["style"]["visible_rows"] == 5
+    assert state["schema"]["widget_types"]["lap_waterfall"]["style"]["visible_rows"] == {
+        "kind": "integer",
+        "label": "Visible rows",
+        "min": 1,
+    }
+
+
 def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     state = build_editor_state(
         config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
@@ -204,6 +253,41 @@ def test_build_editor_state_exposes_time_chip_and_navigation_schema_for_broadcas
         "label": "Show north marker",
     }
     assert state["schema"]["widgets"]["time-chip"]["style"]["format"] == {"kind": "text", "label": "Format"}
+
+
+def test_build_editor_state_exposes_lap_waterfall_schema() -> None:
+    config = ProjectConfig(
+        activity_file="activity_22577902433.tcx",
+        hud=HudConfig(
+            preset="lap-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="lap-table",
+                    type="lap_waterfall",
+                    bindings={"value": "laps"},
+                    anchor="top-left",
+                    x=24,
+                    y=400,
+                    width=400,
+                    height=200,
+                    style={},
+                )
+            ],
+        ),
+    )
+
+    state = build_editor_state(config=config, width=1280, height=720)
+    lap_style = state["schema"]["widgets"]["lap-table"]["style"]
+
+    assert lap_style["visible_rows"] == {"kind": "integer", "label": "Visible rows", "min": 1}
+    assert lap_style["always_show"] == {"kind": "boolean", "label": "Always show"}
+    assert lap_style["fade_after_seconds"] == {"kind": "integer", "label": "Fade after seconds", "min": 1}
+    assert lap_style["show_distance"] == {"kind": "boolean", "label": "Show distance"}
+    assert lap_style["show_time"] == {"kind": "boolean", "label": "Show time"}
+    assert lap_style["show_pace"] == {"kind": "boolean", "label": "Show pace"}
+    assert lap_style["show_elevation"] == {"kind": "boolean", "label": "Show elevation"}
+    assert lap_style["show_heart_rate"] == {"kind": "boolean", "label": "Show heart rate"}
 
 
 def test_time_chip_widget_has_value_font_fields_not_unit_font() -> None:
@@ -823,6 +907,26 @@ def test_save_editor_payload_rejects_renderer_invalid_widgets_before_persisting(
     assert load_config(config_path).hud.preset == "broadcast-runner"
 
 
+def test_save_editor_payload_allows_appending_overlay_library_widget(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    state = build_editor_state(load_config(config_path), width=1280, height=720)
+    payload = json.loads(json.dumps(state["hud"]))
+    payload["revision"] = state["revision"]
+    overlay_entry = next(item for item in state["overlay_library"] if item["type"] == "lap_waterfall")
+    payload["widgets"].append(json.loads(json.dumps(overlay_entry["defaults"])))
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    appended = next(widget for widget in reloaded.hud.widgets if widget.id == overlay_entry["defaults"]["id"])
+
+    assert appended.type == "lap_waterfall"
+    assert appended.bindings == {"value": "laps"}
+    assert appended.style["visible_rows"] == 5
+
+
 def test_render_preview_payload_uses_unsaved_draft_without_touching_overlay_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -839,12 +943,47 @@ def test_render_preview_payload_uses_unsaved_draft_without_touching_overlay_yaml
     assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
 
 
-def test_render_preview_png_passes_lap_state_to_render_hud_frame(monkeypatch, tmp_path: Path) -> None:
-    """editor_preview.render_preview_png must pass lap_state to render_hud_frame."""
+def test_render_preview_payload_allows_appended_overlay_library_widget(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    original_text = config_path.read_text()
+
+    state = build_editor_state(load_config(config_path), width=1280, height=720)
+    payload = json.loads(json.dumps(state["hud"]))
+    overlay_entry = next(item for item in state["overlay_library"] if item["type"] == "lap_waterfall")
+    payload["widgets"].append(json.loads(json.dumps(overlay_entry["defaults"])))
+
+    png = render_preview_payload(config_path, payload, width=1280, height=720)
+
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert config_path.read_text() == original_text
+
+
+def test_render_preview_png_passes_lap_states_to_render_hud_frame(monkeypatch, tmp_path: Path) -> None:
+    """editor_preview.render_preview_png must pass widget-scoped lap_states to render_hud_frame."""
     from race_overlay.editor_preview import render_preview_png
     from race_overlay.sampling import LapWaterfallState
 
-    config = ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset())
+    config = ProjectConfig(
+        activity_file="activity_22577902433.tcx",
+        hud=HudConfig(
+            preset="lap-only",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="lap-table",
+                    type="lap_waterfall",
+                    bindings={"value": "laps"},
+                    anchor="top-left",
+                    x=24,
+                    y=400,
+                    width=400,
+                    height=200,
+                    style={"visible_rows": 2, "always_show": True},
+                )
+            ],
+        ),
+    )
 
     captured_kwargs: list[dict] = []
 
@@ -852,39 +991,58 @@ def test_render_preview_png_passes_lap_state_to_render_hud_frame(monkeypatch, tm
 
     def capturing_render(*args, **kwargs):
         captured_kwargs.append(kwargs)
-        return original_render(*args, **{k: v for k, v in kwargs.items() if k != "lap_state"})
+        return original_render(*args, **kwargs)
 
     monkeypatch.setattr("race_overlay.editor_preview.render_hud_frame", capturing_render)
 
     render_preview_png(config, width=1280, height=720)
 
     assert captured_kwargs, "render_hud_frame was not called"
-    assert "lap_state" in captured_kwargs[0], "lap_state was not passed to render_hud_frame"
-    assert isinstance(captured_kwargs[0]["lap_state"], LapWaterfallState)
+    assert "lap_states" in captured_kwargs[0], "lap_states was not passed to render_hud_frame"
+    assert isinstance(captured_kwargs[0]["lap_states"]["lap-table"], LapWaterfallState)
+    assert len(captured_kwargs[0]["lap_states"]["lap-table"].visible_rows) == 2
 
 
-def test_sample_lap_state_uses_lap_waterfall_state_helper(monkeypatch) -> None:
-    """_sample_lap_state must delegate to lap_waterfall_state() not build state manually."""
+def test_sample_lap_waterfall_states_use_widget_helper(monkeypatch) -> None:
+    """_sample_lap_waterfall_states must delegate to lap_waterfall_state_for_widget()."""
     import race_overlay.editor_preview as ep
     from race_overlay.sampling import LapWaterfallState
 
     call_args: list[tuple] = []
-    call_kwargs: list[dict] = []
-    original = __import__("race_overlay.sampling", fromlist=["lap_waterfall_state"]).lap_waterfall_state
+    original = __import__("race_overlay.sampling", fromlist=["lap_waterfall_state_for_widget"]).lap_waterfall_state_for_widget
 
     def capturing(*args, **kwargs):
         call_args.append(args)
-        call_kwargs.append(kwargs)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr("race_overlay.editor_preview.lap_waterfall_state", capturing)
+    monkeypatch.setattr("race_overlay.editor_preview.lap_waterfall_state_for_widget", capturing)
 
-    result = ep._sample_lap_state()
+    config = HudConfig(
+        preset="lap-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="lap-table",
+                type="lap_waterfall",
+                bindings={"value": "laps"},
+                anchor="top-left",
+                x=24,
+                y=400,
+                width=400,
+                height=200,
+                style={"visible_rows": 2},
+            )
+        ],
+    )
 
-    assert call_args, "lap_waterfall_state() was not called by _sample_lap_state()"
-    assert isinstance(result, LapWaterfallState)
-    laps_arg = call_args[0][0]
-    assert len(laps_arg) > 0, "no ActivityLap values passed to lap_waterfall_state"
+    result = ep._sample_lap_waterfall_states(config)
+
+    assert call_args, "lap_waterfall_state_for_widget() was not called"
+    assert isinstance(result["lap-table"], LapWaterfallState)
+    preview_widget, laps_arg, _when = call_args[0]
+    assert preview_widget.style["always_show"] is True
+    assert "always_show" not in config.widgets[0].style
+    assert len(laps_arg) > 0, "no ActivityLap values passed to lap_waterfall_state_for_widget"
 
 
 @contextmanager
@@ -937,7 +1095,11 @@ def test_editor_shell_exposes_theme_controls_container(tmp_path: Path) -> None:
 
     assert response.status == 200
     assert "Theme defaults" in body
+    assert 'id="theme-defaults-toggle"' in body
+    assert 'id="theme-defaults-panel"' in body
     assert 'id="theme-controls"' in body
+    assert 'id="overlay-library-panel"' in body
+    assert 'id="overlay-library-list"' in body
 
 
 def test_editor_app_asset_uses_schema_driven_theme_controls(tmp_path: Path) -> None:
@@ -956,6 +1118,10 @@ def test_editor_app_asset_uses_schema_driven_theme_controls(tmp_path: Path) -> N
 
     assert response.status == 200
     assert "themeControls" in body
+    assert "themeDefaultsToggle" in body
+    assert "themeDefaultsPanel" in body
+    assert "renderOverlayLibrary" in body
+    assert "overlayLibraryList" in body
     assert "savedState.schema" in body
     assert "font_size_px" in body
 
@@ -1328,13 +1494,17 @@ def test_launch_editor_rejects_directory_config_path(tmp_path: Path) -> None:
         launch_editor(config_path, width=1280, height=720)
 
 
-def test_editor_shell_contains_two_pane_workspace_and_hidden_help_modal() -> None:
+def test_editor_shell_contains_overlay_library_rail_and_hidden_help_modal() -> None:
     html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
 
+    assert 'id="overlay-library-panel"' in html
     assert 'id="canvas-panel"' in html
     assert 'id="inspector-panel"' in html
-    assert 'id="widget-list"' not in html
-    assert "Widgets" not in html
+    assert 'id="overlay-library-list"' in html
+    assert 'id="widget-list"' in html
+    assert "Layers" in html
+    assert 'id="theme-defaults-toggle"' in html
+    assert 'id="theme-defaults-panel"' in html
     assert 'id="help-button"' in html
     assert 'id="help-modal"' in html
     assert "hidden" in html.split('id="help-modal"', 1)[1]
@@ -1583,8 +1753,11 @@ def test_editor_shell_uses_canvas_first_layout_copy() -> None:
     app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
 
     assert "Canvas-first designer" in html
-    assert "Selection rail" not in html
-    assert "Widgets" not in html
-    assert "grid-template-columns: minmax(0, 1fr) 360px;" in css
+    assert "Add overlay" in html
+    assert "Layers" in html
+    assert "Theme defaults" in html
+    assert "grid-template-columns: 280px minmax(0, 1fr) 360px;" in css
     assert "function renderWidgetSelection()" in app_js
+    assert "function renderOverlayLibrary()" in app_js
+    assert "function toggleThemeDefaults(" in app_js
     assert "layer-item__actions" not in app_js

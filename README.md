@@ -21,6 +21,7 @@ uv run race-overlay edit-hud --config-path overlay.yaml
 - Resize selected widgets from the canvas handles.
 - Use the Layers panel for visibility and z-order changes.
 - Use the Inspector for exact geometry and style values.
+- Custom HUDs can include a `lap_waterfall` widget for completed-lap tables with configurable visible rows, fade timing, and column visibility.
 - Preview updates immediately in the browser, but `overlay.yaml` is unchanged until you click **Save YAML**.
 - The Help popup is hidden by default and only opens from the `?` button.
 

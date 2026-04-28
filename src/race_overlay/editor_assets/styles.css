@@ -37,12 +37,13 @@ select {
 #app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
   gap: 16px;
   padding: 16px;
   align-items: start;
 }
 
+#overlay-library-panel,
 #canvas-panel,
 #inspector-panel {
   min-height: 0;
@@ -52,12 +53,19 @@ select {
   box-shadow: var(--shadow);
 }
 
+#overlay-library-panel,
 #inspector-panel {
   display: flex;
   flex-direction: column;
   gap: 18px;
   padding: 20px;
   overflow: auto;
+}
+
+#overlay-library-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
 }
 
 #canvas-panel {
@@ -73,6 +81,7 @@ select {
 
 .panel-header,
 .panel-section,
+#overlay-library-list,
 #theme-controls,
 #inspector-content {
   display: grid;
@@ -217,6 +226,35 @@ button:disabled {
   font-weight: 800;
 }
 
+.accordion-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.accordion-toggle__icon {
+  color: var(--accent);
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.accordion-toggle[aria-expanded="true"] .accordion-toggle__icon {
+  transform: rotate(45deg);
+}
+
+#theme-defaults-panel[hidden] {
+  display: none;
+}
+
 #canvas-stage {
   position: relative;
   flex: 1;
@@ -321,9 +359,39 @@ button:disabled {
   gap: 10px;
 }
 
+.overlay-library-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+}
+
+.overlay-library-item:hover {
+  border-color: rgba(99, 214, 255, 0.38);
+  background: rgba(99, 214, 255, 0.08);
+}
+
+.overlay-library-item__title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.overlay-library-item__meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .layer-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -460,7 +528,19 @@ button:disabled {
 
 @media (max-width: 1180px) {
   #app-shell {
+    grid-template-columns: 240px minmax(0, 1fr) 320px;
+  }
+}
+
+@media (max-width: 1000px) {
+  #app-shell {
     grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  #overlay-library-panel {
+    grid-column: 1 / -1;
+    position: static;
+    max-height: none;
   }
 }
 
@@ -469,9 +549,11 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  #overlay-library-panel,
   #canvas-panel {
     position: static;
     height: auto;
+    max-height: none;
     overflow: visible;
   }
 

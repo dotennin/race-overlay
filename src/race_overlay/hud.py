@@ -167,6 +167,7 @@ def render_hud_frame(
     total_distance_m: float | None = None,
     layout: HudLayout | None = None,
     lap_state: LapWaterfallState | None = None,
+    lap_states: dict[str, LapWaterfallState] | None = None,
 ) -> Image.Image:
     """Render a HUD frame.
 
@@ -199,6 +200,7 @@ def render_hud_frame(
             total_distance_m,
             scale,
             lap_state=lap_state,
+            lap_states=lap_states,
         )
     return image
 
@@ -261,6 +263,7 @@ def _render_widget(
     scale: RenderScale,
     *,
     lap_state: LapWaterfallState | None = None,
+    lap_states: dict[str, LapWaterfallState] | None = None,
 ) -> None:
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m,
@@ -281,7 +284,10 @@ def _render_widget(
         _draw_context_card(draw, widget, hud_value.timestamp,
                            theme, frame_width, frame_height, scale)
     elif widget.type == "lap_waterfall":
-        _draw_lap_waterfall(image, widget, lap_state, theme, frame_width, frame_height, scale)
+        widget_lap_state = lap_state
+        if lap_states is not None:
+            widget_lap_state = lap_states.get(widget.id, widget_lap_state)
+        _draw_lap_waterfall(image, widget, widget_lap_state, theme, frame_width, frame_height, scale)
     else:
         raise ValueError(f"unknown widget type '{
                          widget.type}' for widget '{widget.id}'")
@@ -1280,29 +1286,60 @@ def _draw_lap_waterfall(
     row_color = tuple(theme.text_rgba)
 
     columns = _lap_waterfall_columns(widget)
-    col_widths = _lap_waterfall_column_widths(columns, w, scale)
-
     pad_x = _scale_x(scale, 10)
     pad_y = _scale_y(scale, 8)
-    row_h = _scale_y(scale, 26)
+    content_width = max(w - (pad_x * 2), _scale_x(scale, 24))
+    col_widths = _lap_waterfall_column_widths(columns, content_width, scale)
+
+    header_text_h = max(
+        _lap_waterfall_text_height(widget_draw, _LAP_WATERFALL_COLUMN_LABELS.get(col, col), title_font)
+        for col in columns
+    )
+    row_text_h = max(
+        _lap_waterfall_text_height(widget_draw, _LAP_WATERFALL_COLUMN_MEASURE_SAMPLES.get(col, "00"), value_font)
+        for col in columns
+    )
+    visible_row_slots = max(len(lap_state.visible_rows), 1)
+    available_rows_height = max(h - (pad_y * 2) - header_text_h - _scale_y(scale, 6), row_text_h)
+    row_h = max(available_rows_height // visible_row_slots, row_text_h)
+    header_y = pad_y
+    first_row_y = header_y + header_text_h + _scale_y(scale, 6)
 
     # Header row
     x = pad_x
     for col, cw in zip(columns, col_widths):
         label = _LAP_WATERFALL_COLUMN_LABELS.get(col, col)
-        widget_draw.text((x, pad_y), label, fill=header_color, font=title_font)
+        _draw_lap_waterfall_cell(
+            widget_image,
+            left=x,
+            top=header_y,
+            width=cw,
+            height=header_text_h,
+            text=label,
+            fill=header_color,
+            font=title_font,
+        )
         x += cw
 
     # Data rows
     dimmed_alpha = round(255 * 0.65)
     for i, row in enumerate(lap_state.visible_rows):
-        y = pad_y + row_h + i * row_h
+        y = first_row_y + i * row_h
         alpha = dimmed_alpha if row.is_dimmed else 255
         color = (row_color[0], row_color[1], row_color[2], alpha)
         values = _lap_waterfall_row_values(row, columns)
         x = pad_x
         for val, cw in zip(values, col_widths):
-            widget_draw.text((x, y), val, fill=color, font=value_font)
+            _draw_lap_waterfall_cell(
+                widget_image,
+                left=x,
+                top=y,
+                width=cw,
+                height=row_h,
+                text=val,
+                fill=color,
+                font=value_font,
+            )
             x += cw
 
     # Apply overall widget opacity
@@ -1316,11 +1353,29 @@ def _draw_lap_waterfall(
 
 _LAP_WATERFALL_COLUMN_LABELS: dict[str, str] = {
     "lap": "Lap",
-    "distance": "Dist",
+    "distance": "Distance",
     "time": "Time",
     "pace": "Pace",
     "elevation": "Elev",
     "heart_rate": "HR",
+}
+
+_LAP_WATERFALL_COLUMN_WEIGHTS: dict[str, float] = {
+    "lap": 0.8,
+    "distance": 1.6,
+    "time": 1.0,
+    "pace": 1.5,
+    "elevation": 1.0,
+    "heart_rate": 1.1,
+}
+
+_LAP_WATERFALL_COLUMN_MEASURE_SAMPLES: dict[str, str] = {
+    "lap": "99",
+    "distance": "00.00 km",
+    "time": "00:00",
+    "pace": "00:00 /km",
+    "elevation": "+999m",
+    "heart_rate": "999 bpm",
 }
 
 _LAP_WATERFALL_COLUMN_STYLE_KEYS: dict[str, str] = {
@@ -1342,32 +1397,42 @@ def _lap_waterfall_columns(widget: HudWidgetConfig) -> list[str]:
 
 
 def _lap_waterfall_column_widths(columns: list[str], total_width: int, scale: RenderScale) -> list[int]:
-    lap_w = _scale_x(scale, 36)
-    remaining = total_width - lap_w
-    other_count = max(len(columns) - 1, 1)
-    other_w = remaining // other_count
-    widths = []
-    for col in columns:
-        widths.append(lap_w if col == "lap" else other_w)
+    if not columns:
+        return []
+    total_weight = sum(_LAP_WATERFALL_COLUMN_WEIGHTS.get(col, 1.0) for col in columns)
+    widths: list[int] = []
+    remaining_width = max(total_width, len(columns))
+    remaining_weight = total_weight
+    for index, col in enumerate(columns):
+        if index == len(columns) - 1:
+            widths.append(remaining_width)
+            continue
+        weight = _LAP_WATERFALL_COLUMN_WEIGHTS.get(col, 1.0)
+        width = int(round(remaining_width * (weight / remaining_weight)))
+        remaining_columns = len(columns) - index - 1
+        width = max(width, 1)
+        width = min(width, remaining_width - remaining_columns)
+        widths.append(width)
+        remaining_width -= width
+        remaining_weight -= weight
     return widths
 
 
 def _lap_waterfall_row_values(row: LapWaterfallRow, columns: list[str]) -> list[str]:
-    from math import isfinite
     lap = row.lap
     values: list[str] = []
     for col in columns:
         if col == "lap":
             values.append(str(row.lap_index + 1))
         elif col == "distance":
-            values.append(f"{lap.distance_m / 1000:.2f}")
+            values.append(f"{lap.distance_m / 1000:.2f} km")
         elif col == "time":
-            t = int(lap.total_time_seconds)
+            t = max(int(round(lap.total_time_seconds)), 0)
             values.append(f"{t // 60}:{t % 60:02d}")
         elif col == "pace":
             if lap.distance_m > 0:
                 pace = (lap.total_time_seconds / lap.distance_m) * 1000
-                values.append(_format_pace(pace))
+                values.append(f"{_format_pace(pace)} /km")
             else:
                 values.append("--")
         elif col == "elevation":
@@ -1379,10 +1444,39 @@ def _lap_waterfall_row_values(row: LapWaterfallRow, columns: list[str]) -> list[
                 values.append(f"{sign}{round(elev)}m")
         elif col == "heart_rate":
             hr = lap.avg_heart_rate_bpm
-            values.append(str(round(hr)) if hr is not None else "--")
+            values.append(f"{round(hr)} bpm" if hr is not None else "--")
         else:
             values.append("--")
     return values
+
+
+def _draw_lap_waterfall_cell(
+    image: Image.Image,
+    *,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    text: str,
+    fill: tuple[int, int, int, int],
+    font: ImageFont.FreeTypeFont,
+) -> None:
+    if width <= 0 or height <= 0 or not text:
+        return
+    cell_image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    cell_draw = ImageDraw.Draw(cell_image)
+    bbox = cell_draw.textbbox((0, 0), text, font=font)
+    cell_draw.text((-bbox[0], -bbox[1]), text, fill=fill, font=font)
+    image.alpha_composite(cell_image, (left, top))
+
+
+def _lap_waterfall_text_height(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+) -> int:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return max(bbox[3] - bbox[1], 1)
 
 
 def _draw_legacy_route_map(draw: ImageDraw.ImageDraw, route_points: list[tuple[float, float]], map_box: tuple[int, int, int, int]) -> None:

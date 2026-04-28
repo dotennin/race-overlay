@@ -9,7 +9,7 @@ from race_overlay.cli import app
 from race_overlay.config import ProjectConfig, load_config, save_config
 from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.hud_presets import broadcast_runner_preset
-from race_overlay.hud_schema import HudConfig, serialize_hud_config
+from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
 from race_overlay.pipeline import FatalStreamingComposeError, run_pipeline
 from race_overlay.sampling import LapWaterfallState
@@ -437,9 +437,26 @@ def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, mo
 
 
 def test_run_pipeline_passes_lap_state_to_renderer(tmp_path: Path, monkeypatch) -> None:
-    """render_hud_frame must receive a lap_state kwarg computed from activity laps."""
+    """render_hud_frame must receive widget-scoped lap_states computed from activity laps."""
     config_path = tmp_path / "overlay.yaml"
-    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+    lap_hud = HudConfig(
+        preset="lap-only",
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="lap-table",
+                type="lap_waterfall",
+                bindings={"value": "laps"},
+                anchor="top-left",
+                x=24,
+                y=320,
+                width=420,
+                height=180,
+                style={"visible_rows": 1, "always_show": True},
+            )
+        ],
+    )
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=lap_hud))
 
     start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
     activity_with_laps = ActivityTrack(
@@ -484,5 +501,7 @@ def test_run_pipeline_passes_lap_state_to_renderer(tmp_path: Path, monkeypatch) 
 
     assert captured_kwargs, "render_hud_frame was not called"
     kwargs = captured_kwargs[0]
-    assert "lap_state" in kwargs, "lap_state kwarg was not passed to render_hud_frame"
-    assert isinstance(kwargs["lap_state"], LapWaterfallState)
+    assert "lap_states" in kwargs, "lap_states kwarg was not passed to render_hud_frame"
+    assert isinstance(kwargs["lap_states"], dict)
+    assert isinstance(kwargs["lap_states"]["lap-table"], LapWaterfallState)
+    assert len(kwargs["lap_states"]["lap-table"].visible_rows) == 1

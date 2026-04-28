@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from race_overlay.hud_schema import HudConfig, HudWidgetConfig
 from race_overlay.models import ActivityLap, ActivityTrack, HudSample
+
+LAP_WATERFALL_DEFAULT_VISIBLE_ROWS = 5
+LAP_WATERFALL_DEFAULT_FADE_AFTER_SECONDS = 5.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -24,9 +28,9 @@ def lap_waterfall_state(
     laps: list[ActivityLap],
     when: datetime,
     *,
-    visible_rows: int = 5,
+    visible_rows: int = LAP_WATERFALL_DEFAULT_VISIBLE_ROWS,
     always_show: bool = False,
-    fade_after_seconds: float = 10.0,
+    fade_after_seconds: float = LAP_WATERFALL_DEFAULT_FADE_AFTER_SECONDS,
 ) -> LapWaterfallState:
     if visible_rows < 1:
         raise ValueError(f"visible_rows must be >= 1, got {visible_rows}")
@@ -78,6 +82,53 @@ def lap_waterfall_state(
         oldest_row_dimmed=window_full,
         opacity=opacity,
     )
+
+
+def lap_waterfall_state_for_widget(
+    widget: HudWidgetConfig,
+    laps: list[ActivityLap],
+    when: datetime,
+) -> LapWaterfallState:
+    return lap_waterfall_state(
+        laps,
+        when,
+        visible_rows=_lap_waterfall_visible_rows(widget),
+        always_show=_lap_waterfall_always_show(widget),
+        fade_after_seconds=_lap_waterfall_fade_after_seconds(widget),
+    )
+
+
+def lap_waterfall_states_for_widgets(
+    hud_config: HudConfig,
+    laps: list[ActivityLap],
+    when: datetime,
+) -> dict[str, LapWaterfallState]:
+    return {
+        widget.id: lap_waterfall_state_for_widget(widget, laps, when)
+        for widget in hud_config.widgets
+        if widget.visible and widget.type == "lap_waterfall"
+    }
+
+
+def _lap_waterfall_visible_rows(widget: HudWidgetConfig) -> int:
+    value = widget.style.get("visible_rows", LAP_WATERFALL_DEFAULT_VISIBLE_ROWS)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"widget '{widget.id}' style.visible_rows must be a positive integer")
+    return value
+
+
+def _lap_waterfall_always_show(widget: HudWidgetConfig) -> bool:
+    value = widget.style.get("always_show", False)
+    if not isinstance(value, bool):
+        raise ValueError(f"widget '{widget.id}' style.always_show must be a boolean")
+    return value
+
+
+def _lap_waterfall_fade_after_seconds(widget: HudWidgetConfig) -> float:
+    value = widget.style.get("fade_after_seconds", LAP_WATERFALL_DEFAULT_FADE_AFTER_SECONDS)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(f"widget '{widget.id}' style.fade_after_seconds must be a positive number")
+    return float(value)
 
 
 def _lerp(start: float | int | None, end: float | int | None, ratio: float) -> float | None:

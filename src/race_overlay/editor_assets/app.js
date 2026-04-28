@@ -25,7 +25,10 @@ const STYLE_THEME_FALLBACKS = {
 const elements = {
   statusMessage: document.getElementById("status-message"),
   preset: document.getElementById("preset"),
+  overlayLibraryList: document.getElementById("overlay-library-list"),
   themeControls: document.getElementById("theme-controls"),
+  themeDefaultsToggle: document.getElementById("theme-defaults-toggle"),
+  themeDefaultsPanel: document.getElementById("theme-defaults-panel"),
   widgetList: document.getElementById("widget-list"),
   inspectorContent: document.getElementById("inspector-content"),
   saveButton: document.getElementById("save-button"),
@@ -49,10 +52,10 @@ let lastPreviewRefreshAt = 0;
 let dragPreviewDirty = false;
 let activeInteraction = null;
 let activeSnapGuides = [];
+let isThemeDefaultsOpen = false;
 
-function cloneHud(hud) {
-  const theme = Object.assign({}, hud.theme);
-  const widgets = hud.widgets.map((widget) => ({
+function cloneWidget(widget) {
+  return {
     id: widget.id,
     type: widget.type,
     bindings: Object.assign({}, widget.bindings),
@@ -64,7 +67,12 @@ function cloneHud(hud) {
     z_index: widget.z_index,
     visible: widget.visible,
     style: Object.assign({}, widget.style),
-  }));
+  };
+}
+
+function cloneHud(hud) {
+  const theme = Object.assign({}, hud.theme);
+  const widgets = hud.widgets.map((widget) => cloneWidget(widget));
   return {
     preset: hud.preset,
     theme,
@@ -106,10 +114,18 @@ function getWidget(widgetId) {
 }
 
 function getWidgetSchema(widgetId) {
-  if (!savedState || !savedState.schema || !savedState.schema.widgets) {
+  if (!savedState || !savedState.schema) {
     return null;
   }
-  return savedState.schema.widgets[widgetId] ?? null;
+  const widgetSchema = savedState.schema.widgets?.[widgetId];
+  if (widgetSchema) {
+    return widgetSchema;
+  }
+  const widget = getWidget(widgetId);
+  if (!widget) {
+    return null;
+  }
+  return savedState.schema.widget_types?.[widget.type] ?? null;
 }
 
 function ensureSelection() {
@@ -122,6 +138,24 @@ function ensureSelection() {
   }
   const orderedWidgets = getWidgetsInLayerOrder();
   selectedWidgetId = orderedWidgets[orderedWidgets.length - 1]?.id ?? draftState.widgets[0].id;
+}
+
+function syncThemeDefaultsAccordion() {
+  if (elements.themeDefaultsToggle) {
+    if (typeof elements.themeDefaultsToggle.setAttribute === "function") {
+      elements.themeDefaultsToggle.setAttribute("aria-expanded", isThemeDefaultsOpen ? "true" : "false");
+    } else {
+      elements.themeDefaultsToggle["aria-expanded"] = isThemeDefaultsOpen ? "true" : "false";
+    }
+  }
+  if (elements.themeDefaultsPanel) {
+    elements.themeDefaultsPanel.hidden = !isThemeDefaultsOpen;
+  }
+}
+
+function toggleThemeDefaults(force = null) {
+  isThemeDefaultsOpen = typeof force === "boolean" ? force : !isThemeDefaultsOpen;
+  syncThemeDefaultsAccordion();
 }
 
 function clearPreviewUrl() {
@@ -395,6 +429,73 @@ function syncOverlayBounds() {
     elements.snapGuides.style.width = `${previewRect.width}px`;
     elements.snapGuides.style.height = `${previewRect.height}px`;
   }
+}
+
+function nextOverlayWidgetId(baseId) {
+  if (!draftState) {
+    return baseId;
+  }
+  const existingIds = new Set(draftState.widgets.map((widget) => widget.id));
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+  let suffix = 2;
+  let candidate = `${baseId}-${suffix}`;
+  while (existingIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseId}-${suffix}`;
+  }
+  return candidate;
+}
+
+function addOverlayFromLibrary(entry) {
+  if (!draftState || !entry?.defaults) {
+    return;
+  }
+  const widget = cloneWidget(entry.defaults);
+  widget.id = nextOverlayWidgetId(widget.id);
+  draftState.widgets.push(widget);
+  selectedWidgetId = widget.id;
+  renderWidgetSelection();
+  renderInspector();
+  renderCanvasOverlays();
+  schedulePreviewRefresh();
+  updateSaveButtonState();
+  setStatusMessage(`Added ${entry.label}.`, "info");
+}
+
+function renderOverlayLibrary() {
+  if (!elements.overlayLibraryList) {
+    return;
+  }
+  elements.overlayLibraryList.innerHTML = "";
+  const catalog = savedState?.overlay_library ?? [];
+  if (catalog.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Overlay presets load here when the editor state is ready.";
+    elements.overlayLibraryList.appendChild(empty);
+    return;
+  }
+
+  catalog.forEach((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "overlay-library-item";
+    button.addEventListener("click", () => addOverlayFromLibrary(entry));
+
+    const title = document.createElement("p");
+    title.className = "overlay-library-item__title";
+    title.textContent = entry.label;
+    button.appendChild(title);
+
+    const meta = document.createElement("p");
+    meta.className = "overlay-library-item__meta";
+    meta.textContent = entry.type.replaceAll("_", " ");
+    button.appendChild(meta);
+
+    elements.overlayLibraryList.appendChild(button);
+  });
 }
 
 function renderWidgetSelection() {
@@ -703,6 +804,7 @@ function renderInspector() {
     elements.preset.value = draftState.preset;
   }
   renderThemeControls();
+  syncThemeDefaultsAccordion();
 
   const widget = getWidget(selectedWidgetId);
   if (!widget) {
@@ -1072,11 +1174,13 @@ async function loadState() {
   try {
     savedState = await fetchJson("/api/state", "Failed to load HUD config");
     draftState = cloneHud(savedState.hud);
+    isThemeDefaultsOpen = false;
     ensureSelection();
     if (elements.preview) {
       elements.preview.style.aspectRatio = `${savedState.preview.width} / ${savedState.preview.height}`;
     }
     updateSaveButtonState();
+    renderOverlayLibrary();
     renderWidgetSelection();
     renderInspector();
     renderCanvasOverlays();
@@ -1093,6 +1197,9 @@ async function loadState() {
     if (elements.themeControls) {
       elements.themeControls.innerHTML = "";
     }
+    if (elements.overlayLibraryList) {
+      elements.overlayLibraryList.innerHTML = "";
+    }
     if (elements.preview) {
       elements.preview.removeAttribute("src");
     }
@@ -1103,6 +1210,7 @@ async function loadState() {
       elements.inspectorContent.innerHTML = "";
     }
     activeSnapGuides = [];
+    toggleThemeDefaults(false);
     renderSnapGuides();
     updateSaveButtonState();
     setStatusMessage(readErrorMessage(error, "Failed to load HUD config"));
@@ -1153,6 +1261,9 @@ if (elements.helpModal) {
 if (elements.saveButton) {
   elements.saveButton.addEventListener("click", saveState);
 }
+if (elements.themeDefaultsToggle) {
+  elements.themeDefaultsToggle.addEventListener("click", () => toggleThemeDefaults());
+}
 if (elements.preview) {
   elements.preview.addEventListener("load", () => {
     syncOverlayBounds();
@@ -1176,4 +1287,6 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
 }
 
 updateSaveButtonState();
+syncThemeDefaultsAccordion();
+renderOverlayLibrary();
 void loadState();

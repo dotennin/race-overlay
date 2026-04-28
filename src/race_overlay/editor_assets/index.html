@@ -8,6 +8,30 @@
   </head>
   <body>
     <div id="app-shell">
+      <aside id="overlay-library-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Overlay library</p>
+          <h2>Add overlay</h2>
+          <p class="panel-copy">Append HUD blocks with one click.</p>
+        </div>
+
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Browse</h2>
+            <span class="section-meta">All supported HUDs</span>
+          </div>
+          <div id="overlay-library-list"></div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
+            <h2>Layers</h2>
+            <span class="section-meta">Current canvas order</span>
+          </div>
+          <div id="widget-list"></div>
+        </section>
+      </aside>
+
       <main id="canvas-panel">
         <header id="toolbar">
           <div>
@@ -52,7 +76,19 @@
             <h2>Theme defaults</h2>
             <span class="section-meta">Schema-backed</span>
           </div>
-          <div id="theme-controls"></div>
+          <button
+            id="theme-defaults-toggle"
+            type="button"
+            class="accordion-toggle"
+            aria-controls="theme-defaults-panel"
+            aria-expanded="false"
+          >
+            <span>Theme defaults</span>
+            <span class="accordion-toggle__icon" aria-hidden="true">+</span>
+          </button>
+          <div id="theme-defaults-panel" hidden>
+            <div id="theme-controls"></div>
+          </div>
         </section>
 
         <div id="inspector-content"></div>

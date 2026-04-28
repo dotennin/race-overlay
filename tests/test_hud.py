@@ -2395,6 +2395,49 @@ def test_render_hud_frame_accepts_lap_state_kwarg() -> None:
     assert image.size == (1280, 720)
 
 
+def test_render_hud_frame_accepts_lap_states_kwarg() -> None:
+    lap = ActivityLap(
+        start_time=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+        total_time_seconds=300.0,
+        distance_m=1000.0,
+        avg_heart_rate_bpm=None,
+        max_heart_rate_bpm=None,
+        max_speed_mps=None,
+        elevation_delta_m=None,
+        calories=None,
+    )
+    row = LapWaterfallRow(lap=lap, lap_index=0, is_dimmed=False)
+    state = LapWaterfallState(
+        completed_laps=[lap],
+        visible_rows=[row],
+        newest_lap_index=0,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+
+    image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=_make_lap_waterfall_config(),
+        elapsed_seconds=6852,
+        total_distance_m=42195.0,
+        lap_states={"lap-table": state},
+    )
+    assert image.size == (1280, 720)
+
+
 def test_render_hud_frame_accepts_lap_state_none() -> None:
     """render_hud_frame must accept lap_state=None (default) without raising."""
     hud_value = HudSample(
@@ -2636,6 +2679,7 @@ def test_render_hud_frame_lap_waterfall_renders_column_headers_with_active_lap_s
     labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
     assert "Lap" in labels
     assert "Pace" in labels
+    assert "Distance" in labels
 
 
 def test_render_hud_frame_lap_waterfall_renders_nothing_when_lap_state_is_none(
@@ -2734,6 +2778,26 @@ def test_render_hud_frame_lap_waterfall_renders_lap_numbers_in_rows(
     assert "3" in labels
 
 
+def test_render_hud_frame_lap_waterfall_renders_distance_and_pace_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    lap = _make_test_activity_lap(distance_m=410.0, total_time_seconds=73.0, avg_heart_rate_bpm=91)
+    lap_state = LapWaterfallState(
+        completed_laps=[lap],
+        visible_rows=[LapWaterfallRow(lap=lap, lap_index=0, is_dimmed=False)],
+        newest_lap_index=0,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+
+    labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
+
+    assert "0.41 km" in labels
+    assert any(label.endswith("/km") for label in labels)
+    assert "91 bpm" in labels
+
+
 def test_render_hud_frame_lap_waterfall_renders_elevation_with_sign(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2756,6 +2820,61 @@ def test_render_hud_frame_lap_waterfall_renders_elevation_with_sign(
     assert any("-8" in label for label in labels), f"Expected '-8' in labels: {labels}"
 
 
+def test_render_hud_frame_lap_waterfall_prefers_widget_scoped_lap_states(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_lap_waterfall_config()
+    fallback_lap = _make_test_activity_lap(distance_m=1000.0)
+    widget_lap = _make_test_activity_lap(distance_m=410.0)
+    fallback_state = LapWaterfallState(
+        completed_laps=[fallback_lap],
+        visible_rows=[LapWaterfallRow(lap=fallback_lap, lap_index=0, is_dimmed=False)],
+        newest_lap_index=0,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+    widget_state = LapWaterfallState(
+        completed_laps=[widget_lap],
+        visible_rows=[LapWaterfallRow(lap=widget_lap, lap_index=2, is_dimmed=False)],
+        newest_lap_index=2,
+        oldest_row_dimmed=False,
+        opacity=1.0,
+    )
+
+    labels: list[str] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        labels.append(str(text))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=config,
+        elapsed_seconds=6852,
+        lap_state=fallback_state,
+        lap_states={"lap-table": widget_state},
+    )
+
+    assert "3" in labels
+    assert "0.41 km" in labels
+    assert "1.00 km" not in labels
+
+
 def test_render_hud_frame_lap_waterfall_always_show_overrides_opacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2771,3 +2890,14 @@ def test_render_hud_frame_lap_waterfall_always_show_overrides_opacity(
     )
     labels = _render_labels_with_lap_state(monkeypatch, config, lap_state)
     assert "Lap" in labels
+
+
+def test_lap_waterfall_column_widths_do_not_exceed_available_width() -> None:
+    widths = hud_module._lap_waterfall_column_widths(
+        ["lap", "distance", "time", "pace", "elevation", "heart_rate"],
+        180,
+        RenderScale(x=1.0, y=1.0, draw=1.0),
+    )
+
+    assert sum(widths) == 180
+    assert all(width >= 1 for width in widths)
