@@ -270,7 +270,13 @@ def _render_clip_via_cache(
     _emit(progress, f"Building overlay cache at {overlay_path}")
     build_overlay_video(frame_dir, clip.fps, overlay_path)
     _emit(progress, f"Composing final video at {output_path}")
-    compose_video(clip.path, overlay_path, output_path, plan=plan)
+    compose_video(
+        clip.path,
+        overlay_path,
+        output_path,
+        plan=plan,
+        attached_pic_stream_index=clip.attached_pic_stream_index,
+    )
 
 
 def run_pipeline(config_path: Path, only: str | None = None, *, progress: ProgressReporter | None = None) -> None:

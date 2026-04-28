@@ -1282,8 +1282,18 @@ def _draw_lap_waterfall(
 
     title_font = _title_font(widget, theme, scale)
     value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
     header_color = tuple(theme.text_rgba)
     row_color = tuple(theme.text_rgba)
+    transition_rows = None
+    transition_progress = 1.0
+    if (
+        lap_state.transition_previous_rows is not None
+        and len(lap_state.transition_previous_rows) == len(lap_state.visible_rows)
+        and 0.0 <= lap_state.transition_progress < 1.0
+    ):
+        transition_rows = lap_state.transition_previous_rows
+        transition_progress = max(0.0, min(lap_state.transition_progress, 1.0))
 
     columns = _lap_waterfall_columns(widget)
     pad_x = _scale_x(scale, 10)
@@ -1323,11 +1333,33 @@ def _draw_lap_waterfall(
 
     # Data rows
     dimmed_alpha = round(255 * 0.65)
-    for i, row in enumerate(lap_state.visible_rows):
-        y = first_row_y + i * row_h
-        alpha = dimmed_alpha if row.is_dimmed else 255
+    if transition_rows is not None:
+        for i, row in enumerate(transition_rows):
+            y = first_row_y + int(round((i - transition_progress) * row_h))
+            alpha = dimmed_alpha if row.is_dimmed or i <= 1 else 255
+            color = (row_color[0], row_color[1], row_color[2], alpha)
+            values = _lap_waterfall_row_values(row, columns)
+            x = pad_x
+            for val, cw in zip(values, col_widths):
+                _draw_lap_waterfall_cell(
+                    widget_image,
+                    left=x,
+                    top=y,
+                    width=cw,
+                    height=row_h,
+                    text=val,
+                    fill=color,
+                    font=value_font,
+                    unit_font=unit_font,
+                    gap=_scale_x(scale, 6),
+                )
+                x += cw
+
+        new_row = lap_state.visible_rows[-1]
+        y = first_row_y + int(round((len(transition_rows) - transition_progress) * row_h))
+        alpha = dimmed_alpha if new_row.is_dimmed else 255
         color = (row_color[0], row_color[1], row_color[2], alpha)
-        values = _lap_waterfall_row_values(row, columns)
+        values = _lap_waterfall_row_values(new_row, columns)
         x = pad_x
         for val, cw in zip(values, col_widths):
             _draw_lap_waterfall_cell(
@@ -1339,8 +1371,31 @@ def _draw_lap_waterfall(
                 text=val,
                 fill=color,
                 font=value_font,
+                unit_font=unit_font,
+                gap=_scale_x(scale, 6),
             )
             x += cw
+    else:
+        for i, row in enumerate(lap_state.visible_rows):
+            y = first_row_y + i * row_h
+            alpha = dimmed_alpha if row.is_dimmed else 255
+            color = (row_color[0], row_color[1], row_color[2], alpha)
+            values = _lap_waterfall_row_values(row, columns)
+            x = pad_x
+            for val, cw in zip(values, col_widths):
+                _draw_lap_waterfall_cell(
+                    widget_image,
+                    left=x,
+                    top=y,
+                    width=cw,
+                    height=row_h,
+                    text=val,
+                    fill=color,
+                    font=value_font,
+                    unit_font=unit_font,
+                    gap=_scale_x(scale, 6),
+                )
+                x += cw
 
     # Apply overall widget opacity
     if opacity < 1.0:
@@ -1460,14 +1515,72 @@ def _draw_lap_waterfall_cell(
     text: str,
     fill: tuple[int, int, int, int],
     font: ImageFont.FreeTypeFont,
+    unit_font: ImageFont.FreeTypeFont | None = None,
+    gap: int = 0,
 ) -> None:
     if width <= 0 or height <= 0 or not text:
         return
     cell_image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     cell_draw = ImageDraw.Draw(cell_image)
+
+    if unit_font is None:
+        bbox = cell_draw.textbbox((0, 0), text, font=font)
+        cell_draw.text((-bbox[0], -bbox[1]), text, fill=fill, font=font)
+        _alpha_composite_clipped(image, cell_image, left, top)
+        return
+
+    try:
+        transparent_fill = (fill[0], fill[1], fill[2], 0)
+    except Exception:
+        transparent_fill = (0, 0, 0, 0)
     bbox = cell_draw.textbbox((0, 0), text, font=font)
-    cell_draw.text((-bbox[0], -bbox[1]), text, fill=fill, font=font)
-    image.alpha_composite(cell_image, (left, top))
+    cell_draw.text((-bbox[0], -bbox[1]), text, fill=transparent_fill, font=font)
+
+    if " " in text:
+        value_text, unit_text = text.rsplit(" ", 1)
+    else:
+        i = len(text) - 1
+        while i >= 0 and (text[i].isalpha() or text[i] in ("/", "%")):
+            i -= 1
+        if i == len(text) - 1:
+            cell_draw.text((-bbox[0], -bbox[1]), text, fill=fill, font=font)
+            _alpha_composite_clipped(image, cell_image, left, top)
+            return
+        value_text = text[: i + 1]
+        unit_text = text[i + 1 :]
+
+    value_bbox = cell_draw.textbbox((0, 0), value_text, font=font)
+    unit_bbox = cell_draw.textbbox((0, 0), unit_text, font=unit_font)
+
+    value_x = -value_bbox[0]
+    value_y = -value_bbox[1]
+    cell_draw.text((value_x, value_y), value_text, fill=fill, font=font)
+
+    value_width = value_bbox[2] - value_bbox[0]
+    unit_x = value_x + value_width + gap
+    unit_y = value_y + (value_bbox[3] - unit_bbox[3])
+    cell_draw.text((unit_x, unit_y), unit_text, fill=fill, font=unit_font)
+    _alpha_composite_clipped(image, cell_image, left, top)
+
+
+def _alpha_composite_clipped(image: Image.Image, overlay: Image.Image, left: int, top: int) -> None:
+    if overlay.width <= 0 or overlay.height <= 0:
+        return
+    target_left = max(left, 0)
+    target_top = max(top, 0)
+    target_right = min(left + overlay.width, image.width)
+    target_bottom = min(top + overlay.height, image.height)
+    if target_right <= target_left or target_bottom <= target_top:
+        return
+    crop = overlay.crop(
+        (
+            target_left - left,
+            target_top - top,
+            target_right - left,
+            target_bottom - top,
+        )
+    )
+    image.alpha_composite(crop, (target_left, target_top))
 
 
 def _lap_waterfall_text_height(

@@ -193,7 +193,7 @@ def _sample_laps() -> list[ActivityLap]:
 def _sample_lap_waterfall_states(hud_config: HudConfig) -> dict[str, LapWaterfallState]:
     laps = _sample_laps()
     last_lap = laps[-1]
-    when = last_lap.start_time + timedelta(seconds=last_lap.total_time_seconds, milliseconds=1)
+    when = last_lap.start_time + timedelta(seconds=last_lap.total_time_seconds + 1)
     return {
         widget.id: lap_waterfall_state_for_widget(_preview_lap_waterfall_widget(widget), laps, when)
         for widget in hud_config.widgets

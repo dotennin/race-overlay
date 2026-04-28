@@ -9,6 +9,7 @@ def test_probe_video_reads_creation_time_and_duration(monkeypatch) -> None:
     payload = {
         "streams": [
             {
+                "index": 0,
                 "codec_type": "video",
                 "codec_name": "h264",
                 "width": 3840,
@@ -21,6 +22,7 @@ def test_probe_video_reads_creation_time_and_duration(monkeypatch) -> None:
                 "color_primaries": "bt709",
             },
             {
+                "index": 1,
                 "codec_type": "audio",
                 "codec_name": "aac",
                 "bit_rate": "192000",
@@ -54,10 +56,49 @@ def test_probe_video_reads_creation_time_and_duration(monkeypatch) -> None:
     assert clip.audio_bitrate == 192_000
 
 
+def test_probe_video_detects_attached_thumbnail_stream(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": 1280,
+                "height": 720,
+                "avg_frame_rate": "30000/1001",
+                "pix_fmt": "yuv420p",
+            },
+            {
+                "codec_type": "audio",
+                "codec_name": "aac",
+            },
+            {
+                "index": 2,
+                "codec_type": "video",
+                "codec_name": "mjpeg",
+                "disposition": {"attached_pic": 1},
+            },
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    clip = probe_video(tmp_path / "clip.MP4")
+
+    assert clip.has_attached_pic is True
+    assert clip.attached_pic_stream_index == 2
+
+
 def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Path) -> None:
     payload = {
         "streams": [
             {
+                "index": 0,
                 "codec_type": "video",
                 "codec_name": "h264",
                 "width": 1280,
@@ -70,6 +111,7 @@ def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Pa
                 "color_primaries": "bt709",
             },
             {
+                "index": 1,
                 "codec_type": "audio",
                 "codec_name": "aac",
                 "bit_rate": "192000",
@@ -97,12 +139,15 @@ def test_probe_video_includes_source_encoding_metadata(monkeypatch, tmp_path: Pa
     assert clip.color_primaries == "bt709"
     assert clip.audio_codec == "aac"
     assert clip.audio_bitrate == 192_000
+    assert clip.has_attached_pic is False
+    assert clip.attached_pic_stream_index is None
 
 
 def test_probe_video_treats_na_bitrate_as_missing(monkeypatch, tmp_path: Path) -> None:
     payload = {
         "streams": [
             {
+                "index": 0,
                 "codec_type": "video",
                 "codec_name": "h264",
                 "width": 1280,
@@ -161,6 +206,8 @@ def test_probe_video_handles_missing_optional_metadata(monkeypatch, tmp_path: Pa
     assert clip.color_primaries is None
     assert clip.audio_codec is None
     assert clip.audio_bitrate is None
+    assert clip.has_attached_pic is False
+    assert clip.attached_pic_stream_index is None
 
 
 def test_probe_video_handles_zero_zero_avg_frame_rate(monkeypatch, tmp_path: Path) -> None:

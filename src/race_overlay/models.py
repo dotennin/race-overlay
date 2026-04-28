@@ -50,6 +50,8 @@ class VideoClip:
     color_transfer: str | None = None
     audio_codec: str | None = None
     audio_bitrate: int | None = None
+    has_attached_pic: bool = False
+    attached_pic_stream_index: int | None = None
 
 
 @dataclass(slots=True, frozen=True)

@@ -24,6 +24,20 @@ def _parse_rate(value: str) -> float:
     return float(numerator) / denominator_value
 
 
+def _has_attached_pic_disposition(stream: dict[str, object]) -> bool:
+    disposition = stream.get("disposition")
+    if not isinstance(disposition, dict):
+        return False
+    return disposition.get("attached_pic") == 1
+
+
+def _attached_pic_stream_index(streams: list[dict[str, object]]) -> int | None:
+    for stream in streams:
+        if stream.get("codec_type") == "video" and _has_attached_pic_disposition(stream):
+            return int(stream["index"])
+    return None
+
+
 def probe_video(path: Path) -> VideoClip:
     payload = json.loads(
         subprocess.check_output(
@@ -31,12 +45,9 @@ def probe_video(path: Path) -> VideoClip:
                 "ffprobe",
                 "-v",
                 "error",
+                "-show_streams",
                 "-show_entries",
-                (
-                    "format=duration:format_tags=creation_time:"
-                    "stream=codec_type,codec_name,width,height,avg_frame_rate,"
-                    "pix_fmt,bit_rate,color_space,color_transfer,color_primaries"
-                ),
+                "format=duration:format_tags=creation_time",
                 "-of",
                 "json",
                 str(path),
@@ -46,6 +57,7 @@ def probe_video(path: Path) -> VideoClip:
     )
     video_stream = next(stream for stream in payload["streams"] if stream["codec_type"] == "video")
     audio_stream = next((stream for stream in payload["streams"] if stream["codec_type"] == "audio"), {})
+    attached_pic_stream_index = _attached_pic_stream_index(payload["streams"])
     return VideoClip(
         path=path,
         creation_time=_parse_time(payload["format"]["tags"]["creation_time"]),
@@ -61,4 +73,6 @@ def probe_video(path: Path) -> VideoClip:
         color_transfer=video_stream.get("color_transfer"),
         audio_codec=audio_stream.get("codec_name"),
         audio_bitrate=_parse_optional_int(audio_stream.get("bit_rate")),
+        has_attached_pic=attached_pic_stream_index is not None,
+        attached_pic_stream_index=attached_pic_stream_index,
     )

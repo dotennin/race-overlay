@@ -6,6 +6,7 @@ from race_overlay.models import ActivityLap, ActivityTrack, HudSample
 
 LAP_WATERFALL_DEFAULT_VISIBLE_ROWS = 5
 LAP_WATERFALL_DEFAULT_FADE_AFTER_SECONDS = 5.0
+LAP_WATERFALL_SCROLL_SECONDS = 0.45
 
 
 @dataclass(slots=True, frozen=True)
@@ -22,6 +23,8 @@ class LapWaterfallState:
     newest_lap_index: int | None
     oldest_row_dimmed: bool
     opacity: float
+    transition_previous_rows: list[LapWaterfallRow] | None = None
+    transition_progress: float = 1.0
 
 
 def lap_waterfall_state(
@@ -65,6 +68,22 @@ def lap_waterfall_state(
     completed_laps = [lap for _, lap in completed]
     window = completed[-visible_rows:]
     window_full = len(completed) >= visible_rows
+    transition_previous_rows: list[LapWaterfallRow] | None = None
+    transition_progress = 1.0
+
+    if window_full and len(completed) > visible_rows:
+        elapsed_since_end = (when - newest_lap_end).total_seconds()
+        if 0.0 <= elapsed_since_end < LAP_WATERFALL_SCROLL_SECONDS:
+            transition_progress = max(0.0, min(elapsed_since_end / LAP_WATERFALL_SCROLL_SECONDS, 1.0))
+            previous_window = completed[-visible_rows - 1:-1]
+            transition_previous_rows = [
+                LapWaterfallRow(
+                    lap=lap,
+                    lap_index=i,
+                    is_dimmed=(pos == 0),
+                )
+                for pos, (i, lap) in enumerate(previous_window)
+            ]
 
     rows = [
         LapWaterfallRow(
@@ -81,6 +100,8 @@ def lap_waterfall_state(
         newest_lap_index=newest_index,
         oldest_row_dimmed=window_full,
         opacity=opacity,
+        transition_previous_rows=transition_previous_rows,
+        transition_progress=transition_progress,
     )
 
 

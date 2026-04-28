@@ -222,28 +222,51 @@ def build_overlay_video(frame_dir: Path, fps: float, output_path: Path) -> None:
     )
 
 
-def _append_output_encoding_args(command: list[str], plan: OutputEncodingPlan) -> None:
+def _append_main_video_encoding_args(command: list[str], plan: OutputEncodingPlan) -> None:
     command.extend(
         [
-            "-c:v",
+            "-c:v:0",
             plan.video_codec,
-            "-pix_fmt",
+            "-pix_fmt:v:0",
             plan.pixel_format,
         ]
     )
     if plan.video_bitrate is not None and plan.video_bitrate > 0:
-        command.extend(["-b:v", str(plan.video_bitrate)])
+        command.extend(["-b:v:0", str(plan.video_bitrate)])
     if plan.color_space is not None:
-        command.extend(["-colorspace", plan.color_space])
+        command.extend(["-colorspace:v:0", plan.color_space])
     if plan.color_transfer is not None:
-        command.extend(["-color_trc", plan.color_transfer])
+        command.extend(["-color_trc:v:0", plan.color_transfer])
     if plan.color_primaries is not None:
-        command.extend(["-color_primaries", plan.color_primaries])
+        command.extend(["-color_primaries:v:0", plan.color_primaries])
+
+
+def _append_attached_pic_passthrough_args(command: list[str], *, attached_pic_stream_index: int | None) -> None:
+    if attached_pic_stream_index is None:
+        return
+    command.extend(
+        [
+            "-map",
+            f"0:{attached_pic_stream_index}",
+            "-c:v:1",
+            "copy",
+            "-disposition:v:1",
+            "attached_pic",
+        ]
+    )
+
+
+def _append_audio_encoding_args(command: list[str], plan: OutputEncodingPlan) -> None:
     command.extend(plan.audio_args)
 
 
 def build_cache_compose_command(
-    *, source_path: Path, overlay_path: Path, output_path: Path, plan: OutputEncodingPlan
+    *,
+    source_path: Path,
+    overlay_path: Path,
+    output_path: Path,
+    plan: OutputEncodingPlan,
+    attached_pic_stream_index: int | None,
 ) -> list[str]:
     command = [
         "ffmpeg",
@@ -259,18 +282,28 @@ def build_cache_compose_command(
         "-map",
         AUDIO_STREAM_SELECTOR,
     ]
-    _append_output_encoding_args(command, plan)
+    _append_main_video_encoding_args(command, plan)
+    _append_audio_encoding_args(command, plan)
+    _append_attached_pic_passthrough_args(command, attached_pic_stream_index=attached_pic_stream_index)
     command.append(str(output_path))
     return command
 
 
-def compose_video(source_path: Path, overlay_path: Path, output_path: Path, *, plan: OutputEncodingPlan) -> None:
+def compose_video(
+    source_path: Path,
+    overlay_path: Path,
+    output_path: Path,
+    *,
+    plan: OutputEncodingPlan,
+    attached_pic_stream_index: int | None,
+) -> None:
     subprocess.run(
         build_cache_compose_command(
             source_path=source_path,
             overlay_path=overlay_path,
             output_path=output_path,
             plan=plan,
+            attached_pic_stream_index=attached_pic_stream_index,
         ),
         check=True,
     )
@@ -363,7 +396,9 @@ def build_stream_compose_command(
         "-map",
         AUDIO_STREAM_SELECTOR,
     ]
-    _append_output_encoding_args(command, plan)
+    _append_main_video_encoding_args(command, plan)
+    _append_audio_encoding_args(command, plan)
+    _append_attached_pic_passthrough_args(command, attached_pic_stream_index=clip.attached_pic_stream_index)
     command.append(str(output_path))
     return command
 

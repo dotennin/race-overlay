@@ -23,6 +23,8 @@ def make_clip(**overrides) -> VideoClip:
         color_transfer="bt709",
         audio_codec="aac",
         audio_bitrate=192_000,
+        has_attached_pic=False,
+        attached_pic_stream_index=None,
     )
     return replace(clip, **overrides)
 
@@ -220,17 +222,17 @@ def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
         "[video]",
         "-map",
         "0:a:0?",
-        "-c:v",
+        "-c:v:0",
         "libx264",
-        "-pix_fmt",
+        "-pix_fmt:v:0",
         "yuv420p",
-        "-b:v",
+        "-b:v:0",
         "16000000",
-        "-colorspace",
+        "-colorspace:v:0",
         "bt709",
-        "-color_trc",
+        "-color_trc:v:0",
         "bt709",
-        "-color_primaries",
+        "-color_primaries:v:0",
         "bt709",
         "-c:a",
         "copy",
@@ -261,6 +263,7 @@ def test_build_cache_compose_command_uses_single_audio_stream() -> None:
         overlay_path=Path("overlay.mov"),
         output_path=Path("output.MP4"),
         plan=plan,
+        attached_pic_stream_index=None,
     )
 
     assert command == [
@@ -276,17 +279,17 @@ def test_build_cache_compose_command_uses_single_audio_stream() -> None:
         "[video]",
         "-map",
         "0:a:0?",
-        "-c:v",
+        "-c:v:0",
         "libx264",
-        "-pix_fmt",
+        "-pix_fmt:v:0",
         "yuv420p",
-        "-b:v",
+        "-b:v:0",
         "16000000",
-        "-colorspace",
+        "-colorspace:v:0",
         "bt709",
-        "-color_trc",
+        "-color_trc:v:0",
         "bt709",
-        "-color_primaries",
+        "-color_primaries:v:0",
         "bt709",
         "-c:a",
         "copy",
@@ -309,6 +312,7 @@ def test_stream_and_cache_compose_commands_select_the_same_audio_stream() -> Non
         overlay_path=Path("overlay.mov"),
         output_path=Path("output.MP4"),
         plan=plan,
+        attached_pic_stream_index=None,
     )
 
     assert stream_command[stream_command.index("-map") + 1] == "[video]"
@@ -328,7 +332,7 @@ def test_build_stream_compose_command_omits_non_positive_bitrate() -> None:
         plan=plan,
     )
 
-    assert "-b:v" not in command
+    assert "-b:v:0" not in command
 
 
 def test_build_stream_compose_command_omits_dropped_color_metadata() -> None:
@@ -348,9 +352,9 @@ def test_build_stream_compose_command_omits_dropped_color_metadata() -> None:
         plan=plan,
     )
 
-    assert "-colorspace" not in command
-    assert "-color_trc" not in command
-    assert "-color_primaries" not in command
+    assert "-colorspace:v:0" not in command
+    assert "-color_trc:v:0" not in command
+    assert "-color_primaries:v:0" not in command
 
 
 def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
@@ -378,6 +382,7 @@ def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
         overlay_path=Path("overlay.mov"),
         output_path=Path("output.MP4"),
         plan=plan,
+        attached_pic_stream_index=4,
     )
 
     assert captured["check"] is True
@@ -394,21 +399,27 @@ def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
         "[video]",
         "-map",
         "0:a:0?",
-        "-c:v",
+        "-c:v:0",
         "libx265",
-        "-pix_fmt",
+        "-pix_fmt:v:0",
         "yuv420p10le",
-        "-b:v",
+        "-b:v:0",
         "16000000",
-        "-colorspace",
+        "-colorspace:v:0",
         "bt2020nc",
-        "-color_trc",
+        "-color_trc:v:0",
         "smpte2084",
-        "-color_primaries",
+        "-color_primaries:v:0",
         "bt2020",
         "-c:a",
         "aac",
         "-b:a",
         "128000",
+        "-map",
+        "0:4",
+        "-c:v:1",
+        "copy",
+        "-disposition:v:1",
+        "attached_pic",
         "output.MP4",
     ]

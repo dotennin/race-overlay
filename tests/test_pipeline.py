@@ -213,6 +213,8 @@ def test_run_pipeline_passes_encoding_plan_to_cache_compose(tmp_path: Path, monk
             color_primaries="bt2020",
             audio_codec="mp3",
             audio_bitrate=128_000,
+            has_attached_pic=True,
+            attached_pic_stream_index=4,
         ),
     )
     monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
@@ -225,8 +227,11 @@ def test_run_pipeline_passes_encoding_plan_to_cache_compose(tmp_path: Path, monk
     )
     monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
 
-    def fake_compose_video(source_path: Path, overlay_path: Path, output_path: Path, *, plan) -> None:
+    def fake_compose_video(
+        source_path: Path, overlay_path: Path, output_path: Path, *, plan, attached_pic_stream_index
+    ) -> None:
         captured_plan["plan"] = plan
+        captured_plan["attached_pic_stream_index"] = attached_pic_stream_index
 
     monkeypatch.setattr("race_overlay.pipeline.compose_video", fake_compose_video)
 
@@ -236,6 +241,7 @@ def test_run_pipeline_passes_encoding_plan_to_cache_compose(tmp_path: Path, monk
     assert captured_plan["plan"].pixel_format == "yuv420p10le"
     assert captured_plan["plan"].video_bitrate == 4_000_000
     assert captured_plan["plan"].audio_args == ("-c:a", "aac", "-b:a", "128000")
+    assert captured_plan["attached_pic_stream_index"] == 4
     assert any("falling back to cache" in message for message in messages)
 
 
