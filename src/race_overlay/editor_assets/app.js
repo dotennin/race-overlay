@@ -5,8 +5,6 @@ const GRID_SNAP_SIZE = 8;
 const SNAP_THRESHOLD = 6;
 const PREVIEW_DEBOUNCE_MS = 120;
 const PREVIEW_DRAG_THROTTLE_MS = 90;
-const PROJECT_ACTIVITY_ACCEPT = ".fit,.tcx";
-const PROJECT_VIDEO_ACCEPT = ".mp4,.mov,.m4v,.mkv,.avi,.mpeg,.mpg,.mts,.m2ts";
 const SUPPORTED_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 const STYLE_THEME_FALLBACKS = {
   font_family: "font_family",
@@ -42,6 +40,11 @@ const elements = {
   widgetList: document.getElementById("widget-list"),
   inspectorContent: document.getElementById("inspector-content"),
   saveButton: document.getElementById("save-button"),
+  renderButton: document.getElementById("render-button"),
+  renderPanel: document.getElementById("render-panel"),
+  renderStatus: document.getElementById("render-status"),
+  renderStage: document.getElementById("render-stage"),
+  renderConsole: document.getElementById("render-console"),
   helpButton: document.getElementById("help-button"),
   helpCloseButton: document.getElementById("help-close-button"),
   helpModal: document.getElementById("help-modal"),
@@ -62,6 +65,8 @@ let lastPreviewRefreshAt = 0;
 let dragPreviewDirty = false;
 let activeInteraction = null;
 let activeSnapGuides = [];
+let renderState = { status: "idle", stage: "", logs: [], error: null };
+let renderPollTimer = null;
 const accordionStates = {
   browse: true,
   layers: true,
@@ -107,6 +112,14 @@ function readErrorMessage(error, fallback) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function updateRenderButtonState() {
+  if (!elements.renderButton) {
+    return;
+  }
+  elements.renderButton.disabled = !draftState || renderState.status === "running";
+  elements.renderButton.textContent = renderState.status === "running" ? "Rendering..." : "Render";
+}
+
 async function fetchJson(url, fallbackMessage) {
   const response = await fetch(url);
   const payload = await response.json().catch(() => null);
@@ -114,6 +127,60 @@ async function fetchJson(url, fallbackMessage) {
     throw new Error(payload?.error ?? fallbackMessage);
   }
   return payload;
+}
+
+function renderRenderPanel() {
+  if (!elements.renderPanel || !elements.renderStatus || !elements.renderStage || !elements.renderConsole) {
+    return;
+  }
+  const logs = Array.isArray(renderState.logs) ? renderState.logs : [];
+  const status = renderState.status || "idle";
+  const stage = renderState.error || renderState.stage || "Ready to render the current draft.";
+  elements.renderPanel.hidden = status === "idle" && logs.length === 0 && !renderState.error;
+  elements.renderStatus.textContent = status;
+  elements.renderStage.textContent = stage;
+  elements.renderConsole.textContent = logs.length ? logs.join("\n") : "No render output yet.";
+  updateRenderButtonState();
+}
+
+function scheduleRenderPoll(delay = 300) {
+  if (renderPollTimer) {
+    window.clearTimeout(renderPollTimer);
+  }
+  renderPollTimer = window.setTimeout(() => {
+    renderPollTimer = null;
+    void pollRenderStatus();
+  }, delay);
+}
+
+async function pollRenderStatus() {
+  try {
+    renderState = await fetchJson("/api/render", "Failed to load render status");
+    renderRenderPanel();
+    if (renderState.status === "running") {
+      scheduleRenderPoll();
+    }
+  } catch (error) {
+    setStatusMessage(readErrorMessage(error, "Failed to load render status"));
+  }
+}
+
+async function startRenderJob() {
+  if (!draftState) {
+    return;
+  }
+  const response = await fetch("/api/render", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cloneHud(draftState)),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed to start render");
+  }
+  renderState = payload;
+  renderRenderPanel();
+  scheduleRenderPoll(150);
 }
 
 function getWidgetsInLayerOrder() {
@@ -819,71 +886,6 @@ function buildProjectSummary(labelText, valueText) {
   return wrapper;
 }
 
-function selectionPathFromFile(file) {
-  return file.webkitRelativePath || file.name;
-}
-
-function buildFileInput({ accept, multiple = false, onSelection }) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = accept;
-  if (multiple) {
-    input.multiple = true;
-  }
-  input.addEventListener("change", async () => {
-    const files = Array.from(input.files ?? []);
-    if (files.length === 0) {
-      return;
-    }
-    await onSelection(files);
-    input.value = "";
-  });
-  return input;
-}
-
-function buildDirectoryPickerControl({ onSelection }) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "project-config-folder-picker";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "Choose output folder";
-  const fallbackInput = document.createElement("input");
-  fallbackInput.type = "file";
-  fallbackInput.setAttribute("webkitdirectory", "");
-  fallbackInput.hidden = true;
-
-  async function emitSelectionFromFiles(files) {
-    if (!files.length) {
-      return;
-    }
-    const [firstFile] = files;
-    const nextOutputDir = firstFile.webkitRelativePath ? firstFile.webkitRelativePath.split("/")[0] : firstFile.name;
-    if (!nextOutputDir) {
-      return;
-    }
-    await onSelection(nextOutputDir);
-    fallbackInput.value = "";
-  }
-
-  button.addEventListener("click", async () => {
-    if (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function") {
-      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-      if (!handle) {
-        return;
-      }
-      await onSelection(handle.name);
-      return;
-    }
-    fallbackInput.click();
-  });
-  fallbackInput.addEventListener("change", async () => {
-    await emitSelectionFromFiles(Array.from(fallbackInput.files ?? []));
-  });
-
-  wrapper.append(button, fallbackInput);
-  return wrapper;
-}
-
 async function saveProjectState(payload) {
   const response = await fetch("/api/project", {
     method: "POST",
@@ -896,6 +898,33 @@ async function saveProjectState(payload) {
   }
   await loadState();
   setStatusMessage("Saved project settings.", "info");
+}
+
+async function pickProjectPath(field) {
+  const response = await fetch("/api/project/picker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed to choose project path");
+  }
+  return payload.value ?? null;
+}
+
+function buildProjectPickerButton(labelText, field, onSelection) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = labelText;
+  button.addEventListener("click", async () => {
+    const value = await pickProjectPath(field);
+    if (!value || (Array.isArray(value) && value.length === 0)) {
+      return;
+    }
+    await onSelection(value);
+  });
+  return button;
 }
 
 function renderProjectControls() {
@@ -924,17 +953,13 @@ function renderProjectControls() {
   appendField(
     activityCard,
     "Choose activity file",
-    buildFileInput({
-      accept: PROJECT_ACTIVITY_ACCEPT,
-      onSelection: async (files) => {
-        const [file] = files;
+    buildProjectPickerButton("Choose activity file", "activity_file", async (value) => {
         try {
-          await saveProjectState({ activity_file: selectionPathFromFile(file) });
+          await saveProjectState({ activity_file: value });
         } catch (error) {
           setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
         }
-      },
-    }),
+      }),
     true,
   );
   elements.projectActivityFile.appendChild(activityCard);
@@ -946,18 +971,13 @@ function renderProjectControls() {
     selectedVideos.length ? selectedVideos.join("\n") : "Not set",
   ));
   videosCard.appendChild(
-    buildFileInput({
-      accept: PROJECT_VIDEO_ACCEPT,
-      multiple: true,
-      onSelection: async (files) => {
-        const nextVideos = files.map(selectionPathFromFile);
+    buildProjectPickerButton("Choose video files", "video_globs", async (value) => {
         try {
-          await saveProjectState({ video_globs: nextVideos });
+          await saveProjectState({ video_globs: value });
         } catch (error) {
           setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
         }
-      },
-    }),
+      }),
   );
   elements.projectVideoGlobs.appendChild(videosCard);
 
@@ -967,15 +987,13 @@ function renderProjectControls() {
   appendField(
     outputCard,
     "Output directory",
-    buildDirectoryPickerControl({
-      onSelection: async (value) => {
+    buildProjectPickerButton("Choose output folder", "output_dir", async (value) => {
         try {
           await saveProjectState({ output_dir: value });
         } catch (error) {
           setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
         }
-      },
-    }),
+      }),
     true,
   );
   elements.projectOutputDir.appendChild(outputCard);
@@ -1434,6 +1452,7 @@ async function loadState() {
     toggleThemeDefaults(false);
     renderSnapGuides();
     updateSaveButtonState();
+    updateRenderButtonState();
     setStatusMessage(readErrorMessage(error, "Failed to load HUD config"));
     return false;
   }
@@ -1482,6 +1501,16 @@ if (elements.helpModal) {
 if (elements.saveButton) {
   elements.saveButton.addEventListener("click", saveState);
 }
+if (elements.renderButton) {
+  elements.renderButton.addEventListener("click", async () => {
+    try {
+      await startRenderJob();
+      setStatusMessage("Render started.", "info");
+    } catch (error) {
+      setStatusMessage(readErrorMessage(error, "Failed to start render"));
+    }
+  });
+}
 if (elements.browseToggle) {
   elements.browseToggle.addEventListener("click", () => toggleAccordion("browse"));
 }
@@ -1514,7 +1543,10 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
 }
 
 updateSaveButtonState();
+updateRenderButtonState();
+renderRenderPanel();
 syncAccordionPanels();
 renderProjectControls();
 renderOverlayLibrary();
 void loadState();
+void pollRenderStatus();
