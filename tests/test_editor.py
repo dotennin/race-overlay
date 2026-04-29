@@ -959,11 +959,6 @@ def test_save_editor_payload_rejects_invalid_numeric_widget_values(tmp_path: Pat
             "theme": {"note_text": "Kasumigaura"},
             "widgets": serialize_hud_config(broadcast_runner_preset())["widgets"],
         },
-        {
-            "preset": "broadcast-runner",
-            "theme": serialize_hud_config(broadcast_runner_preset())["theme"],
-            "widgets": [serialize_hud_config(broadcast_runner_preset())["widgets"][0]],
-        },
     ],
 )
 def test_save_editor_payload_rejects_incomplete_hud_documents(tmp_path: Path, payload: dict[str, object]) -> None:
@@ -990,6 +985,22 @@ def test_save_editor_payload_rejects_invalid_theme_values(tmp_path: Path) -> Non
         save_editor_payload(config_path, payload)
 
     assert load_config(config_path).hud.theme.text_rgba == [247, 251, 255, 255]
+
+
+def test_save_editor_payload_allows_partial_widgets_removal(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    # Keep only the first widget, removing all others
+    payload["widgets"] = [payload["widgets"][0]]
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+    assert len(reloaded.hud.widgets) == 1
+    assert reloaded.hud.widgets[0].id == payload["widgets"][0]["id"]
 
 
 def test_save_editor_payload_rejects_partial_widget_objects(tmp_path: Path) -> None:

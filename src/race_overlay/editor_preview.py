@@ -273,6 +273,57 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                     },
                 },
                 {
+                    "type": "stat_block",
+                    "label": "Elevation stat",
+                    "defaults": {
+                        "id": "elevation-stat",
+                        "type": "stat_block",
+                        "bindings": {"value": "altitude_m"},
+                        "anchor": "top-left",
+                        "x": 44,
+                        "y": 146,
+                        "width": 160,
+                        "height": 86,
+                        "z_index": 30,
+                        "visible": True,
+                        "style": {"label": "Elevation", "unit": "M"},
+                    },
+                },
+                {
+                    "type": "stat_block",
+                    "label": "Distance stat",
+                    "defaults": {
+                        "id": "distance-stat",
+                        "type": "stat_block",
+                        "bindings": {"value": "distance_m"},
+                        "anchor": "top-left",
+                        "x": 44,
+                        "y": 320,
+                        "width": 210,
+                        "height": 88,
+                        "z_index": 30,
+                        "visible": True,
+                        "style": {"label": "Distance", "unit": "KM"},
+                    },
+                },
+                {
+                    "type": "stat_block",
+                    "label": "Heart rate stat",
+                    "defaults": {
+                        "id": "heart-rate-stat",
+                        "type": "stat_block",
+                        "bindings": {"value": "heart_rate_bpm"},
+                        "anchor": "top-right",
+                        "x": 1100,
+                        "y": 132,
+                        "width": 138,
+                        "height": 82,
+                        "z_index": 30,
+                        "visible": True,
+                        "style": {"label": "Heart rate", "unit": "BPM", "align": "right"},
+                    },
+                },
+                {
                     "type": "metric_card",
                     "label": "Metric card",
                     "defaults": {
@@ -287,6 +338,74 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                         "z_index": 20,
                         "visible": True,
                         "style": {"label": "Pace", "variant": "compact"},
+                    },
+                },
+                {
+                    "type": "metric_card",
+                    "label": "Pace chip",
+                    "defaults": {
+                        "id": "pace-chip",
+                        "type": "metric_card",
+                        "bindings": {"value": "pace_seconds_per_km"},
+                        "anchor": "bottom-right",
+                        "x": 980,
+                        "y": 560,
+                        "width": 120,
+                        "height": 72,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Pace", "variant": "compact"},
+                    },
+                },
+                {
+                    "type": "metric_card",
+                    "label": "Cadence chip",
+                    "defaults": {
+                        "id": "cadence-chip",
+                        "type": "metric_card",
+                        "bindings": {"value": "cadence_spm"},
+                        "anchor": "bottom-right",
+                        "x": 1110,
+                        "y": 560,
+                        "width": 120,
+                        "height": 72,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Cadence", "variant": "compact"},
+                    },
+                },
+                {
+                    "type": "metric_card",
+                    "label": "Elapsed chip",
+                    "defaults": {
+                        "id": "elapsed-chip",
+                        "type": "metric_card",
+                        "bindings": {"value": "elapsed_seconds"},
+                        "anchor": "bottom-right",
+                        "x": 980,
+                        "y": 642,
+                        "width": 120,
+                        "height": 72,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Elapsed", "variant": "compact"},
+                    },
+                },
+                {
+                    "type": "metric_card",
+                    "label": "Speed chip",
+                    "defaults": {
+                        "id": "speed-chip",
+                        "type": "metric_card",
+                        "bindings": {"value": "speed_mps"},
+                        "anchor": "bottom-right",
+                        "x": 1110,
+                        "y": 642,
+                        "width": 120,
+                        "height": 72,
+                        "z_index": 20,
+                        "visible": True,
+                        "style": {"label": "Speed", "variant": "compact"},
                     },
                 },
                 {
@@ -654,13 +773,13 @@ def _validate_complete_hud_payload(existing_hud: HudConfig, payload: dict[str, o
     widgets_payload = payload.get("widgets")
     if not isinstance(widgets_payload, list):
         raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
+    
+    # Allow empty widgets list only if existing HUD also has no widgets
+    if len(widgets_payload) == 0 and len(existing_hud.widgets) > 0:
+        raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
 
-    expected_widget_ids = [widget["id"] for widget in expected["widgets"]]
     payload_widget_ids = [widget.get("id") for widget in widgets_payload if isinstance(widget, dict)]
-    if (
-        len(payload_widget_ids) != len(widgets_payload)
-        or not set(expected_widget_ids).issubset(set(payload_widget_ids))
-    ):
+    if len(payload_widget_ids) != len(widgets_payload):
         raise ValueError("editor save requires a complete HUD document with all theme fields and widgets")
 
     expected_widgets_by_id = {widget["id"]: widget for widget in expected["widgets"]}

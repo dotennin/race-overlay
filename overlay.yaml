@@ -1,6 +1,8 @@
-activity_file: activity_22577902433.tcx
+activity_file: /Users/dotennin-mac14/Downloads/400x8.tcx
 video_globs:
-- "/Users/dotennin-mac14/Downloads/\u971E\u30B1\u6D66\u30DE\u30E9\u30BD\u30F3/inputs/DJI_20260419100952_0016_D.MP4"
+- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4734.MOV
+- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4735.MOV
+- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4736.MOV
 output_dir: /Users/dotennin-mac14/Downloads/test/
 cache_dir: cache
 timeline:
@@ -99,21 +101,6 @@ hud:
       show_unit: true
       transparent_panel: true
       align: left
-  - id: distance-stat
-    type: stat_block
-    bindings:
-      value: distance_m
-    anchor: top-left
-    x: 496
-    y: 632
-    width: 196
-    height: 84
-    z_index: 30
-    visible: false
-    style:
-      label: Distance
-      unit: KM
-      decimals: 2
   - id: heart-rate-stat
     type: stat_block
     bindings:
