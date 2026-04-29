@@ -23,6 +23,7 @@ from race_overlay.ffmpeg import (
     open_stream_compose_process,
     resolve_output_encoding_plan,
 )
+from race_overlay.editor_render import RenderJobCanceledError, RenderProgressUpdate
 from race_overlay.hud import (
     prime_route_map_caches,
     render_hud_frame as _render_hud_frame,
@@ -34,6 +35,7 @@ from race_overlay.sampling import lap_waterfall_states_for_widgets, sample_at, S
 from race_overlay.video_probe import probe_video
 
 ProgressReporter = Callable[[str], None]
+ProgressUpdateReporter = Callable[[RenderProgressUpdate], None]
 
 
 @dataclass(slots=True, frozen=True)
@@ -147,6 +149,28 @@ def render_hud_frame(
 def _emit(progress: ProgressReporter | None, message: str) -> None:
     if progress is not None:
         progress(message)
+
+
+def _emit_progress_update(
+    progress_update: ProgressUpdateReporter | None,
+    *,
+    clip_name: str,
+    frame_index: int,
+    frame_total: int,
+    message: str,
+) -> None:
+    if progress_update is None:
+        return
+    progress_update(
+        RenderProgressUpdate(
+            phase="rendering",
+            message=message,
+            clip_name=clip_name,
+            frame_index=frame_index,
+            frame_total=frame_total,
+            percent=int((frame_index / frame_total) * 100),
+        )
+    )
 
 
 def _discover_videos(patterns: list[str]) -> list[Path]:
@@ -293,6 +317,9 @@ def _render_clip_streaming(
     context: RenderContext,
     output_path: Path,
     plan,
+    progress: ProgressReporter | None = None,
+    progress_update: ProgressUpdateReporter | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     try:
         process = open_stream_compose_process(source_path=clip.path, clip=clip, output_path=output_path, plan=plan)
@@ -304,13 +331,26 @@ def _render_clip_streaming(
         raise RecoverableStreamingComposeError("ffmpeg stdin pipe unavailable")
 
     try:
-        for index in range(_frame_count(clip)):
+        frame_total = max(_frame_count(clip), 1)
+        for index in range(frame_total):
+            if cancel_requested is not None and cancel_requested():
+                raise RenderJobCanceledError("render canceled")
             image = _render_overlay_frame(
                 activity=activity,
                 clip=clip,
                 alignment=alignment,
                 index=index,
                 context=context,
+            )
+            frame_number = index + 1
+            message = f"Rendering {clip.path.name} frame {frame_number}/{frame_total}"
+            _emit(progress, message)
+            _emit_progress_update(
+                progress_update,
+                clip_name=clip.path.name,
+                frame_index=frame_number,
+                frame_total=frame_total,
+                message=message,
             )
             try:
                 process.stdin.write(image.tobytes())
@@ -346,17 +386,32 @@ def _render_clip_via_cache(
     output_dir: Path,
     progress: ProgressReporter | None,
     plan,
+    progress_update: ProgressUpdateReporter | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     frame_dir = cache_dir / clip.path.stem / "frames"
     frame_dir.mkdir(parents=True, exist_ok=True)
     _emit(progress, f"Generating frame cache at {frame_dir}")
-    for index in range(_frame_count(clip)):
+    frame_total = max(_frame_count(clip), 1)
+    for index in range(frame_total):
+        if cancel_requested is not None and cancel_requested():
+            raise RenderJobCanceledError("render canceled")
         image = _render_overlay_frame(
             activity=activity,
             clip=clip,
             alignment=alignment,
             index=index,
             context=context,
+        )
+        frame_number = index + 1
+        message = f"Rendering {clip.path.name} frame {frame_number}/{frame_total}"
+        _emit(progress, message)
+        _emit_progress_update(
+            progress_update,
+            clip_name=clip.path.name,
+            frame_index=frame_number,
+            frame_total=frame_total,
+            message=message,
         )
         image.save(frame_dir / f"{index:06d}.png")
 
@@ -374,7 +429,14 @@ def _render_clip_via_cache(
     )
 
 
-def run_pipeline(config_path: Path, only: str | None = None, *, progress: ProgressReporter | None = None) -> None:
+def run_pipeline(
+    config_path: Path,
+    only: str | None = None,
+    *,
+    progress: ProgressReporter | None = None,
+    progress_update: ProgressUpdateReporter | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
+) -> None:
     _emit(progress, f"Loading config from {config_path}")
     config = load_config(config_path)
     activity_path = resolve_path_from_config(config_path, config.activity_file)
@@ -431,6 +493,9 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
                 context=context,
                 output_path=output_path,
                 plan=plan,
+                progress=progress,
+                progress_update=progress_update,
+                cancel_requested=cancel_requested,
             )
         except RecoverableStreamingComposeError as exc:
             _emit(progress, f"Streaming unavailable for {clip.path.name}; falling back to cache: {exc}")
@@ -444,5 +509,7 @@ def run_pipeline(config_path: Path, only: str | None = None, *, progress: Progre
                 output_dir=output_dir,
                 progress=progress,
                 plan=plan,
+                progress_update=progress_update,
+                cancel_requested=cancel_requested,
             )
         _emit(progress, f"Finished {clip.path.name}")

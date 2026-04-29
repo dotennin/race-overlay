@@ -43,7 +43,10 @@ const elements = {
   renderButton: document.getElementById("render-button"),
   renderPanel: document.getElementById("render-panel"),
   renderStatus: document.getElementById("render-status"),
+  renderProgress: document.getElementById("render-progress"),
+  renderPercent: document.getElementById("render-progress-percent"),
   renderStage: document.getElementById("render-stage"),
+  renderCancelButton: document.getElementById("render-cancel-button"),
   renderConsole: document.getElementById("render-console"),
   helpButton: document.getElementById("help-button"),
   helpCloseButton: document.getElementById("help-close-button"),
@@ -65,7 +68,7 @@ let lastPreviewRefreshAt = 0;
 let dragPreviewDirty = false;
 let activeInteraction = null;
 let activeSnapGuides = [];
-let renderState = { status: "idle", stage: "", logs: [], error: null };
+let renderState = { status: "idle", stage: "", logs: [], error: null, cancel_requested: false, clip_name: null, frame_index: null, frame_total: null, percent: null };
 let renderPollTimer = null;
 const accordionStates = {
   browse: true,
@@ -136,10 +139,27 @@ function renderRenderPanel() {
   const logs = Array.isArray(renderState.logs) ? renderState.logs : [];
   const status = renderState.status || "idle";
   const stage = renderState.error || renderState.stage || "Ready to render the current draft.";
+  const percent = renderState.percent ?? 0;
+  const clipName = renderState.clip_name ? ` — ${renderState.clip_name}` : "";
+  const frameInfo = renderState.frame_index && renderState.frame_total ? ` (${renderState.frame_index}/${renderState.frame_total})` : "";
+  const progressDisplay = percent > 0 && status === "running" ? `${percent}%${clipName}${frameInfo}` : "";
+  
   elements.renderPanel.hidden = status === "idle" && logs.length === 0 && !renderState.error;
   elements.renderStatus.textContent = status;
   elements.renderStage.textContent = stage;
   elements.renderConsole.textContent = logs.length ? logs.join("\n") : "No render output yet.";
+  
+  if (elements.renderProgress) {
+    elements.renderProgress.value = percent;
+    elements.renderProgress.hidden = status !== "running";
+  }
+  if (elements.renderPercent) {
+    elements.renderPercent.textContent = progressDisplay;
+    elements.renderPercent.hidden = status !== "running";
+  }
+  if (elements.renderCancelButton) {
+    elements.renderCancelButton.hidden = status !== "running";
+  }
   updateRenderButtonState();
 }
 
@@ -181,6 +201,27 @@ async function startRenderJob() {
   renderState = payload;
   renderRenderPanel();
   scheduleRenderPoll(150);
+}
+
+async function cancelRenderJob() {
+  if (!window.confirm("Cancel current render? Partial output will be kept.")) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/render/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to cancel render");
+    }
+    renderState = payload;
+    renderRenderPanel();
+    scheduleRenderPoll(150);
+  } catch (error) {
+    setStatusMessage(readErrorMessage(error, "Failed to cancel render"));
+  }
 }
 
 function getWidgetsInLayerOrder() {
@@ -1511,6 +1552,9 @@ if (elements.renderButton) {
       setStatusMessage(readErrorMessage(error, "Failed to start render"));
     }
   });
+}
+if (elements.renderCancelButton) {
+  elements.renderCancelButton.addEventListener("click", cancelRenderJob);
 }
 if (elements.browseToggle) {
   elements.browseToggle.addEventListener("click", () => toggleAccordion("browse"));

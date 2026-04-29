@@ -21,6 +21,7 @@ from race_overlay.editor_preview import (
     save_editor_project_payload,
     save_editor_payload,
 )
+from race_overlay.editor_render import RenderJobCanceledError
 from race_overlay.editor_server import (
     NativePickerUnavailableError,
     _ACTIVE_SERVERS,
@@ -1620,6 +1621,94 @@ def test_api_render_rejects_second_start_while_job_is_running(
     assert final_status["status"] == "succeeded"
 
 
+def test_api_render_cancel_marks_job_canceled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    release_render = Event()
+    render_entered = Event()
+
+    def cancelable_run_pipeline(_snapshot_path: Path, only=None, *, progress=None, cancel_requested=None) -> None:
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        while cancel_requested is not None and not cancel_requested():
+            if release_render.wait(timeout=0.05):
+                break
+        if cancel_requested is not None and cancel_requested():
+            raise RenderJobCanceledError("render canceled")
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", cancelable_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        start_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            start_connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            start_response = start_connection.getresponse()
+            start_body = json.loads(start_response.read().decode("utf-8"))
+        finally:
+            start_connection.close()
+
+        assert start_response.status == 202
+        assert start_body["status"] == "running"
+        assert render_entered.wait(timeout=5)
+
+        cancel_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            cancel_connection.request("POST", "/api/render/cancel")
+            cancel_response = cancel_connection.getresponse()
+            cancel_body = json.loads(cancel_response.read().decode("utf-8"))
+        finally:
+            cancel_connection.close()
+
+        final_status = {}
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            status_connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                status_connection.request("GET", "/api/render")
+                status_response = status_connection.getresponse()
+                final_status = json.loads(status_response.read().decode("utf-8"))
+            finally:
+                status_connection.close()
+            if final_status.get("status") == "canceled":
+                break
+            time.sleep(0.05)
+
+    assert cancel_response.status == 200
+    assert cancel_body["cancel_requested"] is True
+    assert final_status["status"] == "canceled"
+    assert final_status["cancel_requested"] is True
+    assert final_status["error"] == "render canceled"
+    assert "Loading config from snapshot" in final_status["logs"]
+
+
 def test_api_render_reports_failed_job(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2559,14 +2648,27 @@ def test_editor_assets_expose_render_panel_controls() -> None:
 
     assert 'id="render-button"' in html
     assert 'id="render-panel"' in html
+    assert 'id="render-status"' in html
+    assert 'id="render-stage"' in html
+    assert 'id="render-console"' in html
+    assert 'id="render-progress"' in html
+    assert 'id="render-cancel-button"' in html
     assert html.index('id="canvas-stage"') < html.index('id="render-panel"')
     assert 'fetch("/api/render"' in app_js
+    assert 'fetch("/api/render/cancel"' in app_js
     assert "function startRenderJob(" in app_js
     assert "function pollRenderStatus(" in app_js
+    assert "function cancelRenderJob(" in app_js
     assert "renderButton" in app_js
+    assert "renderCancelButton" in app_js
+    assert "renderProgress" in app_js
+    assert "renderPercent" in app_js
+    assert "window.confirm(\"Cancel current render? Partial output will be kept.\")" in app_js
     assert "renderPanel" in app_js
     assert "#render-panel" in css
     assert ".render-console" in css
+    assert "#render-progress" in css
+    assert "#render-cancel-button" in css
 
 
 def test_load_state_reenables_render_button_after_hud_load() -> None:

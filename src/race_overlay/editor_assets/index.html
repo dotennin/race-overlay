@@ -92,7 +92,12 @@
             <h2>Render</h2>
             <span id="render-status" class="section-meta">Idle</span>
           </div>
+          <div class="render-progress">
+            <progress id="render-progress" max="100" value="0"></progress>
+            <span id="render-progress-percent" class="render-progress__value">0%</span>
+          </div>
           <p id="render-stage" class="field-hint">Ready to render the current draft.</p>
+          <button id="render-cancel-button" type="button" hidden>Cancel</button>
           <pre id="render-console" class="render-console"></pre>
         </section>
       </main>

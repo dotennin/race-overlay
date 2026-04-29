@@ -149,9 +149,24 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
-            if request_path not in {"/api/config", "/api/preview", "/api/project", "/api/project/picker", "/api/render"}:
+            if request_path not in {
+                "/api/config",
+                "/api/preview",
+                "/api/project",
+                "/api/project/picker",
+                "/api/render",
+                "/api/render/cancel",
+            }:
                 self.send_response(404)
                 self.end_headers()
+                return
+            if request_path == "/api/render/cancel":
+                try:
+                    state = _RENDER_JOB_MANAGER.cancel()
+                except ValueError as exc:
+                    self._write_json(409, {"error": str(exc)})
+                    return
+                self._write_json(200, state)
                 return
             try:
                 content_length = int(self.headers.get("Content-Length", "0"))

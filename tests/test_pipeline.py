@@ -191,6 +191,46 @@ def test_run_pipeline_prefers_streaming_and_reports_encoding_plan(tmp_path: Path
     assert any("Finished clip.MP4" in message for message in messages)
 
 
+def test_run_pipeline_emits_structured_frame_progress_updates(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    updates = []
+    writes: list[bytes] = []
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: VideoClip(
+            path=path,
+            creation_time=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+            duration_seconds=2.0,
+            width=1280,
+            height=720,
+            fps=2.0,
+        ),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append, progress_update=updates.append)
+
+    assert updates
+    assert updates[0].clip_name == "clip.MP4"
+    assert updates[0].frame_index == 1
+    assert updates[-1].percent == 100
+    assert updates[-1].frame_total == 4
+
+
 def test_run_pipeline_passes_encoding_plan_to_cache_compose(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
