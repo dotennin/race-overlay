@@ -338,6 +338,26 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                         "z_index": 36,
                         "visible": True,
                         "style": {
+                            "variant": "compact",
+                            "format": "",
+                        },
+                    },
+                },
+                {
+                    "type": "context_card",
+                    "label": "Time chip",
+                    "defaults": {
+                        "id": "time-chip",
+                        "type": "context_card",
+                        "bindings": {"value": "timestamp"},
+                        "anchor": "top-left",
+                        "x": 44,
+                        "y": 40,
+                        "width": 292,
+                        "height": 56,
+                        "z_index": 36,
+                        "visible": True,
+                        "style": {
                             "variant": "timestamp_chip",
                             "format": "%Y/%m/%d %H:%M:%S",
                         },
