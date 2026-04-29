@@ -5,6 +5,8 @@ const GRID_SNAP_SIZE = 8;
 const SNAP_THRESHOLD = 6;
 const PREVIEW_DEBOUNCE_MS = 120;
 const PREVIEW_DRAG_THROTTLE_MS = 90;
+const PROJECT_ACTIVITY_ACCEPT = ".fit,.tcx";
+const PROJECT_VIDEO_ACCEPT = ".mp4,.mov,.m4v,.mkv,.avi,.mpeg,.mpg,.mts,.m2ts";
 const SUPPORTED_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 const STYLE_THEME_FALLBACKS = {
   font_family: "font_family",
@@ -26,7 +28,6 @@ const elements = {
   statusMessage: document.getElementById("status-message"),
   preset: document.getElementById("preset"),
   projectConfigPanel: document.getElementById("project-config-panel"),
-  projectConfigPath: document.getElementById("project-config-path"),
   projectActivityFile: document.getElementById("project-activity-file"),
   projectVideoGlobs: document.getElementById("project-video-globs"),
   projectOutputDir: document.getElementById("project-output-dir"),
@@ -818,6 +819,71 @@ function buildProjectSummary(labelText, valueText) {
   return wrapper;
 }
 
+function selectionPathFromFile(file) {
+  return file.webkitRelativePath || file.name;
+}
+
+function buildFileInput({ accept, multiple = false, onSelection }) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = accept;
+  if (multiple) {
+    input.multiple = true;
+  }
+  input.addEventListener("change", async () => {
+    const files = Array.from(input.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    await onSelection(files);
+    input.value = "";
+  });
+  return input;
+}
+
+function buildDirectoryPickerControl({ onSelection }) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "project-config-folder-picker";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Choose output folder";
+  const fallbackInput = document.createElement("input");
+  fallbackInput.type = "file";
+  fallbackInput.setAttribute("webkitdirectory", "");
+  fallbackInput.hidden = true;
+
+  async function emitSelectionFromFiles(files) {
+    if (!files.length) {
+      return;
+    }
+    const [firstFile] = files;
+    const nextOutputDir = firstFile.webkitRelativePath ? firstFile.webkitRelativePath.split("/")[0] : firstFile.name;
+    if (!nextOutputDir) {
+      return;
+    }
+    await onSelection(nextOutputDir);
+    fallbackInput.value = "";
+  }
+
+  button.addEventListener("click", async () => {
+    if (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function") {
+      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      if (!handle) {
+        return;
+      }
+      await onSelection(handle.name);
+      return;
+    }
+    fallbackInput.click();
+  });
+  fallbackInput.addEventListener("change", async () => {
+    await emitSelectionFromFiles(Array.from(fallbackInput.files ?? []));
+  });
+
+  wrapper.append(button, fallbackInput);
+  return wrapper;
+}
+
 async function saveProjectState(payload) {
   const response = await fetch("/api/project", {
     method: "POST",
@@ -834,7 +900,7 @@ async function saveProjectState(payload) {
 
 function renderProjectControls() {
   if (
-    !elements.projectConfigPath
+    !elements.projectConfigPanel
     || !elements.projectActivityFile
     || !elements.projectVideoGlobs
     || !elements.projectOutputDir
@@ -842,12 +908,8 @@ function renderProjectControls() {
     return;
   }
   const project = savedState?.project;
-  const activityChoices = project?.choices?.activity_files ?? [];
-  const videoChoices = project?.choices?.video_files ?? [];
-  const outputChoices = project?.choices?.output_dirs ?? [];
   const selectedVideos = Array.isArray(project?.video_globs) ? [...project.video_globs] : [];
 
-  elements.projectConfigPath.innerHTML = "";
   elements.projectActivityFile.innerHTML = "";
   elements.projectVideoGlobs.innerHTML = "";
   elements.projectOutputDir.innerHTML = "";
@@ -856,27 +918,22 @@ function renderProjectControls() {
     return;
   }
 
-  const configCard = document.createElement("section");
-  configCard.className = "project-config-card";
-  configCard.appendChild(buildProjectSummary("Overlay YAML", project.config_path?.path || project.config_path?.name || "Not available"));
-  elements.projectConfigPath.appendChild(configCard);
-
   const activityCard = document.createElement("section");
   activityCard.className = "project-config-card";
   activityCard.appendChild(buildProjectSummary("Current activity_file", project.activity_file || "Not set"));
   appendField(
     activityCard,
-    "Activity",
-    buildSelectInput(project.activity_file, activityChoices, async (value) => {
-      try {
-        await saveProjectState({
-          activity_file: value,
-          video_globs: selectedVideos,
-          output_dir: project.output_dir,
-        });
-      } catch (error) {
-        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
-      }
+    "Choose activity file",
+    buildFileInput({
+      accept: PROJECT_ACTIVITY_ACCEPT,
+      onSelection: async (files) => {
+        const [file] = files;
+        try {
+          await saveProjectState({ activity_file: selectionPathFromFile(file) });
+        } catch (error) {
+          setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+        }
+      },
     }),
     true,
   );
@@ -884,37 +941,24 @@ function renderProjectControls() {
 
   const videosCard = document.createElement("section");
   videosCard.className = "project-config-card";
-  videosCard.appendChild(buildProjectSummary("Current video_globs", selectedVideos.length ? selectedVideos.join("\n") : "Not set"));
-  const videoList = document.createElement("div");
-  videoList.className = "project-config-video-list";
-  videoChoices.forEach((videoPath) => {
-    const option = document.createElement("label");
-    option.className = "project-config-video-option";
-    const checkbox = buildCheckbox(selectedVideos.includes(videoPath), async (checked) => {
-      const nextVideos = checked
-        ? [...selectedVideos, videoPath]
-        : selectedVideos.filter((entry) => entry !== videoPath);
-      if (nextVideos.length === 0) {
-        setStatusMessage("Select at least one video file.");
-        renderProjectControls();
-        return;
-      }
-      try {
-        await saveProjectState({
-          activity_file: project.activity_file,
-          video_globs: nextVideos,
-          output_dir: project.output_dir,
-        });
-      } catch (error) {
-        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
-      }
-    });
-    const text = document.createElement("span");
-    text.textContent = videoPath;
-    option.append(checkbox, text);
-    videoList.appendChild(option);
-  });
-  videosCard.appendChild(videoList);
+  videosCard.appendChild(buildProjectSummary(
+    "Current video_globs",
+    selectedVideos.length ? selectedVideos.join("\n") : "Not set",
+  ));
+  videosCard.appendChild(
+    buildFileInput({
+      accept: PROJECT_VIDEO_ACCEPT,
+      multiple: true,
+      onSelection: async (files) => {
+        const nextVideos = files.map(selectionPathFromFile);
+        try {
+          await saveProjectState({ video_globs: nextVideos });
+        } catch (error) {
+          setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+        }
+      },
+    }),
+  );
   elements.projectVideoGlobs.appendChild(videosCard);
 
   const outputCard = document.createElement("section");
@@ -923,16 +967,14 @@ function renderProjectControls() {
   appendField(
     outputCard,
     "Output directory",
-    buildSelectInput(project.output_dir, outputChoices, async (value) => {
-      try {
-        await saveProjectState({
-          activity_file: project.activity_file,
-          video_globs: selectedVideos,
-          output_dir: value,
-        });
-      } catch (error) {
-        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
-      }
+    buildDirectoryPickerControl({
+      onSelection: async (value) => {
+        try {
+          await saveProjectState({ output_dir: value });
+        } catch (error) {
+          setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+        }
+      },
     }),
     true,
   );
@@ -1369,9 +1411,6 @@ async function loadState() {
     }
     if (elements.overlayLibraryList) {
       elements.overlayLibraryList.innerHTML = "";
-    }
-    if (elements.projectConfigPath) {
-      elements.projectConfigPath.innerHTML = "";
     }
     if (elements.projectActivityFile) {
       elements.projectActivityFile.innerHTML = "";

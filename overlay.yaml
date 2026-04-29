@@ -1,8 +1,9 @@
-activity_file: activity_22577902433.tcx
+activity_file: 400x8.tcx
 video_globs:
-- inputs/*.mp4
-- inputs/*.mov
-output_dir: rendered
+- IMG_4735.MOV
+- IMG_4736.MOV
+- IMG_4734.MOV
+output_dir: test
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0

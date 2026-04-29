@@ -1468,6 +1468,122 @@ def test_api_project_updates_activity_video_paths_and_output_dir(tmp_path: Path)
     assert reloaded.output_dir == "exports"
 
 
+def test_api_project_accepts_partial_updates_without_revalidating_untouched_fields(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "activities" / "backup.fit").write_bytes(b"FIT")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["*.MP4", "*.mov"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project",
+                body=json.dumps({"activity_file": "activities/backup.fit"}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 204
+    reloaded = load_config(config_path)
+    assert reloaded.activity_file == "activities/backup.fit"
+    assert reloaded.video_globs == ["*.MP4", "*.mov"]
+    assert reloaded.output_dir == "rendered"
+
+
+def test_api_project_accepts_browser_selected_video_names_without_config_relative_paths(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["*.MP4", "*.mov"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project",
+                body=json.dumps({"video_globs": ["clip-a.MP4", "clip-b.mov"]}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 204
+    reloaded = load_config(config_path)
+    assert reloaded.video_globs == ["clip-a.MP4", "clip-b.mov"]
+
+
+def test_api_project_accepts_browser_selected_output_dir_without_config_relative_path(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["clip-a.MP4"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project",
+                body=json.dumps({"output_dir": "chosen-output"}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 204
+    reloaded = load_config(config_path)
+    assert reloaded.output_dir == "chosen-output"
+
+
 def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -1709,7 +1825,6 @@ def test_editor_shell_contains_project_config_section_and_left_accordions() -> N
     html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
 
     assert 'id="project-config-panel"' in html
-    assert 'id="project-config-path"' in html
     assert 'id="project-activity-file"' in html
     assert 'id="project-video-globs"' in html
     assert 'id="project-output-dir"' in html
@@ -1966,12 +2081,20 @@ def test_editor_assets_support_project_saves_shared_accordions_and_style_first_i
     assert "function saveProjectState(" in app_js
     assert "function syncAccordionPanels(" in app_js
     assert 'setStatusMessage("Saved project settings.", "info")' in app_js
+    assert 'input.type = "file"' in app_js
+    assert 'input.multiple = true' in app_js
+    assert 'const PROJECT_ACTIVITY_ACCEPT = ".fit,.tcx";' in app_js
+    assert 'const PROJECT_VIDEO_ACCEPT = ".mp4,.mov,.m4v,.mkv,.avi,.mpeg,.mpg,.mts,.m2ts";' in app_js
+    assert "showDirectoryPicker" in app_js
+    assert 'setAttribute("webkitdirectory", "")' in app_js
     assert app_js.index('elements.inspectorContent.appendChild(styleCard);') < app_js.index(
         'elements.inspectorContent.appendChild(geometryCard);'
     )
     assert 'class="accordion-panel"' in html
     assert ".accordion-panel" in css
     assert "max-height" in css
+    assert "overflow-x: hidden;" in css
+    assert "project-config-path" not in html
 
 
 def test_editor_shell_uses_canvas_first_layout_copy() -> None:

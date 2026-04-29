@@ -472,10 +472,12 @@ def _require_project_payload_path(
 def _require_project_payload_video_paths(config_path: Path, value: object) -> list[str]:
     if not isinstance(value, list) or not value:
         raise ValueError("video_globs must be a non-empty list")
-    return [
-        _require_project_payload_path(config_path, entry, label="video_globs", file_kind="file")
-        for entry in value
-    ]
+    normalized: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry:
+            raise ValueError("video_globs entries must be non-empty strings")
+        normalized.append(entry)
+    return normalized
 
 
 def _path_relative_to_config_dir(config_path: Path, path: Path) -> str:
@@ -515,16 +517,33 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
 
 
 def save_editor_project_payload(config_path: Path, payload: dict[str, object]) -> None:
-    activity_file = _require_project_payload_path(config_path, payload.get("activity_file"), label="activity_file", file_kind="file")
-    video_globs = _require_project_payload_video_paths(config_path, payload.get("video_globs"))
-    output_dir = _require_project_payload_path(config_path, payload.get("output_dir"), label="output_dir", file_kind="directory")
+    if not isinstance(payload, dict):
+        raise TypeError("project config payload must be a JSON object")
+    allowed_keys = {"activity_file", "video_globs", "output_dir"}
+    unexpected_keys = set(payload) - allowed_keys
+    if unexpected_keys:
+        raise ValueError(f"project config payload contains unsupported fields: {', '.join(sorted(unexpected_keys))}")
+    if not any(key in payload for key in allowed_keys):
+        raise ValueError("project config payload requires at least one field")
+
+    latest_config = load_editor_config(config_path)
+    if "activity_file" in payload:
+        latest_config.activity_file = _require_project_payload_path(
+            config_path,
+            payload.get("activity_file"),
+            label="activity_file",
+            file_kind="file",
+        )
+    if "video_globs" in payload:
+        latest_config.video_globs = _require_project_payload_video_paths(config_path, payload.get("video_globs"))
+    if "output_dir" in payload:
+        output_dir = payload.get("output_dir")
+        if not isinstance(output_dir, str) or not output_dir:
+            raise ValueError("output_dir must be a non-empty string")
+        latest_config.output_dir = output_dir
 
     with _EDITOR_SAVE_LOCK:
         with _locked_config_save(config_path):
-            latest_config = load_editor_config(config_path)
-            latest_config.activity_file = activity_file
-            latest_config.video_globs = video_globs
-            latest_config.output_dir = output_dir
             save_config(config_path, latest_config)
 
 
