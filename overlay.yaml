@@ -1,9 +1,7 @@
-activity_file: /Users/dotennin-mac14/Downloads/400x8.tcx
+activity_file: /Users/dotennin-mac14/Downloads/activity_22734784243.tcx
 video_globs:
-- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4734.MOV
-- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4735.MOV
-- /Users/dotennin-mac14/Downloads/immich-20260428_220944/IMG_4736.MOV
-output_dir: /Users/dotennin-mac14/Downloads/test/
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502174433_0013_D.MP4
+output_dir: /Users/dotennin-mac14/Downloads/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0
