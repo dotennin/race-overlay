@@ -87,19 +87,29 @@
           <div id="snap-guides" aria-hidden="true"></div>
         </section>
 
-        <section id="render-panel" hidden>
-          <div class="section-heading">
-            <h2>Render</h2>
-            <span id="render-status" class="section-meta">Idle</span>
+        <section id="render-panel" hidden class="render-bottom-sheet">
+          <header class="render-bottom-sheet__header">
+            <div class="section-heading">
+              <h2>Render</h2>
+              <span id="render-status" class="section-meta">Idle</span>
+            </div>
+            <button id="render-minimize-button" type="button" class="render-bottom-sheet__minimize" aria-label="Minimize render console">−</button>
+          </header>
+          <div class="render-bottom-sheet__content">
+            <div class="render-progress">
+              <progress id="render-progress" max="100" value="0"></progress>
+              <span id="render-progress-percent" class="render-progress__value">0%</span>
+            </div>
+            <p id="render-stage" class="field-hint">Ready to render the current draft.</p>
+            <button id="render-cancel-button" type="button" hidden>Cancel</button>
+            <pre id="render-console" class="render-console"></pre>
           </div>
-          <div class="render-progress">
-            <progress id="render-progress" max="100" value="0"></progress>
-            <span id="render-progress-percent" class="render-progress__value">0%</span>
-          </div>
-          <p id="render-stage" class="field-hint">Ready to render the current draft.</p>
-          <button id="render-cancel-button" type="button" hidden>Cancel</button>
-          <pre id="render-console" class="render-console"></pre>
         </section>
+        
+        <div id="render-drawer-tab" hidden class="render-drawer-tab" aria-label="Minimized render console">
+          <span class="render-drawer-tab__icon">▲</span>
+          <span class="render-drawer-tab__label">Render</span>
+        </div>
       </main>
 
       <aside id="inspector-panel">

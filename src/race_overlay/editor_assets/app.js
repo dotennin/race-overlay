@@ -42,6 +42,8 @@ const elements = {
   saveButton: document.getElementById("save-button"),
   renderButton: document.getElementById("render-button"),
   renderPanel: document.getElementById("render-panel"),
+  renderMinimizeButton: document.getElementById("render-minimize-button"),
+  renderDrawerTab: document.getElementById("render-drawer-tab"),
   renderStatus: document.getElementById("render-status"),
   renderProgress: document.getElementById("render-progress"),
   renderPercent: document.getElementById("render-progress-percent"),
@@ -70,6 +72,7 @@ let activeInteraction = null;
 let activeSnapGuides = [];
 let renderState = { status: "idle", stage: "", logs: [], error: null, cancel_requested: false, clip_name: null, frame_index: null, frame_total: null, percent: null };
 let renderPollTimer = null;
+let renderPanelMinimized = false;
 const accordionStates = {
   browse: true,
   layers: true,
@@ -144,7 +147,27 @@ function renderRenderPanel() {
   const frameInfo = renderState.frame_index && renderState.frame_total ? ` (${renderState.frame_index}/${renderState.frame_total})` : "";
   const progressDisplay = percent > 0 && status === "running" ? `${percent}%${clipName}${frameInfo}` : "";
   
-  elements.renderPanel.hidden = status === "idle" && logs.length === 0 && !renderState.error;
+  // Determine if render console should be shown
+  const shouldShow = status === "running" || (status !== "idle" && logs.length > 0) || renderState.error;
+  const panelVisible = !renderPanelMinimized && shouldShow;
+  
+  // Update panel visibility
+  if (panelVisible && elements.renderPanel.hidden) {
+    elements.renderPanel.hidden = false;
+  } else if (!panelVisible && !elements.renderPanel.hidden) {
+    elements.renderPanel.hidden = true;
+  }
+  
+  // Update drawer tab visibility (show when console has content but is minimized)
+  if (elements.renderDrawerTab) {
+    const showDrawerTab = shouldShow && renderPanelMinimized;
+    if (showDrawerTab && elements.renderDrawerTab.hidden) {
+      elements.renderDrawerTab.hidden = false;
+    } else if (!showDrawerTab && !elements.renderDrawerTab.hidden) {
+      elements.renderDrawerTab.hidden = true;
+    }
+  }
+  
   elements.renderStatus.textContent = status;
   elements.renderStage.textContent = stage;
   elements.renderConsole.textContent = logs.length ? logs.join("\n") : "No render output yet.";
@@ -1007,10 +1030,10 @@ function renderProjectControls() {
 
   const videosCard = document.createElement("section");
   videosCard.className = "project-config-card";
-  videosCard.appendChild(buildProjectSummary(
-    "Current video_globs",
-    selectedVideos.length ? selectedVideos.join("\n") : "Not set",
-  ));
+  const videosSummaryText = selectedVideos.length 
+    ? `${selectedVideos.length} file(s) selected`
+    : "Not set";
+  videosCard.appendChild(buildProjectSummary("Current video_globs", videosSummaryText));
   videosCard.appendChild(
     buildProjectPickerButton("Choose video files", "video_globs", async (value) => {
         try {
@@ -1555,6 +1578,18 @@ if (elements.renderButton) {
 }
 if (elements.renderCancelButton) {
   elements.renderCancelButton.addEventListener("click", cancelRenderJob);
+}
+if (elements.renderMinimizeButton) {
+  elements.renderMinimizeButton.addEventListener("click", () => {
+    renderPanelMinimized = true;
+    renderRenderPanel();
+  });
+}
+if (elements.renderDrawerTab) {
+  elements.renderDrawerTab.addEventListener("click", () => {
+    renderPanelMinimized = false;
+    renderRenderPanel();
+  });
 }
 if (elements.browseToggle) {
   elements.browseToggle.addEventListener("click", () => toggleAccordion("browse"));
