@@ -251,8 +251,70 @@ button:disabled {
   transform: rotate(45deg);
 }
 
-#theme-defaults-panel[hidden] {
-  display: none;
+.accordion-panel {
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+  max-height: 960px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.accordion-panel[data-open="false"] {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+#project-config-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.project-config-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--panel-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.project-config-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.project-config-summary__value {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 247, 251, 0.86);
+  white-space: pre-wrap;
+}
+
+.project-config-video-list {
+  display: grid;
+  gap: 8px;
+}
+
+.project-config-video-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.project-config-video-option span {
+  color: var(--text);
 }
 
 #canvas-stage {

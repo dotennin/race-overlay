@@ -18,6 +18,7 @@ from race_overlay.editor_preview import (
     build_editor_state,
     load_editor_config,
     render_preview_payload,
+    save_editor_project_payload,
     save_editor_payload,
 )
 from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
@@ -45,6 +46,38 @@ def test_build_editor_state_exposes_widgets_for_preview() -> None:
     assert state["preview"]["width"] == 1280
     assert isinstance(state["revision"], str)
     assert state["revision"]
+
+
+def test_build_editor_state_exposes_project_config_context_and_candidates(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "rendered").mkdir()
+    (tmp_path / "exports").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "activities" / "backup.fit").write_bytes(b"FIT")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+    (tmp_path / "notes.txt").write_text("ignore me", encoding="utf-8")
+
+    config_path = tmp_path / "overlay.yaml"
+    config = ProjectConfig(
+        activity_file="activities/race.tcx",
+        video_globs=["videos/clip-a.MP4", "videos/clip-b.mov"],
+        output_dir="rendered",
+        hud=broadcast_runner_preset(),
+    )
+    save_config(config_path, config)
+
+    state = build_editor_state(config=config, width=1280, height=720, config_path=config_path)
+
+    assert state["project"]["config_path"] == {"name": "overlay.yaml", "path": str(config_path)}
+    assert state["project"]["activity_file"] == "activities/race.tcx"
+    assert state["project"]["video_globs"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert state["project"]["output_dir"] == "rendered"
+    assert state["project"]["choices"]["activity_files"] == ["activities/backup.fit", "activities/race.tcx"]
+    assert state["project"]["choices"]["video_files"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert "rendered" in state["project"]["choices"]["output_dirs"]
+    assert "exports" in state["project"]["choices"]["output_dirs"]
 
 
 def test_build_editor_state_exposes_overlay_library_with_lap_waterfall() -> None:
@@ -447,6 +480,43 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     pace_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
     assert pace_widget.x == 48
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
+
+
+def test_save_editor_project_payload_updates_activity_video_paths_and_output_dir(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "rendered").mkdir()
+    (tmp_path / "exports").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "activities" / "backup.fit").write_bytes(b"FIT")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["videos/clip-a.MP4"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    save_editor_project_payload(
+        config_path,
+        {
+            "activity_file": "activities/backup.fit",
+            "video_globs": ["videos/clip-a.MP4", "videos/clip-b.mov"],
+            "output_dir": "exports",
+        },
+    )
+
+    reloaded = load_config(config_path)
+
+    assert reloaded.activity_file == "activities/backup.fit"
+    assert reloaded.video_globs == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert reloaded.output_dir == "exports"
 
 
 def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path: Path) -> None:
@@ -1308,6 +1378,96 @@ def test_api_config_rejects_stale_hud_save_with_409(tmp_path: Path) -> None:
     assert load_config(config_path).hud.theme.note_text == "newer edit"
 
 
+def test_api_state_exposes_project_config_context_and_candidates(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "rendered").mkdir()
+    (tmp_path / "exports").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["videos/clip-a.MP4", "videos/clip-b.mov"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            response = connection.getresponse()
+            body = json.loads(response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert body["project"]["config_path"] == {"name": "overlay.yaml", "path": str(config_path)}
+    assert body["project"]["activity_file"] == "activities/race.tcx"
+    assert body["project"]["video_globs"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert body["project"]["output_dir"] == "rendered"
+    assert body["project"]["choices"]["activity_files"] == ["activities/race.tcx"]
+    assert body["project"]["choices"]["video_files"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert "rendered" in body["project"]["choices"]["output_dirs"]
+    assert "exports" in body["project"]["choices"]["output_dirs"]
+
+
+def test_api_project_updates_activity_video_paths_and_output_dir(tmp_path: Path) -> None:
+    (tmp_path / "activities").mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "rendered").mkdir()
+    (tmp_path / "exports").mkdir()
+    (tmp_path / "activities" / "race.tcx").write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    (tmp_path / "activities" / "backup.fit").write_bytes(b"FIT")
+    (tmp_path / "videos" / "clip-a.MP4").write_bytes(b"video-a")
+    (tmp_path / "videos" / "clip-b.mov").write_bytes(b"video-b")
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["videos/clip-a.MP4"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project",
+                body=json.dumps(
+                    {
+                        "activity_file": "activities/backup.fit",
+                        "video_globs": ["videos/clip-a.MP4", "videos/clip-b.mov"],
+                        "output_dir": "exports",
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 204
+    reloaded = load_config(config_path)
+    assert reloaded.activity_file == "activities/backup.fit"
+    assert reloaded.video_globs == ["videos/clip-a.MP4", "videos/clip-b.mov"]
+    assert reloaded.output_dir == "exports"
+
+
 def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -1545,6 +1705,20 @@ def test_editor_shell_contains_overlay_library_rail_and_hidden_help_modal() -> N
     assert "hidden" in html.split('id="help-modal"', 1)[1]
 
 
+def test_editor_shell_contains_project_config_section_and_left_accordions() -> None:
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+
+    assert 'id="project-config-panel"' in html
+    assert 'id="project-config-path"' in html
+    assert 'id="project-activity-file"' in html
+    assert 'id="project-video-globs"' in html
+    assert 'id="project-output-dir"' in html
+    assert 'id="browse-toggle"' in html
+    assert 'id="browse-panel"' in html
+    assert 'id="layers-toggle"' in html
+    assert 'id="layers-panel"' in html
+
+
 def test_editor_script_uses_preview_endpoint_for_live_draft_updates() -> None:
     script = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
 
@@ -1780,6 +1954,24 @@ def test_editor_asset_defines_drag_snapping_helpers() -> None:
     assert "function collectSnapGuides(" in app_js
     assert "function snapRectToGuides(" in app_js
     assert "function renderSnapGuides(" in app_js
+
+
+def test_editor_assets_support_project_saves_shared_accordions_and_style_first_inspector() -> None:
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert 'fetch("/api/project"' in app_js
+    assert "function renderProjectControls()" in app_js
+    assert "function saveProjectState(" in app_js
+    assert "function syncAccordionPanels(" in app_js
+    assert 'setStatusMessage("Saved project settings.", "info")' in app_js
+    assert app_js.index('elements.inspectorContent.appendChild(styleCard);') < app_js.index(
+        'elements.inspectorContent.appendChild(geometryCard);'
+    )
+    assert 'class="accordion-panel"' in html
+    assert ".accordion-panel" in css
+    assert "max-height" in css
 
 
 def test_editor_shell_uses_canvas_first_layout_copy() -> None:

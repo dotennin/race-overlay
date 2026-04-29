@@ -17,10 +17,35 @@
 
         <section class="panel-section">
           <div class="section-heading">
+            <h2>Project config</h2>
+            <span class="section-meta">Current overlay inputs</span>
+          </div>
+          <div id="project-config-panel">
+            <div id="project-config-path"></div>
+            <div id="project-activity-file"></div>
+            <div id="project-video-globs"></div>
+            <div id="project-output-dir"></div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
             <h2>Browse</h2>
             <span class="section-meta">All supported HUDs</span>
           </div>
-          <div id="overlay-library-list"></div>
+          <button
+            id="browse-toggle"
+            type="button"
+            class="accordion-toggle"
+            aria-controls="browse-panel"
+            aria-expanded="true"
+          >
+            <span>Browse</span>
+            <span class="accordion-toggle__icon" aria-hidden="true">+</span>
+          </button>
+          <div id="browse-panel" class="accordion-panel" data-open="true">
+            <div id="overlay-library-list"></div>
+          </div>
         </section>
 
         <section class="panel-section">
@@ -28,7 +53,19 @@
             <h2>Layers</h2>
             <span class="section-meta">Current canvas order</span>
           </div>
-          <div id="widget-list"></div>
+          <button
+            id="layers-toggle"
+            type="button"
+            class="accordion-toggle"
+            aria-controls="layers-panel"
+            aria-expanded="true"
+          >
+            <span>Layers</span>
+            <span class="accordion-toggle__icon" aria-hidden="true">+</span>
+          </button>
+          <div id="layers-panel" class="accordion-panel" data-open="true">
+            <div id="widget-list"></div>
+          </div>
         </section>
       </aside>
 
@@ -86,7 +123,7 @@
             <span>Theme defaults</span>
             <span class="accordion-toggle__icon" aria-hidden="true">+</span>
           </button>
-          <div id="theme-defaults-panel" hidden>
+          <div id="theme-defaults-panel" class="accordion-panel" data-open="false">
             <div id="theme-controls"></div>
           </div>
         </section>

@@ -13,6 +13,7 @@ from race_overlay.editor_preview import (
     load_editor_config,
     render_preview_payload,
     render_preview_png,
+    save_editor_project_payload,
     save_editor_payload,
 )
 
@@ -55,7 +56,9 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 return
             if request_path == "/api/state":
                 try:
-                    state = json.dumps(build_editor_state(load_editor_config(config_path), width, height)).encode("utf-8")
+                    state = json.dumps(
+                        build_editor_state(load_editor_config(config_path), width, height, config_path=config_path)
+                    ).encode("utf-8")
                 except ValueError as exc:
                     self._write_json(400, {"error": str(exc)})
                     return
@@ -80,7 +83,7 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
-            if request_path not in {"/api/config", "/api/preview"}:
+            if request_path not in {"/api/config", "/api/preview", "/api/project"}:
                 self.send_response(404)
                 self.end_headers()
                 return
@@ -117,6 +120,20 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(preview)
+                return
+            if request_path == "/api/project":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("project config payload must be a JSON object")
+                    save_editor_project_payload(config_path, payload)
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                except OSError as exc:
+                    self._write_json(500, {"error": str(exc)})
+                    return
+                self.send_response(204)
+                self.end_headers()
                 return
             try:
                 load_editor_config(config_path)

@@ -8,7 +8,14 @@ from threading import Lock
 
 import yaml
 
-from race_overlay.config import ProjectConfig, _load_hud_config, _locked_config_save, load_config, save_config
+from race_overlay.config import (
+    ProjectConfig,
+    _load_hud_config,
+    _locked_config_save,
+    load_config,
+    resolve_path_from_config,
+    save_config,
+)
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, HudWidgetConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, HudSample
@@ -16,6 +23,8 @@ from race_overlay.sampling import LapWaterfallState, lap_waterfall_state_for_wid
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
+_ACTIVITY_FILE_SUFFIXES = {".fit", ".tcx"}
+_VIDEO_FILE_SUFFIXES = {".avi", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mts"}
 _THEME_FIELD_SCHEMA = {
     "text_rgba": {"kind": "rgba", "label": "Text RGBA"},
     "note_text": {"kind": "text", "label": "Theme note"},
@@ -374,9 +383,16 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
     return catalog
 
 
-def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[str, object]:
+def build_editor_state(
+    config: ProjectConfig,
+    width: int,
+    height: int,
+    *,
+    config_path: Path | None = None,
+) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
+        "project": _build_project_state(config, config_path),
         "schema": _build_editor_schema(config.hud),
         "overlay_library": _overlay_library(config.hud),
         "revision": _hud_revision(config.hud),
@@ -386,6 +402,85 @@ def build_editor_state(config: ProjectConfig, width: int, height: int) -> dict[s
             "route_points": _sample_route_points(),
         },
     }
+
+
+def _build_project_state(config: ProjectConfig, config_path: Path | None) -> dict[str, object]:
+    choices = {
+        "activity_files": [],
+        "video_files": [],
+        "output_dirs": [],
+    }
+    config_display = {"name": "", "path": ""}
+    if config_path is not None:
+        config_display = {"name": config_path.name, "path": str(config_path)}
+        config_dir = config_path.resolve().parent
+        choices = {
+            "activity_files": _discover_relative_paths(config_dir, _ACTIVITY_FILE_SUFFIXES, files_only=True),
+            "video_files": _discover_relative_paths(config_dir, _VIDEO_FILE_SUFFIXES, files_only=True),
+            "output_dirs": _discover_relative_paths(config_dir, set(), directories_only=True),
+        }
+    return {
+        "config_path": config_display,
+        "activity_file": config.activity_file,
+        "video_globs": list(config.video_globs),
+        "output_dir": config.output_dir,
+        "choices": choices,
+    }
+
+
+def _discover_relative_paths(
+    config_dir: Path,
+    suffixes: set[str],
+    *,
+    files_only: bool = False,
+    directories_only: bool = False,
+) -> list[str]:
+    matches: list[str] = []
+    if directories_only:
+        for candidate in sorted(config_dir.iterdir()):
+            if candidate.is_dir():
+                matches.append(candidate.relative_to(config_dir).as_posix())
+        return matches
+    for candidate in sorted(config_dir.rglob("*")):
+        if files_only:
+            if not candidate.is_file() or candidate.suffix.lower() not in suffixes:
+                continue
+        else:
+            continue
+        matches.append(candidate.relative_to(config_dir).as_posix())
+    return matches
+
+
+def _require_project_payload_path(
+    config_path: Path,
+    value: object,
+    *,
+    label: str,
+    file_kind: str,
+) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be a non-empty string")
+    resolved = resolve_path_from_config(config_path, value)
+    if file_kind == "file":
+        if not resolved.is_file():
+            raise ValueError(f"{label} must point to an existing file")
+    elif not resolved.is_dir():
+        raise ValueError(f"{label} must point to an existing directory")
+    return _path_relative_to_config_dir(config_path, resolved)
+
+
+def _require_project_payload_video_paths(config_path: Path, value: object) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("video_globs must be a non-empty list")
+    return [
+        _require_project_payload_path(config_path, entry, label="video_globs", file_kind="file")
+        for entry in value
+    ]
+
+
+def _path_relative_to_config_dir(config_path: Path, path: Path) -> str:
+    config_dir = config_path.resolve().parent
+    return path.resolve().relative_to(config_dir).as_posix()
 
 
 def load_editor_config(config_path: Path) -> ProjectConfig:
@@ -416,6 +511,20 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
             if _hud_revision(latest_config.hud) != expected_revision:
                 raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
             latest_config.hud = updated_hud
+            save_config(config_path, latest_config)
+
+
+def save_editor_project_payload(config_path: Path, payload: dict[str, object]) -> None:
+    activity_file = _require_project_payload_path(config_path, payload.get("activity_file"), label="activity_file", file_kind="file")
+    video_globs = _require_project_payload_video_paths(config_path, payload.get("video_globs"))
+    output_dir = _require_project_payload_path(config_path, payload.get("output_dir"), label="output_dir", file_kind="directory")
+
+    with _EDITOR_SAVE_LOCK:
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            latest_config.activity_file = activity_file
+            latest_config.video_globs = video_globs
+            latest_config.output_dir = output_dir
             save_config(config_path, latest_config)
 
 

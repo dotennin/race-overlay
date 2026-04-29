@@ -25,7 +25,16 @@ const STYLE_THEME_FALLBACKS = {
 const elements = {
   statusMessage: document.getElementById("status-message"),
   preset: document.getElementById("preset"),
+  projectConfigPanel: document.getElementById("project-config-panel"),
+  projectConfigPath: document.getElementById("project-config-path"),
+  projectActivityFile: document.getElementById("project-activity-file"),
+  projectVideoGlobs: document.getElementById("project-video-globs"),
+  projectOutputDir: document.getElementById("project-output-dir"),
+  browseToggle: document.getElementById("browse-toggle"),
+  browsePanel: document.getElementById("browse-panel"),
   overlayLibraryList: document.getElementById("overlay-library-list"),
+  layersToggle: document.getElementById("layers-toggle"),
+  layersPanel: document.getElementById("layers-panel"),
   themeControls: document.getElementById("theme-controls"),
   themeDefaultsToggle: document.getElementById("theme-defaults-toggle"),
   themeDefaultsPanel: document.getElementById("theme-defaults-panel"),
@@ -52,7 +61,11 @@ let lastPreviewRefreshAt = 0;
 let dragPreviewDirty = false;
 let activeInteraction = null;
 let activeSnapGuides = [];
-let isThemeDefaultsOpen = false;
+const accordionStates = {
+  browse: true,
+  layers: true,
+  themeDefaults: false,
+};
 
 function cloneWidget(widget) {
   return {
@@ -140,22 +153,42 @@ function ensureSelection() {
   selectedWidgetId = orderedWidgets[orderedWidgets.length - 1]?.id ?? draftState.widgets[0].id;
 }
 
-function syncThemeDefaultsAccordion() {
-  if (elements.themeDefaultsToggle) {
-    if (typeof elements.themeDefaultsToggle.setAttribute === "function") {
-      elements.themeDefaultsToggle.setAttribute("aria-expanded", isThemeDefaultsOpen ? "true" : "false");
-    } else {
-      elements.themeDefaultsToggle["aria-expanded"] = isThemeDefaultsOpen ? "true" : "false";
+function syncAccordionPanels() {
+  [
+    ["browse", elements.browseToggle, elements.browsePanel],
+    ["layers", elements.layersToggle, elements.layersPanel],
+    ["themeDefaults", elements.themeDefaultsToggle, elements.themeDefaultsPanel],
+  ].forEach(([key, toggle, panel]) => {
+    const isOpen = Boolean(accordionStates[key]);
+    if (toggle) {
+      if (typeof toggle.setAttribute === "function") {
+        toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      } else {
+        toggle["aria-expanded"] = isOpen ? "true" : "false";
+      }
     }
-  }
-  if (elements.themeDefaultsPanel) {
-    elements.themeDefaultsPanel.hidden = !isThemeDefaultsOpen;
-  }
+    if (panel) {
+      panel.dataset.open = isOpen ? "true" : "false";
+      if (typeof panel.setAttribute === "function") {
+        panel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      } else {
+        panel["aria-hidden"] = isOpen ? "false" : "true";
+      }
+    }
+  });
+}
+
+function toggleAccordion(key, force = null) {
+  accordionStates[key] = typeof force === "boolean" ? force : !accordionStates[key];
+  syncAccordionPanels();
 }
 
 function toggleThemeDefaults(force = null) {
-  isThemeDefaultsOpen = typeof force === "boolean" ? force : !isThemeDefaultsOpen;
-  syncThemeDefaultsAccordion();
+  toggleAccordion("themeDefaults", force);
+}
+
+function syncThemeDefaultsAccordion() {
+  syncAccordionPanels();
 }
 
 function clearPreviewUrl() {
@@ -772,6 +805,140 @@ function renderThemeControls() {
   elements.themeControls.appendChild(themeCard);
 }
 
+function buildProjectSummary(labelText, valueText) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "project-config-summary";
+  const label = document.createElement("span");
+  label.className = "field-hint";
+  label.textContent = labelText;
+  const value = document.createElement("p");
+  value.className = "project-config-summary__value";
+  value.textContent = valueText;
+  wrapper.append(label, value);
+  return wrapper;
+}
+
+async function saveProjectState(payload) {
+  const response = await fetch("/api/project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({}));
+    throw new Error(errorPayload.error ?? "Failed to save project settings");
+  }
+  await loadState();
+  setStatusMessage("Saved project settings.", "info");
+}
+
+function renderProjectControls() {
+  if (
+    !elements.projectConfigPath
+    || !elements.projectActivityFile
+    || !elements.projectVideoGlobs
+    || !elements.projectOutputDir
+  ) {
+    return;
+  }
+  const project = savedState?.project;
+  const activityChoices = project?.choices?.activity_files ?? [];
+  const videoChoices = project?.choices?.video_files ?? [];
+  const outputChoices = project?.choices?.output_dirs ?? [];
+  const selectedVideos = Array.isArray(project?.video_globs) ? [...project.video_globs] : [];
+
+  elements.projectConfigPath.innerHTML = "";
+  elements.projectActivityFile.innerHTML = "";
+  elements.projectVideoGlobs.innerHTML = "";
+  elements.projectOutputDir.innerHTML = "";
+
+  if (!project) {
+    return;
+  }
+
+  const configCard = document.createElement("section");
+  configCard.className = "project-config-card";
+  configCard.appendChild(buildProjectSummary("Overlay YAML", project.config_path?.path || project.config_path?.name || "Not available"));
+  elements.projectConfigPath.appendChild(configCard);
+
+  const activityCard = document.createElement("section");
+  activityCard.className = "project-config-card";
+  activityCard.appendChild(buildProjectSummary("Current activity_file", project.activity_file || "Not set"));
+  appendField(
+    activityCard,
+    "Activity",
+    buildSelectInput(project.activity_file, activityChoices, async (value) => {
+      try {
+        await saveProjectState({
+          activity_file: value,
+          video_globs: selectedVideos,
+          output_dir: project.output_dir,
+        });
+      } catch (error) {
+        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+      }
+    }),
+    true,
+  );
+  elements.projectActivityFile.appendChild(activityCard);
+
+  const videosCard = document.createElement("section");
+  videosCard.className = "project-config-card";
+  videosCard.appendChild(buildProjectSummary("Current video_globs", selectedVideos.length ? selectedVideos.join("\n") : "Not set"));
+  const videoList = document.createElement("div");
+  videoList.className = "project-config-video-list";
+  videoChoices.forEach((videoPath) => {
+    const option = document.createElement("label");
+    option.className = "project-config-video-option";
+    const checkbox = buildCheckbox(selectedVideos.includes(videoPath), async (checked) => {
+      const nextVideos = checked
+        ? [...selectedVideos, videoPath]
+        : selectedVideos.filter((entry) => entry !== videoPath);
+      if (nextVideos.length === 0) {
+        setStatusMessage("Select at least one video file.");
+        renderProjectControls();
+        return;
+      }
+      try {
+        await saveProjectState({
+          activity_file: project.activity_file,
+          video_globs: nextVideos,
+          output_dir: project.output_dir,
+        });
+      } catch (error) {
+        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+      }
+    });
+    const text = document.createElement("span");
+    text.textContent = videoPath;
+    option.append(checkbox, text);
+    videoList.appendChild(option);
+  });
+  videosCard.appendChild(videoList);
+  elements.projectVideoGlobs.appendChild(videosCard);
+
+  const outputCard = document.createElement("section");
+  outputCard.className = "project-config-card";
+  outputCard.appendChild(buildProjectSummary("Current output_dir", project.output_dir || "Not set"));
+  appendField(
+    outputCard,
+    "Output directory",
+    buildSelectInput(project.output_dir, outputChoices, async (value) => {
+      try {
+        await saveProjectState({
+          activity_file: project.activity_file,
+          video_globs: selectedVideos,
+          output_dir: value,
+        });
+      } catch (error) {
+        setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
+      }
+    }),
+    true,
+  );
+  elements.projectOutputDir.appendChild(outputCard);
+}
+
 function getStyleFieldValue(widget, key) {
   if (Object.prototype.hasOwnProperty.call(widget.style, key)) {
     return widget.style[key];
@@ -879,9 +1046,6 @@ function renderInspector() {
     true,
   );
 
-  geometryCard.appendChild(geometryGrid);
-  elements.inspectorContent.appendChild(geometryCard);
-
   const styleCard = document.createElement("section");
   styleCard.className = "inspector-card";
   const styleHeading = document.createElement("h3");
@@ -912,10 +1076,12 @@ function renderInspector() {
           updateWidgetStyle(widget.id, key, nextValue, { live: true });
         },
       );
-    });
-    styleCard.appendChild(styleGrid);
+      });
+      styleCard.appendChild(styleGrid);
   }
+  geometryCard.appendChild(geometryGrid);
   elements.inspectorContent.appendChild(styleCard);
+  elements.inspectorContent.appendChild(geometryCard);
 }
 
 function renderSnapGuides(guides = activeSnapGuides) {
@@ -1174,12 +1340,16 @@ async function loadState() {
   try {
     savedState = await fetchJson("/api/state", "Failed to load HUD config");
     draftState = cloneHud(savedState.hud);
-    isThemeDefaultsOpen = false;
+    accordionStates.browse = true;
+    accordionStates.layers = true;
+    accordionStates.themeDefaults = false;
     ensureSelection();
     if (elements.preview) {
       elements.preview.style.aspectRatio = `${savedState.preview.width} / ${savedState.preview.height}`;
     }
     updateSaveButtonState();
+    renderProjectControls();
+    syncAccordionPanels();
     renderOverlayLibrary();
     renderWidgetSelection();
     renderInspector();
@@ -1199,6 +1369,18 @@ async function loadState() {
     }
     if (elements.overlayLibraryList) {
       elements.overlayLibraryList.innerHTML = "";
+    }
+    if (elements.projectConfigPath) {
+      elements.projectConfigPath.innerHTML = "";
+    }
+    if (elements.projectActivityFile) {
+      elements.projectActivityFile.innerHTML = "";
+    }
+    if (elements.projectVideoGlobs) {
+      elements.projectVideoGlobs.innerHTML = "";
+    }
+    if (elements.projectOutputDir) {
+      elements.projectOutputDir.innerHTML = "";
     }
     if (elements.preview) {
       elements.preview.removeAttribute("src");
@@ -1261,6 +1443,12 @@ if (elements.helpModal) {
 if (elements.saveButton) {
   elements.saveButton.addEventListener("click", saveState);
 }
+if (elements.browseToggle) {
+  elements.browseToggle.addEventListener("click", () => toggleAccordion("browse"));
+}
+if (elements.layersToggle) {
+  elements.layersToggle.addEventListener("click", () => toggleAccordion("layers"));
+}
 if (elements.themeDefaultsToggle) {
   elements.themeDefaultsToggle.addEventListener("click", () => toggleThemeDefaults());
 }
@@ -1287,6 +1475,7 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
 }
 
 updateSaveButtonState();
-syncThemeDefaultsAccordion();
+syncAccordionPanels();
+renderProjectControls();
 renderOverlayLibrary();
 void loadState();
