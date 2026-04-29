@@ -697,6 +697,26 @@ function renderWidgetSelection() {
     meta.textContent = `${widget.type} · z ${widget.z_index}`;
     selectButton.appendChild(meta);
     item.appendChild(selectButton);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "layer-item__remove";
+    removeButton.title = "Remove this layer";
+    removeButton.textContent = "×";
+    removeButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (confirm(`Remove layer "${widget.style.label || widget.id}"?`)) {
+        draftState.widgets = draftState.widgets.filter((w) => w.id !== widget.id);
+        if (selectedWidgetId === widget.id) {
+          selectedWidgetId = draftState.widgets[0]?.id ?? null;
+        }
+        renderWidgetSelection();
+        renderInspector();
+        renderCanvasOverlays();
+      }
+    });
+    item.appendChild(removeButton);
+
     elements.widgetList.appendChild(item);
   });
 }
