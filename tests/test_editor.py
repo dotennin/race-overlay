@@ -21,7 +21,12 @@ from race_overlay.editor_preview import (
     save_editor_project_payload,
     save_editor_payload,
 )
-from race_overlay.editor_server import _ACTIVE_SERVERS, _ACTIVE_THREADS, launch_editor
+from race_overlay.editor_server import (
+    NativePickerUnavailableError,
+    _ACTIVE_SERVERS,
+    _ACTIVE_THREADS,
+    launch_editor,
+)
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import (
     HUD_FONT_FAMILY_OPTIONS,
@@ -517,6 +522,45 @@ def test_save_editor_project_payload_updates_activity_video_paths_and_output_dir
     assert reloaded.activity_file == "activities/backup.fit"
     assert reloaded.video_globs == ["videos/clip-a.MP4", "videos/clip-b.mov"]
     assert reloaded.output_dir == "exports"
+
+
+def test_save_editor_project_payload_preserves_absolute_native_picker_paths(tmp_path: Path) -> None:
+    external_dir = tmp_path.parent / f"{tmp_path.name}-native-picker"
+    external_dir.mkdir()
+    activity_path = external_dir / "race.tcx"
+    video_a_path = external_dir / "clip-a.MP4"
+    video_b_path = external_dir / "clip-b.mov"
+    output_dir = external_dir / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_a_path.write_bytes(b"video-a")
+    video_b_path.write_bytes(b"video-b")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activities/race.tcx",
+            video_globs=["videos/clip-a.MP4"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    save_editor_project_payload(
+        config_path,
+        {
+            "activity_file": str(activity_path),
+            "video_globs": [str(video_a_path), str(video_b_path)],
+            "output_dir": str(output_dir),
+        },
+    )
+
+    reloaded = load_config(config_path)
+
+    assert reloaded.activity_file == str(activity_path)
+    assert reloaded.video_globs == [str(video_a_path), str(video_b_path)]
+    assert reloaded.output_dir == str(output_dir)
 
 
 def test_save_editor_payload_round_trips_theme_and_widget_style_fields(tmp_path: Path) -> None:
@@ -1064,6 +1108,54 @@ def test_render_preview_payload_allows_appended_overlay_library_widget(tmp_path:
     assert config_path.read_text() == original_text
 
 
+def test_editor_render_snapshot_uses_unsaved_draft_without_touching_overlay_yaml(tmp_path: Path) -> None:
+    import race_overlay.editor_preview as ep
+
+    external_dir = tmp_path.parent / f"{tmp_path.name}-render-snapshot"
+    external_dir.mkdir()
+    activity_path = external_dir / "race.tcx"
+    video_path = external_dir / "clip-a.MP4"
+    output_dir = external_dir / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    original_text = config_path.read_text()
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["theme"]["note_text"] = "snapshot draft"
+    distance_stat = next(widget for widget in payload["widgets"] if widget["id"] == "distance-stat")
+    distance_stat["x"] = 96
+
+    snapshot_path: Path | None = None
+    with ep.editor_render_snapshot(config_path, payload) as built_snapshot_path:
+        snapshot_path = built_snapshot_path
+        snapshot = load_config(snapshot_path)
+        assert snapshot.activity_file == str(activity_path)
+        assert snapshot.video_globs == [str(video_path)]
+        assert snapshot.output_dir == str(output_dir)
+        assert snapshot.hud.theme.note_text == "snapshot draft"
+        assert next(widget for widget in snapshot.hud.widgets if widget.id == "distance-stat").x == 96
+        assert snapshot_path != config_path
+        assert snapshot_path.exists()
+
+    assert snapshot_path is not None
+    assert not snapshot_path.exists()
+    assert config_path.read_text() == original_text
+    assert load_config(config_path).hud.theme.note_text != "snapshot draft"
+    assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
+
+
 def test_render_preview_png_passes_lap_states_to_render_hud_frame(monkeypatch, tmp_path: Path) -> None:
     """editor_preview.render_preview_png must pass widget-scoped lap_states to render_hud_frame."""
     from race_overlay.editor_preview import render_preview_png
@@ -1333,6 +1425,236 @@ def test_api_preview_renders_unsaved_draft_without_touching_overlay_yaml(tmp_pat
     assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
 
 
+def test_api_render_runs_pipeline_from_unsaved_draft_and_reports_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    original_text = config_path.read_text()
+    captured: dict[str, object] = {}
+
+    def fake_run_pipeline(snapshot_path: Path, only=None, *, progress=None) -> None:
+        snapshot = load_config(snapshot_path)
+        captured["snapshot_path"] = snapshot_path
+        captured["note_text"] = snapshot.hud.theme.note_text
+        captured["distance_x"] = next(widget for widget in snapshot.hud.widgets if widget.id == "distance-stat").x
+        if progress is not None:
+            progress("Loading config from snapshot")
+            progress("Finished clip-a.MP4")
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", fake_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["theme"]["note_text"] = "render draft"
+    next(widget for widget in payload["widgets"] if widget["id"] == "distance-stat")["x"] = 96
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            start_response = connection.getresponse()
+            start_body = json.loads(start_response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+        status_payload = {}
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                connection.request("GET", "/api/render")
+                response = connection.getresponse()
+                status_payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                connection.close()
+            if status_payload.get("status") == "succeeded":
+                break
+            time.sleep(0.05)
+
+    assert start_response.status == 202
+    assert start_body["status"] == "running"
+    assert status_payload["status"] == "succeeded"
+    assert status_payload["error"] is None
+    assert "Loading config from snapshot" in status_payload["logs"]
+    assert "Finished clip-a.MP4" in status_payload["logs"]
+    assert captured["note_text"] == "render draft"
+    assert captured["distance_x"] == 96
+    assert captured["snapshot_path"] != config_path
+    assert config_path.read_text() == original_text
+
+
+def test_api_render_rejects_second_start_while_job_is_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    release_render = Event()
+
+    def blocking_run_pipeline(_snapshot_path: Path, only=None, *, progress=None) -> None:
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", blocking_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        first_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            first_connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            first_response = first_connection.getresponse()
+            first_response.read()
+        finally:
+            first_connection.close()
+
+        second_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            second_connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            second_response = second_connection.getresponse()
+            second_body = json.loads(second_response.read().decode("utf-8"))
+        finally:
+            second_connection.close()
+
+        release_render.set()
+
+        deadline = time.time() + 5
+        final_status = {}
+        while time.time() < deadline:
+            status_connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                status_connection.request("GET", "/api/render")
+                status_response = status_connection.getresponse()
+                final_status = json.loads(status_response.read().decode("utf-8"))
+            finally:
+                status_connection.close()
+            if final_status.get("status") == "succeeded":
+                break
+            time.sleep(0.05)
+
+    assert first_response.status == 202
+    assert second_response.status == 409
+    assert second_body == {"error": "render already in progress"}
+    assert final_status["status"] == "succeeded"
+
+
+def test_api_render_reports_failed_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    def failing_run_pipeline(_snapshot_path: Path, only=None, *, progress=None) -> None:
+        if progress is not None:
+            progress("Loading config from snapshot")
+        raise RuntimeError("ffmpeg exploded")
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", failing_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            start_response = connection.getresponse()
+            start_response.read()
+        finally:
+            connection.close()
+
+        deadline = time.time() + 5
+        status_payload = {}
+        while time.time() < deadline:
+            status_connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                status_connection.request("GET", "/api/render")
+                status_response = status_connection.getresponse()
+                status_payload = json.loads(status_response.read().decode("utf-8"))
+            finally:
+                status_connection.close()
+            if status_payload.get("status") == "failed":
+                break
+            time.sleep(0.05)
+
+    assert start_response.status == 202
+    assert status_payload["status"] == "failed"
+    assert status_payload["error"] == "ffmpeg exploded"
+    assert "Loading config from snapshot" in status_payload["logs"]
+
+
 def test_api_config_rejects_stale_hud_save_with_409(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -1582,6 +1904,79 @@ def test_api_project_accepts_browser_selected_output_dir_without_config_relative
     assert response.status == 204
     reloaded = load_config(config_path)
     assert reloaded.output_dir == "chosen-output"
+
+
+@pytest.mark.parametrize(
+    ("field", "picked_value"),
+    [
+        ("activity_file", "/Users/dotennin-mac14/Downloads/runs/race.tcx"),
+        ("video_globs", ["/Users/dotennin-mac14/Movies/clip-a.MP4", "/Users/dotennin-mac14/Movies/clip-b.mov"]),
+        ("output_dir", "/Users/dotennin-mac14/Downloads/rendered"),
+    ],
+)
+def test_api_project_picker_returns_native_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    picked_value: str | list[str],
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    def fake_picker(requested_field: str) -> dict[str, object]:
+        assert requested_field == field
+        return {"field": field, "value": picked_value}
+
+    monkeypatch.setattr("race_overlay.editor_server.pick_project_config_value", fake_picker, raising=False)
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project/picker",
+                body=json.dumps({"field": field}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert json.loads(body.decode("utf-8")) == {"field": field, "value": picked_value}
+
+
+def test_api_project_picker_returns_structured_error_when_native_picker_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    def raise_unavailable(_field: str) -> dict[str, object]:
+        raise NativePickerUnavailableError("native picker is unavailable in this environment")
+
+    monkeypatch.setattr("race_overlay.editor_server.pick_project_config_value", raise_unavailable, raising=False)
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/project/picker",
+                body=json.dumps({"field": "output_dir"}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+
+    assert response.status == 501
+    assert json.loads(body.decode("utf-8")) == {"error": "native picker is unavailable in this environment"}
 
 
 def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2077,16 +2472,18 @@ def test_editor_assets_support_project_saves_shared_accordions_and_style_first_i
     css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
 
     assert 'fetch("/api/project"' in app_js
+    assert 'fetch("/api/project/picker"' in app_js
     assert "function renderProjectControls()" in app_js
     assert "function saveProjectState(" in app_js
+    assert "function pickProjectPath(" in app_js
     assert "function syncAccordionPanels(" in app_js
     assert 'setStatusMessage("Saved project settings.", "info")' in app_js
-    assert 'input.type = "file"' in app_js
-    assert 'input.multiple = true' in app_js
-    assert 'const PROJECT_ACTIVITY_ACCEPT = ".fit,.tcx";' in app_js
-    assert 'const PROJECT_VIDEO_ACCEPT = ".mp4,.mov,.m4v,.mkv,.avi,.mpeg,.mpg,.mts,.m2ts";' in app_js
-    assert "showDirectoryPicker" in app_js
-    assert 'setAttribute("webkitdirectory", "")' in app_js
+    assert 'buildProjectPickerButton("Choose activity file", "activity_file"' in app_js
+    assert 'buildProjectPickerButton("Choose video files", "video_globs"' in app_js
+    assert 'buildProjectPickerButton("Choose output folder", "output_dir"' in app_js
+    assert 'input.type = "file"' not in app_js
+    assert "showDirectoryPicker" not in app_js
+    assert 'setAttribute("webkitdirectory", "")' not in app_js
     assert app_js.index('elements.inspectorContent.appendChild(styleCard);') < app_js.index(
         'elements.inspectorContent.appendChild(geometryCard);'
     )
@@ -2095,6 +2492,23 @@ def test_editor_assets_support_project_saves_shared_accordions_and_style_first_i
     assert "max-height" in css
     assert "overflow-x: hidden;" in css
     assert "project-config-path" not in html
+
+
+def test_editor_assets_expose_render_panel_controls() -> None:
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert 'id="render-button"' in html
+    assert 'id="render-panel"' in html
+    assert html.index('id="canvas-stage"') < html.index('id="render-panel"')
+    assert 'fetch("/api/render"' in app_js
+    assert "function startRenderJob(" in app_js
+    assert "function pollRenderStatus(" in app_js
+    assert "renderButton" in app_js
+    assert "renderPanel" in app_js
+    assert "#render-panel" in css
+    assert ".render-console" in css
 
 
 def test_editor_shell_uses_canvas_first_layout_copy() -> None:

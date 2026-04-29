@@ -4,21 +4,70 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
 from threading import Thread
+from tkinter import Tk, filedialog
 from urllib.parse import urlparse
 
 from race_overlay.editor_preview import (
     StaleHudSaveError,
     _validate_preview_dimensions,
     build_editor_state,
+    editor_render_snapshot,
     load_editor_config,
     render_preview_payload,
     render_preview_png,
     save_editor_project_payload,
     save_editor_payload,
 )
+from race_overlay.editor_render import EditorRenderJobManager, RenderJobAlreadyRunningError
+from race_overlay.pipeline import run_pipeline
 
 _ACTIVE_SERVERS: list[ThreadingHTTPServer] = []
 _ACTIVE_THREADS: list[Thread] = []
+_RENDER_JOB_MANAGER = EditorRenderJobManager()
+
+
+class NativePickerUnavailableError(RuntimeError):
+    """Raised when the local environment cannot open a native picker."""
+
+
+def _native_picker_root() -> Tk:
+    try:
+        root = Tk()
+    except Exception as exc:  # pragma: no cover - platform-specific UI failure
+        raise NativePickerUnavailableError("native picker is unavailable in this environment") from exc
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+    return root
+
+
+def pick_project_config_value(field: str) -> dict[str, object]:
+    root = _native_picker_root()
+    try:
+        if field == "activity_file":
+            value = filedialog.askopenfilename(
+                title="Choose activity file",
+                filetypes=[("Activity files", "*.fit *.tcx"), ("All files", "*.*")],
+            )
+        elif field == "video_globs":
+            value = list(
+                filedialog.askopenfilenames(
+                    title="Choose video files",
+                    filetypes=[
+                        ("Video files", "*.mp4 *.mov *.m4v *.mkv *.avi *.mpeg *.mpg *.mts *.m2ts"),
+                        ("All files", "*.*"),
+                    ],
+                )
+            )
+        elif field == "output_dir":
+            value = filedialog.askdirectory(title="Choose output folder", mustexist=False)
+        else:
+            raise ValueError(f"unsupported picker field: {field}")
+    finally:
+        root.destroy()
+    return {"field": field, "value": value}
 
 
 def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPRequestHandler]:
@@ -78,12 +127,15 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self.end_headers()
                 self.wfile.write(payload)
                 return
+            if request_path == "/api/render":
+                self._write_json(200, _RENDER_JOB_MANAGER.snapshot())
+                return
             self.send_response(404)
             self.end_headers()
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
-            if request_path not in {"/api/config", "/api/preview", "/api/project"}:
+            if request_path not in {"/api/config", "/api/preview", "/api/project", "/api/project/picker", "/api/render"}:
                 self.send_response(404)
                 self.end_headers()
                 return
@@ -134,6 +186,39 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                     return
                 self.send_response(204)
                 self.end_headers()
+                return
+            if request_path == "/api/project/picker":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("picker payload must be a JSON object")
+                    field = payload.get("field")
+                    if not isinstance(field, str) or not field:
+                        raise ValueError("picker field must be a non-empty string")
+                    selection = pick_project_config_value(field)
+                except NativePickerUnavailableError as exc:
+                    self._write_json(501, {"error": str(exc)})
+                    return
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                self._write_json(200, selection)
+                return
+            if request_path == "/api/render":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("HUD config payload must be a JSON object")
+                    state = _RENDER_JOB_MANAGER.start(
+                        payload,
+                        build_snapshot=lambda draft_payload: editor_render_snapshot(config_path, draft_payload),
+                        run_pipeline=run_pipeline,
+                    )
+                except RenderJobAlreadyRunningError as exc:
+                    self._write_json(409, {"error": str(exc)})
+                    return
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                self._write_json(202, state)
                 return
             try:
                 load_editor_config(config_path)

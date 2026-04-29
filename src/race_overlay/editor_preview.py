@@ -1,6 +1,9 @@
 from dataclasses import replace
 import hashlib
 import json
+import shutil
+import tempfile
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -466,7 +469,7 @@ def _require_project_payload_path(
             raise ValueError(f"{label} must point to an existing file")
     elif not resolved.is_dir():
         raise ValueError(f"{label} must point to an existing directory")
-    return _path_relative_to_config_dir(config_path, resolved)
+    return _record_project_payload_path(config_path, resolved)
 
 
 def _require_project_payload_video_paths(config_path: Path, value: object) -> list[str]:
@@ -483,6 +486,14 @@ def _require_project_payload_video_paths(config_path: Path, value: object) -> li
 def _path_relative_to_config_dir(config_path: Path, path: Path) -> str:
     config_dir = config_path.resolve().parent
     return path.resolve().relative_to(config_dir).as_posix()
+
+
+def _record_project_payload_path(config_path: Path, path: Path) -> str:
+    resolved = path.resolve()
+    config_dir = config_path.resolve().parent
+    if resolved.is_relative_to(config_dir):
+        return resolved.relative_to(config_dir).as_posix()
+    return str(resolved)
 
 
 def load_editor_config(config_path: Path) -> ProjectConfig:
@@ -579,6 +590,30 @@ def render_preview_payload(config_path: Path, payload: dict[str, object], width:
         overrides=dict(config.overrides),
     )
     return render_preview_png(preview_config, width, height)
+
+
+@contextmanager
+def editor_render_snapshot(config_path: Path, payload: dict[str, object]):
+    config = load_editor_config(config_path)
+    _validate_complete_hud_payload(config.hud, payload)
+    snapshot_hud = _load_hud_config(payload, require_complete=True)
+    snapshot_config = ProjectConfig(
+        activity_file=config.activity_file,
+        video_globs=list(config.video_globs),
+        output_dir=config.output_dir,
+        cache_dir=config.cache_dir,
+        timeline=config.timeline,
+        hud=snapshot_hud,
+        overrides=dict(config.overrides),
+    )
+    temp_dir = Path(tempfile.mkdtemp(prefix="race-overlay-editor-render-"))
+    snapshot_path = temp_dir / config_path.name
+    save_config(snapshot_path, snapshot_config)
+    try:
+        yield snapshot_path
+    finally:
+        with suppress(FileNotFoundError):
+            shutil.rmtree(temp_dir)
 
 
 def _validate_preview_dimensions(width: int, height: int) -> None:

@@ -76,6 +76,7 @@
           </div>
           <div class="toolbar-actions">
             <button id="help-button" type="button" aria-controls="help-modal" aria-expanded="false">?</button>
+            <button id="render-button" type="button">Render</button>
             <button id="save-button" type="button">Save YAML</button>
           </div>
         </header>
@@ -84,6 +85,15 @@
           <img id="preview" alt="HUD preview" />
           <div id="widget-overlays" aria-hidden="true"></div>
           <div id="snap-guides" aria-hidden="true"></div>
+        </section>
+
+        <section id="render-panel" hidden>
+          <div class="section-heading">
+            <h2>Render</h2>
+            <span id="render-status" class="section-meta">Idle</span>
+          </div>
+          <p id="render-stage" class="field-hint">Ready to render the current draft.</p>
+          <pre id="render-console" class="render-console"></pre>
         </section>
       </main>
 

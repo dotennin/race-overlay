@@ -209,6 +209,7 @@ button:disabled {
 }
 
 #help-button,
+#render-button,
 #save-button {
   display: inline-flex;
   align-items: center;
@@ -224,12 +225,36 @@ button:disabled {
   font-weight: 700;
 }
 
+#render-button,
 #save-button,
 #help-close-button {
   padding: 12px 18px;
   background: linear-gradient(135deg, #63d6ff 0%, #9ef6ff 100%);
   color: #08101b;
   font-weight: 800;
+}
+
+#render-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--panel-elevated);
+}
+
+.render-console {
+  margin: 0;
+  min-height: 120px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(9, 14, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(244, 247, 251, 0.86);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .accordion-toggle {
