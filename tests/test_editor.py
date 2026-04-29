@@ -1156,6 +1156,37 @@ def test_editor_render_snapshot_uses_unsaved_draft_without_touching_overlay_yaml
     assert next(widget for widget in load_config(config_path).hud.widgets if widget.id == "distance-stat").x == 44
 
 
+def test_editor_render_snapshot_resolves_relative_project_paths_to_absolute(tmp_path: Path) -> None:
+    import race_overlay.editor_preview as ep
+
+    activity_path = tmp_path / "activity_22577902433.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            video_globs=["clip-a.MP4"],
+            output_dir="rendered",
+            hud=broadcast_runner_preset(),
+        ),
+    )
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with ep.editor_render_snapshot(config_path, payload) as snapshot_path:
+        snapshot = load_config(snapshot_path)
+        assert snapshot.activity_file == str(activity_path)
+        assert snapshot.video_globs == [str(video_path)]
+        assert snapshot.output_dir == str(output_dir)
+        assert snapshot.cache_dir == str(tmp_path / "cache")
+
+
 def test_render_preview_png_passes_lap_states_to_render_hud_frame(monkeypatch, tmp_path: Path) -> None:
     """editor_preview.render_preview_png must pass widget-scoped lap_states to render_hud_frame."""
     from race_overlay.editor_preview import render_preview_png
@@ -1979,6 +2010,33 @@ def test_api_project_picker_returns_structured_error_when_native_picker_is_unava
     assert json.loads(body.decode("utf-8")) == {"error": "native picker is unavailable in this environment"}
 
 
+def test_pick_project_config_value_uses_external_native_picker_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from race_overlay import editor_server as es
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = '"/Users/dotennin-mac14/Downloads/runs/race.tcx"\n'
+        stderr = ""
+
+    recorded_commands: list[list[str]] = []
+
+    def fake_run(command, *, capture_output, text, check):
+        recorded_commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(es.subprocess, "run", fake_run)
+
+    selection = es.pick_project_config_value("activity_file")
+
+    assert selection == {
+        "field": "activity_file",
+        "value": "/Users/dotennin-mac14/Downloads/runs/race.tcx",
+    }
+    assert recorded_commands and recorded_commands[0][0] == "osascript"
+
+
 def test_api_config_returns_structured_error_when_save_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -2509,6 +2567,15 @@ def test_editor_assets_expose_render_panel_controls() -> None:
     assert "renderPanel" in app_js
     assert "#render-panel" in css
     assert ".render-console" in css
+
+
+def test_load_state_reenables_render_button_after_hud_load() -> None:
+    from importlib.resources import files
+
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+
+    success_block = app_js.split("async function loadState()", 1)[1].split("catch (error)", 1)[0]
+    assert "updateRenderButtonState();" in success_block
 
 
 def test_editor_shell_uses_canvas_first_layout_copy() -> None:

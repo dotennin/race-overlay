@@ -1414,6 +1414,7 @@ async function loadState() {
     renderWidgetSelection();
     renderInspector();
     renderCanvasOverlays();
+    updateRenderButtonState();
     await refreshPreview();
     return true;
   } catch (error) {

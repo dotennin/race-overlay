@@ -17,6 +17,7 @@ from race_overlay.config import (
     _locked_config_save,
     load_config,
     resolve_path_from_config,
+    resolve_video_globs_from_config,
     save_config,
 )
 from race_overlay.hud import render_hud_frame
@@ -598,10 +599,10 @@ def editor_render_snapshot(config_path: Path, payload: dict[str, object]):
     _validate_complete_hud_payload(config.hud, payload)
     snapshot_hud = _load_hud_config(payload, require_complete=True)
     snapshot_config = ProjectConfig(
-        activity_file=config.activity_file,
-        video_globs=list(config.video_globs),
-        output_dir=config.output_dir,
-        cache_dir=config.cache_dir,
+        activity_file=str(resolve_path_from_config(config_path, config.activity_file)),
+        video_globs=resolve_video_globs_from_config(config_path, config.video_globs),
+        output_dir=str(resolve_path_from_config(config_path, config.output_dir)),
+        cache_dir=str(resolve_path_from_config(config_path, config.cache_dir)),
         timeline=config.timeline,
         hud=snapshot_hud,
         overrides=dict(config.overrides),

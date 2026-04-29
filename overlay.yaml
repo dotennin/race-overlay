@@ -1,9 +1,9 @@
 activity_file: 400x8.tcx
 video_globs:
-- IMG_4735.MOV
-- IMG_4736.MOV
-- IMG_4734.MOV
-output_dir: test
+- "/Users/dotennin-mac14/Downloads/\u971E\u30B1\u6D66\u30DE\u30E9\u30BD\u30F3/immich-20260428_220944/IMG_4734.MOV"
+- "/Users/dotennin-mac14/Downloads/\u971E\u30B1\u6D66\u30DE\u30E9\u30BD\u30F3/immich-20260428_220944/IMG_4735.MOV"
+- "/Users/dotennin-mac14/Downloads/\u971E\u30B1\u6D66\u30DE\u30E9\u30BD\u30F3/immich-20260428_220944/IMG_4736.MOV"
+output_dir: /Users/dotennin-mac14/Downloads/test/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0

@@ -1,10 +1,10 @@
 import json
+import subprocess
 from json import JSONDecodeError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
 from threading import Thread
-from tkinter import Tk, filedialog
 from urllib.parse import urlparse
 
 from race_overlay.editor_preview import (
@@ -30,43 +30,57 @@ class NativePickerUnavailableError(RuntimeError):
     """Raised when the local environment cannot open a native picker."""
 
 
-def _native_picker_root() -> Tk:
+def _run_osascript(script: str) -> str:
     try:
-        root = Tk()
-    except Exception as exc:  # pragma: no cover - platform-specific UI failure
+        completed = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - macOS-specific dependency
         raise NativePickerUnavailableError("native picker is unavailable in this environment") from exc
-    root.withdraw()
-    try:
-        root.attributes("-topmost", True)
-    except Exception:
-        pass
-    return root
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if "User canceled" in stderr:
+            return ""
+        raise NativePickerUnavailableError(stderr or "native picker is unavailable in this environment") from exc
+    return completed.stdout.strip()
+
+
+def _pick_single_path(prompt: str, script_body: str) -> str | None:
+    output = _run_osascript(
+        f'try\nset pickedItem to ({script_body})\nreturn POSIX path of pickedItem\non error errMsg number errNum\nerror errMsg number errNum\nend try'
+    )
+    if not output:
+        return None
+    return output.splitlines()[0].strip().strip('"')
+
+
+def _pick_multiple_paths(prompt: str) -> list[str]:
+    output = _run_osascript(
+        f'try\nset chosenFiles to choose file with prompt "{prompt}" multiple selections allowed true\nset outputLines to {{}}\nrepeat with chosenFile in chosenFiles\nset end of outputLines to POSIX path of chosenFile\nend repeat\nset AppleScript\'s text item delimiters to linefeed\nreturn outputLines as text\non error errMsg number errNum\nerror errMsg number errNum\nend try'
+    )
+    if not output:
+        return []
+    return [line.strip().strip('"') for line in output.splitlines() if line.strip()]
 
 
 def pick_project_config_value(field: str) -> dict[str, object]:
-    root = _native_picker_root()
-    try:
-        if field == "activity_file":
-            value = filedialog.askopenfilename(
-                title="Choose activity file",
-                filetypes=[("Activity files", "*.fit *.tcx"), ("All files", "*.*")],
-            )
-        elif field == "video_globs":
-            value = list(
-                filedialog.askopenfilenames(
-                    title="Choose video files",
-                    filetypes=[
-                        ("Video files", "*.mp4 *.mov *.m4v *.mkv *.avi *.mpeg *.mpg *.mts *.m2ts"),
-                        ("All files", "*.*"),
-                    ],
-                )
-            )
-        elif field == "output_dir":
-            value = filedialog.askdirectory(title="Choose output folder", mustexist=False)
-        else:
-            raise ValueError(f"unsupported picker field: {field}")
-    finally:
-        root.destroy()
+    if field == "activity_file":
+        value = _pick_single_path(
+            "Choose activity file",
+            'choose file with prompt "Choose activity file"',
+        )
+    elif field == "video_globs":
+        value = _pick_multiple_paths("Choose video files")
+    elif field == "output_dir":
+        value = _pick_single_path(
+            "Choose output folder",
+            'choose folder with prompt "Choose output folder"',
+        )
+    else:
+        raise ValueError(f"unsupported picker field: {field}")
     return {"field": field, "value": value}
 
 
