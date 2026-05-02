@@ -60,6 +60,7 @@ class OutputEncodingPlan:
     color_primaries: str | None
     audio_args: tuple[str, ...]
     warnings: tuple[str, ...]
+    codec_tag_string: str | None = None
 
 
 def _supported_color_metadata_profiles(video_codec: str, pixel_format: str) -> tuple[tuple[str, str, str], ...]:
@@ -231,6 +232,8 @@ def _append_main_video_encoding_args(command: list[str], plan: OutputEncodingPla
             plan.pixel_format,
         ]
     )
+    if plan.codec_tag_string:
+        command.extend(["-tag:v:0", plan.codec_tag_string])
     if plan.video_bitrate is not None and plan.video_bitrate > 0:
         command.extend(["-b:v:0", str(plan.video_bitrate)])
     if plan.color_space is not None:
@@ -359,6 +362,10 @@ def resolve_output_encoding_plan(clip: VideoClip) -> OutputEncodingPlan:
 
     audio_args = _resolve_audio_args(clip.audio_codec, clip.audio_bitrate, warnings)
 
+    codec_tag_string = None
+    if source_codec in SUPPORTED_VIDEO_CODEC_MAP and video_codec == SUPPORTED_VIDEO_CODEC_MAP[source_codec]:
+        codec_tag_string = clip.codec_tag_string
+
     return OutputEncodingPlan(
         video_codec=video_codec,
         pixel_format=pixel_format,
@@ -368,6 +375,7 @@ def resolve_output_encoding_plan(clip: VideoClip) -> OutputEncodingPlan:
         color_primaries=color_primaries,
         audio_args=audio_args,
         warnings=tuple(warnings),
+        codec_tag_string=codec_tag_string,
     )
 
 

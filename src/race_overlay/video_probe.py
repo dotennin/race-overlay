@@ -75,4 +75,5 @@ def probe_video(path: Path) -> VideoClip:
         audio_bitrate=_parse_optional_int(audio_stream.get("bit_rate")),
         has_attached_pic=attached_pic_stream_index is not None,
         attached_pic_stream_index=attached_pic_stream_index,
+        codec_tag_string=video_stream.get("codec_tag_string"),
     )
