@@ -1,7 +1,18 @@
 activity_file: /Users/dotennin-mac14/Downloads/activity_22734784243.tcx
 video_globs:
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173249_0010_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173833_0011_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173933_0012_D.MP4
 - /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502174433_0013_D.MP4
-output_dir: /Users/dotennin-mac14/Downloads/
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502174551_0014_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175016_0015_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175034_0016_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175143_0017_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175333_0018_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175704_0019_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175952_0020_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502180331_0021_D.MP4
+output_dir: /Users/dotennin-mac14/Downloads/new/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0

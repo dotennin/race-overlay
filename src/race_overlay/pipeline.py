@@ -211,10 +211,10 @@ def _render_overlay_frame(
     alignment,
     index: int,
     context: RenderContext,
-) -> Image.Image:
+) -> Image.Image | None:
     when = alignment.clip_start + timedelta(seconds=index / clip.fps)
     if alignment.overlay_start is None or when < alignment.overlay_start or when > alignment.overlay_end:
-        return Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
+        return None
 
     hud_value = sample_at(activity, when, cursor=context.sample_cursor)
     lap_states = lap_waterfall_states_for_widgets(context.hud_config, activity.laps, when)
@@ -234,6 +234,15 @@ def _render_overlay_frame(
 
 def _frame_count(clip) -> int:
     return int(clip.duration_seconds * clip.fps)
+
+
+def _create_empty_frame_bytes(width: int, height: int) -> bytes:
+    """Create pre-computed empty RGBA frame bytes for transparent overlay.
+    
+    This avoids creating a new PIL Image object for every transparent frame,
+    significantly speeding up rendering of partial clips.
+    """
+    return Image.new("RGBA", (width, height), (0, 0, 0, 0)).tobytes()
 
 
 def _emit_encoding_plan(progress: ProgressReporter | None, clip, plan) -> None:
@@ -332,6 +341,7 @@ def _render_clip_streaming(
 
     try:
         frame_total = max(_frame_count(clip), 1)
+        empty_frame_bytes = _create_empty_frame_bytes(clip.width, clip.height)
         for index in range(frame_total):
             if cancel_requested is not None and cancel_requested():
                 raise RenderJobCanceledError("render canceled")
@@ -353,7 +363,8 @@ def _render_clip_streaming(
                 message=message,
             )
             try:
-                process.stdin.write(image.tobytes())
+                frame_bytes = empty_frame_bytes if image is None else image.tobytes()
+                process.stdin.write(frame_bytes)
             except OSError as exc:
                 _raise_stream_write_error(process, "write", exc)
 
@@ -393,6 +404,7 @@ def _render_clip_via_cache(
     frame_dir.mkdir(parents=True, exist_ok=True)
     _emit(progress, f"Generating frame cache at {frame_dir}")
     frame_total = max(_frame_count(clip), 1)
+    empty_frame = Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
     for index in range(frame_total):
         if cancel_requested is not None and cancel_requested():
             raise RenderJobCanceledError("render canceled")
@@ -413,7 +425,8 @@ def _render_clip_via_cache(
             frame_total=frame_total,
             message=message,
         )
-        image.save(frame_dir / f"{index:06d}.png")
+        frame_to_save = empty_frame if image is None else image
+        frame_to_save.save(frame_dir / f"{index:06d}.png")
 
     overlay_path = cache_dir / clip.path.stem / "overlay.mov"
     output_path = output_dir / clip.path.name
