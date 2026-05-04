@@ -47,6 +47,12 @@ def test_broadcast_runner_preset_matches_hud_v2_widget_inventory() -> None:
     assert route_map.style["remaining_rgba"] == [13, 144, 195, 255]
 
 
+def test_broadcast_runner_preset_uses_speed_gauge_variant_for_speed_chip() -> None:
+    speed_chip = next(widget for widget in broadcast_runner_preset().widgets if widget.id == "speed-chip")
+
+    assert speed_chip.style["variant"] == "speed_gauge"
+
+
 def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -> None:
     config = broadcast_runner_preset()
     route_map = next(widget for widget in config.widgets if widget.id == "route-map")

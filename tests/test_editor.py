@@ -148,6 +148,20 @@ def test_build_editor_state_exposes_stride_card_overlay_library_entry() -> None:
     assert stride_entry["defaults"]["style"] == {"label": "Stride", "variant": "compact"}
 
 
+def test_build_editor_state_exposes_speed_chip_overlay_library_entry_with_speed_gauge_variant() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    speed_entry = next(item for item in state["overlay_library"] if item["label"] == "Speed chip")
+
+    assert speed_entry["type"] == "metric_card"
+    assert speed_entry["defaults"]["bindings"] == {"value": "speed_mps"}
+    assert speed_entry["defaults"]["style"] == {"label": "Speed", "variant": "speed_gauge"}
+
+
 def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     state = build_editor_state(
         config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
@@ -185,6 +199,22 @@ def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     assert pace_chip_style["unit_font_weight"]["options"] == ["regular", "bold"]
     assert pace_chip_style["unit_font_size_px"]["min"] == 8
     assert pace_chip_style["show_unit"] == {"kind": "boolean", "label": "Show unit suffix"}
+
+
+def test_build_editor_state_exposes_speed_gauge_metric_card_variant() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    pace_chip_style = state["schema"]["widgets"]["pace-chip"]["style"]
+
+    assert pace_chip_style["variant"] == {
+        "kind": "selection",
+        "label": "Variant",
+        "options": ["compact", "speed_gauge"],
+    }
 
 
 def test_build_editor_state_exposes_broadcast_font_families_in_schema() -> None:

@@ -1312,6 +1312,117 @@ def test_render_hud_frame_renders_stride_metric_card(monkeypatch: pytest.MonkeyP
     assert "m" in labels
 
 
+def test_render_hud_frame_speed_gauge_metric_card_renders_kmh_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="speed-gauge",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="speed-chip",
+                    type="metric_card",
+                    bindings={"value": "speed_mps"},
+                    anchor="bottom-right",
+                    x=1120,
+                    y=584,
+                    width=160,
+                    height=136,
+                    style={"label": "Speed", "variant": "speed_gauge"},
+                )
+            ],
+        ),
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=6.94,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+    )
+
+    assert "25" in labels
+    assert "KM/H" in labels
+    assert "Speed" not in labels
+
+
+def test_render_hud_frame_speed_gauge_metric_card_handles_missing_speed(monkeypatch: pytest.MonkeyPatch) -> None:
+    labels = _rendered_text_labels(
+        monkeypatch,
+        HudConfig(
+            preset="speed-gauge",
+            theme=HudThemeConfig(),
+            widgets=[
+                HudWidgetConfig(
+                    id="speed-chip",
+                    type="metric_card",
+                    bindings={"value": "speed_mps"},
+                    anchor="bottom-right",
+                    x=1120,
+                    y=584,
+                    width=160,
+                    height=136,
+                    style={"label": "Speed", "variant": "speed_gauge"},
+                )
+            ],
+        ),
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=None,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+    )
+
+    assert "--" in labels
+    assert "KM/H" in labels
+
+
+def test_render_hud_frame_speed_gauge_metric_card_draws_visible_pixels() -> None:
+    widget = HudWidgetConfig(
+        id="speed-chip",
+        type="metric_card",
+        bindings={"value": "speed_mps"},
+        anchor="bottom-right",
+        x=1120,
+        y=584,
+        width=160,
+        height=136,
+        style={"label": "Speed", "variant": "speed_gauge"},
+    )
+    hud_config = HudConfig(preset="speed-gauge", theme=HudThemeConfig(), widgets=[widget])
+
+    image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=6.94,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    assert _region_has_alpha(image, _widget_bounds(widget, 1280, 720))
+
+
 def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _rendered_text_labels(
         monkeypatch,

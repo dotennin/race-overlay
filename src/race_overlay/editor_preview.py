@@ -75,7 +75,7 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
     },
     "metric_card": {
         "label": {"kind": "text", "label": "Label"},
-        "variant": {"kind": "selection", "label": "Variant", "options": ["compact"]},
+        "variant": {"kind": "selection", "label": "Variant", "options": ["compact", "speed_gauge"]},
         "align": {"kind": "selection", "label": "Align", "options": ["left", "right"]},
         "unit_font_family": {"kind": "enum", "label": "Unit font family", "options": list(HUD_FONT_FAMILY_OPTIONS)},
         "unit_font_weight": {"kind": "enum", "label": "Unit font weight", "options": list(HUD_FONT_WEIGHT_OPTIONS)},
@@ -405,7 +405,7 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                         "height": 72,
                         "z_index": 20,
                         "visible": True,
-                        "style": {"label": "Speed", "variant": "compact"},
+                        "style": {"label": "Speed", "variant": "speed_gauge"},
                     },
                 },
                 {

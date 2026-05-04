@@ -1335,8 +1335,21 @@ def _draw_metric_card(
     unit_font = _unit_font(widget, theme, scale)
     label = str(widget.style.get("label", "Metric"))
     align = str(widget.style.get("align", "left"))
+    variant = str(widget.style.get("variant", "standard"))
 
-    if widget.style.get("variant") == "compact":
+    if variant == "speed_gauge":
+        _draw_speed_gauge_metric_card(
+            draw,
+            widget,
+            hud_value,
+            theme,
+            frame_width,
+            frame_height,
+            scale,
+        )
+        return
+
+    if variant == "compact":
         if _widget_panel_enabled(widget):
             draw.rounded_rectangle((left, top, right, bottom), radius=_scale_draw(
                 scale, 20), fill=(6, 10, 18, 120))
@@ -1432,6 +1445,131 @@ def _draw_metric_card(
             suffix_y = value_y + (value_bbox_origin[3] - suffix_bbox_origin[3])
             draw.text((suffix_x, suffix_y), suffix, fill=tuple(
                 theme.text_rgba), anchor="la", font=unit_font)
+
+
+def _draw_speed_gauge_metric_card(
+    draw: ImageDraw.ImageDraw,
+    widget: HudWidgetConfig,
+    hud_value: HudSample,
+    theme: HudThemeConfig,
+    frame_width: int,
+    frame_height: int,
+    scale: RenderScale,
+) -> None:
+    left, top = _resolve_widget_origin(widget, frame_width, frame_height, scale)
+    w = _scale_x(scale, widget.width)
+    h = _scale_y(scale, widget.height)
+    right, bottom = left + w, top + h
+    value_font = _value_font(widget, theme, scale)
+    unit_font = _unit_font(widget, theme, scale)
+
+    if _widget_panel_enabled(widget):
+        draw.rounded_rectangle(
+            (left, top, right, bottom),
+            radius=_scale_draw(scale, 24),
+            fill=(6, 10, 18, 156),
+        )
+
+    padding_x = _scale_x(scale, 10)
+    padding_y = _scale_y(scale, 8)
+    gauge_left = left + padding_x
+    gauge_top = top + padding_y
+    gauge_right = right - padding_x
+    gauge_bottom = bottom - padding_y
+
+    draw.ellipse(
+        (gauge_left, gauge_top, gauge_right, gauge_bottom),
+        fill=(10, 14, 22, 220),
+        outline=(168, 174, 182, 255),
+        width=_scale_draw(scale, 3),
+    )
+
+    arc_inset = _scale_draw(scale, 12)
+    arc_bounds = (
+        gauge_left + arc_inset,
+        gauge_top + arc_inset,
+        gauge_right - arc_inset,
+        gauge_bottom - arc_inset,
+    )
+    arc_width = _scale_draw(scale, 7)
+    arc_start = 130.0
+    arc_sweep = 270.0
+    arc_end = arc_start + arc_sweep
+
+    draw.arc(
+        arc_bounds,
+        start=arc_start,
+        end=arc_end,
+        fill=(88, 95, 108, 255),
+        width=arc_width,
+    )
+
+    progress = _speed_gauge_progress(hud_value)
+    segments = (
+        (0.00, 0.42, (77, 221, 92, 255)),
+        (0.42, 0.66, (193, 181, 39, 255)),
+        (0.66, 0.84, (194, 121, 28, 255)),
+        (0.84, 1.00, (174, 35, 31, 255)),
+    )
+    for start_ratio, end_ratio, color in segments:
+        if progress <= start_ratio:
+            continue
+        segment_end_ratio = min(progress, end_ratio)
+        draw.arc(
+            arc_bounds,
+            start=arc_start + arc_sweep * start_ratio,
+            end=arc_start + arc_sweep * segment_end_ratio,
+            fill=color,
+            width=arc_width,
+        )
+
+    marker_angle = arc_start + arc_sweep * progress
+    marker_radius = max((arc_bounds[2] - arc_bounds[0]) / 2 + _scale_draw(scale, 3), 1)
+    center_x = (arc_bounds[0] + arc_bounds[2]) / 2
+    center_y = (arc_bounds[1] + arc_bounds[3]) / 2
+    marker_theta = math.radians(marker_angle)
+    marker_outer = (
+        center_x + math.cos(marker_theta) * marker_radius,
+        center_y + math.sin(marker_theta) * marker_radius,
+    )
+    marker_inner = (
+        center_x + math.cos(marker_theta) * (marker_radius - _scale_draw(scale, 24)),
+        center_y + math.sin(marker_theta) * (marker_radius - _scale_draw(scale, 24)),
+    )
+    marker_perp = (-math.sin(marker_theta), math.cos(marker_theta))
+    marker_half_width = _scale_draw(scale, 7)
+    draw.polygon(
+        (
+            marker_outer,
+            (
+                marker_inner[0] + marker_perp[0] * marker_half_width,
+                marker_inner[1] + marker_perp[1] * marker_half_width,
+            ),
+            (
+                marker_inner[0] - marker_perp[0] * marker_half_width,
+                marker_inner[1] - marker_perp[1] * marker_half_width,
+            ),
+        ),
+        fill=(230, 230, 230, 255),
+    )
+
+    value_text = _speed_gauge_value_text(hud_value)
+    draw.text(
+        (left + w * 0.46, top + h * 0.50),
+        value_text,
+        fill=tuple(theme.text_rgba),
+        anchor="mm",
+        font=value_font,
+    )
+
+    if _style_bool(widget, "show_unit", theme.show_units):
+        draw.text(
+            (left + w * 0.63, top + h * 0.72),
+            "KM/H",
+            fill=tuple(theme.text_rgba),
+            anchor="mm",
+            font=unit_font,
+        )
 
 
 def _draw_context_card(
@@ -2015,6 +2153,19 @@ def _metric_suffix(widget: HudWidgetConfig, theme: HudThemeConfig) -> str:
     if binding == "speed_mps":
         return "km/h"
     raise AssertionError(f"unreachable metric binding '{binding}'")
+
+
+def _speed_gauge_value_text(hud_value: HudSample) -> str:
+    if hud_value.speed_mps is None:
+        return "--"
+    return f"{round(hud_value.speed_mps * 3.6):.0f}"
+
+
+def _speed_gauge_progress(hud_value: HudSample) -> float:
+    if hud_value.speed_mps is None:
+        return 0.0
+    speed_kmh = hud_value.speed_mps * 3.6
+    return min(max(speed_kmh / 30.0, 0.0), 1.0)
 
 
 def _is_compact_context_variant(widget: HudWidgetConfig) -> bool:

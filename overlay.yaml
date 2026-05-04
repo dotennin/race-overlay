@@ -182,7 +182,7 @@ hud:
     visible: true
     style:
       label: Speed
-      variant: compact
+      variant: speed_gauge
       align: left
   - id: route-map
     type: route_map

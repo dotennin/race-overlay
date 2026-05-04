@@ -123,7 +123,7 @@ def _legacy_broadcast_runner_preset() -> HudConfig:
                 72,
                 20,
                 True,
-                {"label": "Speed", "variant": "compact"},
+                {"label": "Speed", "variant": "speed_gauge"},
             ),
             HudWidgetConfig(
                 "route-map",
@@ -284,7 +284,7 @@ def broadcast_runner_preset() -> HudConfig:
                 76,
                 20,
                 True,
-                {"label": "Speed", "variant": "compact"},
+                {"label": "Speed", "variant": "speed_gauge"},
             ),
             HudWidgetConfig(
                 "route-map",
