@@ -35,6 +35,23 @@ def test_sample_at_interpolates_distance_heart_rate_and_altitude() -> None:
     assert round(hud_value.altitude_m, 2) == -1.2
 
 
+def test_sample_at_preserves_missing_optional_metrics() -> None:
+    start = datetime(2026, 4, 19, 0, 45, 5, tzinfo=timezone.utc)
+    activity = ActivityTrack(
+        sport="Biking",
+        samples=[
+            ActivitySample(start, 36.0, 140.0, 10.0, 0.0, 8.0, None, None),
+            ActivitySample(start + timedelta(seconds=10), 36.1, 140.1, 10.5, 80.0, 8.5, None, None),
+        ],
+    )
+
+    hud_value = sample_at(activity, start + timedelta(seconds=5))
+
+    assert hud_value.speed_mps == pytest.approx(8.25)
+    assert hud_value.heart_rate_bpm is None
+    assert hud_value.cadence_spm is None
+
+
 # ── lap_waterfall_state ──────────────────────────────────────────────────────
 
 

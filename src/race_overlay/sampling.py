@@ -171,6 +171,11 @@ def _lerp(start: float | int | None, end: float | int | None, ratio: float) -> f
     return float(start) + (float(end) - float(start)) * ratio
 
 
+def _round_lerped_optional(start: float | int | None, end: float | int | None, ratio: float) -> int | None:
+    value = _lerp(start, end, ratio)
+    return None if value is None else round(value)
+
+
 def _bounding_samples(samples, when):
     for before, after in zip(samples, samples[1:]):
         if before.timestamp <= when <= after.timestamp:
@@ -256,6 +261,6 @@ def sample_at(activity: ActivityTrack, when, *, cursor: SampleCursor | None = No
         distance_m=_lerp(before.distance_m, after.distance_m, ratio),
         speed_mps=speed_mps,
         pace_seconds_per_km=(1000.0 / speed_mps) if speed_mps else None,
-        heart_rate_bpm=round(_lerp(before.heart_rate_bpm, after.heart_rate_bpm, ratio)),
-        cadence_spm=round(_lerp(before.cadence_spm, after.cadence_spm, ratio)),
+        heart_rate_bpm=_round_lerped_optional(before.heart_rate_bpm, after.heart_rate_bpm, ratio),
+        cadence_spm=_round_lerped_optional(before.cadence_spm, after.cadence_spm, ratio),
     )

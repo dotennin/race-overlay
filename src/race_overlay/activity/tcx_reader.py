@@ -32,6 +32,16 @@ def _normalize_run_cadence(value: int | None, sport: str) -> int | None:
     return value * 2
 
 
+def _parse_cadence(point: ET.Element, sport: str) -> int | None:
+    run_cadence = _find_int(point, "tcx:Extensions/ns3:TPX/ns3:RunCadence")
+    if sport.lower() == "running":
+        return _normalize_run_cadence(run_cadence, sport)
+    trackpoint_cadence = _find_int(point, "tcx:Cadence")
+    if trackpoint_cadence is not None:
+        return trackpoint_cadence
+    return run_cadence
+
+
 def _derive_elevation_delta(lap_el: ET.Element) -> float | None:
     """Return signed net elevation delta (last minus first trackpoint altitude) in metres.
 
@@ -139,10 +149,7 @@ def read_tcx(path: Path) -> ActivityTrack:
                 distance_m=_find_float(point, "tcx:DistanceMeters"),
                 speed_mps=_find_float(point, "tcx:Extensions/ns3:TPX/ns3:Speed"),
                 heart_rate_bpm=_find_int(point, "tcx:HeartRateBpm/tcx:Value"),
-                cadence_spm=_normalize_run_cadence(
-                    _find_int(point, "tcx:Extensions/ns3:TPX/ns3:RunCadence"),
-                    sport,
-                ),
+                cadence_spm=_parse_cadence(point, sport),
             )
         )
     laps = [_parse_lap(lap_el) for lap_el in activity.findall("tcx:Lap", NS)]

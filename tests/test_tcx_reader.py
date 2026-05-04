@@ -181,6 +181,34 @@ def test_load_activity_normalizes_running_tcx_run_cadence(tmp_path: Path) -> Non
     assert activity.samples[0].cadence_spm == 184
 
 
+def test_load_activity_reads_cycling_tcx_trackpoint_cadence(tmp_path: Path) -> None:
+    tcx_path = tmp_path / "cycling_cadence.tcx"
+    tcx_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"
+    xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+  <Activities>
+    <Activity Sport="Biking">
+      <Lap StartTime="2026-04-19T00:45:05Z">
+        <Track>
+          <Trackpoint>
+            <Time>2026-04-19T00:45:05Z</Time>
+            <Cadence>88</Cadence>
+          </Trackpoint>
+        </Track>
+      </Lap>
+    </Activity>
+  </Activities>
+</TrainingCenterDatabase>""",
+        encoding="utf-8",
+    )
+
+    activity = load_activity(tcx_path)
+
+    assert activity.sport == "Biking"
+    assert activity.samples[0].cadence_spm == 88
+
+
 def test_lap_total_time_derived_from_trackpoints_when_summary_absent(tmp_path: Path) -> None:
     """total_time_seconds is derived from first/last trackpoint timestamps when the summary field is absent."""
     tcx_path = tmp_path / "no_time.tcx"
