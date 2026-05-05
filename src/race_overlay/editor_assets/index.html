@@ -106,21 +106,12 @@
                 id="render-preview-toggle"
                 type="button"
                 class="render-preview-toggle"
-                aria-controls="render-preview-pane"
+                aria-controls="render-preview-modal"
                 aria-expanded="false"
               >
                 Show preview
               </button>
             </div>
-            <section id="render-preview-pane" class="render-preview-pane" data-state="idle" hidden>
-              <p id="render-preview-status" class="render-preview-pane__status">Preview is off.</p>
-              <img
-                id="render-preview-image"
-                class="render-preview-pane__image"
-                alt="Render preview frame"
-                hidden
-              />
-            </section>
             <button id="render-cancel-button" type="button" hidden>Cancel</button>
             <pre id="render-console" class="render-console"></pre>
           </div>
@@ -181,6 +172,22 @@
       <h2>Help</h2>
       <p>Drag on canvas to move HUD blocks. Use handles to resize. Save YAML to persist.</p>
       <button id="help-close-button" type="button">Close</button>
+    </dialog>
+
+    <dialog id="render-preview-modal" class="render-preview-modal" hidden>
+      <div class="render-preview-modal__header">
+        <div>
+          <h2>Render preview</h2>
+          <p id="render-preview-status" class="render-preview-modal__status">Preview is off.</p>
+        </div>
+        <button id="render-preview-close-button" type="button" class="render-preview-modal__close">Close</button>
+      </div>
+      <img
+        id="render-preview-image"
+        class="render-preview-modal__image"
+        alt="Render preview frame"
+        hidden
+      />
     </dialog>
 
     <script src="/app.js" type="module"></script>

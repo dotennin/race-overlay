@@ -50,7 +50,8 @@ const elements = {
   renderPercent: document.getElementById("render-progress-percent"),
   renderStage: document.getElementById("render-stage"),
   renderPreviewToggle: document.getElementById("render-preview-toggle"),
-  renderPreviewPane: document.getElementById("render-preview-pane"),
+  renderPreviewModal: document.getElementById("render-preview-modal"),
+  renderPreviewCloseButton: document.getElementById("render-preview-close-button"),
   renderPreviewStatus: document.getElementById("render-preview-status"),
   renderPreviewImage: document.getElementById("render-preview-image"),
   renderCancelButton: document.getElementById("render-cancel-button"),
@@ -154,8 +155,34 @@ function clearRenderPreviewPoll() {
   renderPreviewRequestInFlight = false;
 }
 
+function openRenderPreview() {
+  if (!elements.renderPreviewModal) {
+    return;
+  }
+  renderPreviewOpen = true;
+  elements.renderPreviewModal.hidden = false;
+  if (typeof elements.renderPreviewModal.showModal === "function" && !elements.renderPreviewModal.open) {
+    elements.renderPreviewModal.showModal();
+  } else {
+    elements.renderPreviewModal.open = true;
+  }
+}
+
+function closeRenderPreview() {
+  renderPreviewOpen = false;
+  clearRenderPreviewPoll();
+  if (!elements.renderPreviewModal) {
+    return;
+  }
+  if (typeof elements.renderPreviewModal.close === "function" && elements.renderPreviewModal.open) {
+    elements.renderPreviewModal.close();
+  }
+  elements.renderPreviewModal.hidden = true;
+  elements.renderPreviewModal.open = false;
+}
+
 function renderRenderPreviewPane({ loading = false } = {}) {
-  if (!elements.renderPreviewToggle || !elements.renderPreviewPane || !elements.renderPreviewStatus || !elements.renderPreviewImage) {
+  if (!elements.renderPreviewToggle || !elements.renderPreviewModal || !elements.renderPreviewStatus || !elements.renderPreviewImage) {
     return;
   }
   elements.renderPreviewToggle.textContent = renderPreviewOpen ? "Hide preview" : "Show preview";
@@ -164,10 +191,12 @@ function renderRenderPreviewPane({ loading = false } = {}) {
   } else {
     elements.renderPreviewToggle["aria-expanded"] = renderPreviewOpen ? "true" : "false";
   }
-  elements.renderPreviewPane.hidden = !renderPreviewOpen;
   if (!renderPreviewOpen) {
+    elements.renderPreviewModal.hidden = true;
+    elements.renderPreviewModal.open = false;
     return;
   }
+  elements.renderPreviewModal.hidden = false;
 
   const hasImage = Boolean(renderPreviewObjectUrl);
   let status = "Preview will appear when rendering starts.";
@@ -194,7 +223,7 @@ function renderRenderPreviewPane({ loading = false } = {}) {
     state = "ready";
   }
 
-  elements.renderPreviewPane.dataset.state = state;
+  elements.renderPreviewModal.dataset.state = state;
   elements.renderPreviewStatus.textContent = status;
   elements.renderPreviewImage.hidden = !hasImage;
 }
@@ -1913,10 +1942,26 @@ if (elements.renderDrawerTab) {
 }
 if (elements.renderPreviewToggle) {
   elements.renderPreviewToggle.addEventListener("click", async () => {
-    renderPreviewOpen = !renderPreviewOpen;
-    if (!renderPreviewOpen) {
-      clearRenderPreviewPoll();
+    if (renderPreviewOpen) {
+      closeRenderPreview();
+    } else {
+      openRenderPreview();
     }
+    renderRenderPreviewPane();
+    await syncRenderPreviewState(renderState.status);
+  });
+}
+if (elements.renderPreviewCloseButton) {
+  elements.renderPreviewCloseButton.addEventListener("click", async () => {
+    closeRenderPreview();
+    renderRenderPreviewPane();
+    await syncRenderPreviewState(renderState.status);
+  });
+}
+if (elements.renderPreviewModal) {
+  elements.renderPreviewModal.addEventListener("cancel", async (event) => {
+    event.preventDefault();
+    closeRenderPreview();
     renderRenderPreviewPane();
     await syncRenderPreviewState(renderState.status);
   });
@@ -1946,6 +1991,13 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 }
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && renderPreviewOpen) {
+      event.preventDefault();
+      closeRenderPreview();
+      renderRenderPreviewPane();
+      void syncRenderPreviewState(renderState.status);
+      return;
+    }
     if (event.key === "Escape" && !elements.helpModal?.hidden) {
       closeHelp();
     }

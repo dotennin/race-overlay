@@ -1,6 +1,6 @@
 activity_file: /Users/dotennin-mac14/Downloads/activity_22757462988 (1).tcx
 video_globs:
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504161906_0035_D.MP4
+- /Users/dotennin-mac14/Downloads/DJI_20260504161906_0035_D.MP4
 output_dir: /Users/dotennin-mac14/Downloads/new/
 cache_dir: cache
 timeline:
@@ -377,12 +377,12 @@ presets:
       x: 1154
       y: 424
       width: 126
-      height: 126
+      height: 73
       z_index: 20
       visible: true
       style:
         label: Speed
-        variant: speed_gauge
+        variant: compact
         align: left
     - id: route-map
       type: route_map

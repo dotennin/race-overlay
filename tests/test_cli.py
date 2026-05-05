@@ -140,7 +140,11 @@ def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> No
     import shutil
     
     config_path = tmp_path / "overlay.yaml"
-    activity_src = Path(__file__).parent.parent / "activity_22577902433.tcx"
+    activity_src = next(
+        parent / "activity_22577902433.tcx"
+        for parent in Path(__file__).resolve().parents
+        if (parent / "activity_22577902433.tcx").exists()
+    )
     activity_path = tmp_path / "activity.tcx"
     
     # Copy existing activity file

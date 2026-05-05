@@ -3486,7 +3486,8 @@ def test_editor_assets_expose_render_preview_controls() -> None:
     assert 'id="render-preview-toggle"' in html
     assert 'class="render-preview-controls"' in html
     assert 'class="render-preview-toggle"' in html
-    assert 'id="render-preview-pane"' in html
+    assert 'id="render-preview-modal"' in html
+    assert 'id="render-preview-close-button"' in html
     assert 'id="render-preview-image"' in html
     assert 'id="render-preview-status"' in html
     assert 'Show preview' in html
@@ -3495,13 +3496,114 @@ def test_editor_assets_expose_render_preview_controls() -> None:
     assert "renderPreviewOpen" in app_js
     assert "renderPreviewVersion" in app_js
     assert "renderPreviewObjectUrl" in app_js
+    assert "showModal()" in app_js
+    assert "closeRenderPreview()" in app_js
     assert "clearRenderPreviewPoll()" in app_js
     assert "URL.revokeObjectURL(renderPreviewObjectUrl)" in app_js
     assert ".render-preview-controls" in css
     assert ".render-preview-toggle" in css
-    assert ".render-preview-pane" in css
-    assert ".render-preview-pane__image" in css
-    assert ".render-preview-pane__status" in css
+    assert ".render-preview-modal" in css
+    assert ".render-preview-modal__image" in css
+    assert ".render-preview-modal__status" in css
+
+
+def test_editor_app_closes_render_preview_popup_on_escape() -> None:
+    app_js_path = files("race_overlay.editor_assets").joinpath("app.js")
+    script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+
+const source = fs.readFileSync({json.dumps(str(app_js_path))}, "utf8")
+  .split("updateSaveButtonState();\\nupdateRenderButtonState();")[0]
+  + '\\n;globalThis.__test = {{\\n'
+  + '  openRenderPreview,\\n'
+  + '  closeRenderPreview,\\n'
+  + '  isRenderPreviewOpen() {{ return renderPreviewOpen; }},\\n'
+  + '  getDialog() {{ return elements.renderPreviewModal; }},\\n'
+  + '}};';
+
+function makeElement(id) {{
+  return {{
+    id,
+    hidden: false,
+    dataset: {{}},
+    style: {{}},
+    textContent: "",
+    open: false,
+    addEventListener(type, handler) {{
+      this._handlers ??= {{}};
+      this._handlers[type] = handler;
+    }},
+    dispatch(type, event) {{
+      if (this._handlers && this._handlers[type]) {{
+        this._handlers[type](event);
+      }}
+    }},
+    setAttribute() {{}},
+    removeAttribute() {{}},
+    appendChild() {{}},
+    append() {{}},
+    replaceChildren() {{}},
+    showModal() {{ this.open = true; }},
+    close() {{ this.open = false; }},
+    getBoundingClientRect() {{ return {{ left: 0, top: 0, width: 100, height: 100 }}; }},
+  }};
+}}
+
+const elements = new Map();
+const listeners = {{}};
+const stub = new Proxy({{}}, {{
+  get(_, prop) {{
+    if (!elements.has(prop)) {{
+      elements.set(prop, makeElement(prop));
+    }}
+    return elements.get(prop);
+  }},
+}});
+
+const context = {{
+  console,
+  URL: {{ createObjectURL() {{ return "blob://frame"; }}, revokeObjectURL() {{}} }},
+  Blob,
+  Date,
+  setTimeout,
+  clearTimeout,
+  window: {{
+    setTimeout,
+    clearTimeout,
+    addEventListener(type, handler) {{
+      listeners[type] = handler;
+    }},
+    confirm() {{ return true; }},
+  }},
+  document: {{
+    getElementById(id) {{
+      return stub[id];
+    }},
+    addEventListener(type, handler) {{
+      listeners[`document:${{type}}`] = handler;
+    }},
+  }},
+  fetch: async () => ({{ ok: true, status: 200, json: async () => ({{ preview: {{ enabled: false, available: false, version: 0 }} }}) }}),
+}};
+
+vm.createContext(context);
+vm.runInContext(source, context);
+
+context.__test.openRenderPreview();
+if (!context.__test.isRenderPreviewOpen() || !context.__test.getDialog().open) {{
+  throw new Error("preview did not open");
+}}
+
+listeners["document:keydown"]({{ key: "Escape", preventDefault() {{}} }});
+
+if (context.__test.isRenderPreviewOpen() || context.__test.getDialog().open) {{
+  throw new Error("preview did not close on escape");
+}}
+"""
+
+    completed = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
 def test_editor_app_keeps_previous_render_preview_visible_when_render_restarts() -> None:
