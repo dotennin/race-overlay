@@ -197,10 +197,18 @@ def _route_map_projection_bounds(
     return lat_min, lat_max, lon_min, lon_max, projection_scale, offset_x, offset_y
 
 
-def _progress_bar_text_layout(left: int, top: int, width: int, height: int, label: str) -> ProgressBarTextLayout:
+def _progress_bar_text_layout(
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    label: str,
+    *,
+    total_text_width: int = 0,
+) -> ProgressBarTextLayout:
     value_baseline_y = top + 14
     current_x = left + 16 + (80 if label else 0)
-    total_x = left + width - 16
+    total_x = left + width - 16 - total_text_width
     return ProgressBarTextLayout(current_anchor=(current_x, value_baseline_y), total_anchor=(total_x, value_baseline_y))
 
 
@@ -842,7 +850,13 @@ def _draw_progress_bar(
         draw.rounded_rectangle((left, top, left + w, top + h),
                                radius=_scale_draw(scale, 18), fill=(6, 10, 18, 120))
     text_layout = _progress_bar_text_layout(
-        left, top, w, h, str(widget.style.get("label", "")))
+        left,
+        top,
+        w,
+        h,
+        str(widget.style.get("label", "")),
+        total_text_width=0,
+    )
     track_left = left + _scale_x(scale, 16)
     track_right = left + w - _scale_x(scale, 16)
     track_top = top + _scale_y(scale, 34)
@@ -856,6 +870,24 @@ def _draw_progress_bar(
     rail_rgba = _style_rgba(widget, "rail_rgba", PROGRESS_BAR_RAIL_RGBA)
     tick_rgba = _style_rgba(widget, "tick_rgba", PROGRESS_BAR_TICK_RGBA)
     rail_radius = max((track_bottom - track_top) // 2, _scale_draw(scale, 6))
+    total_text = _distance_label(goal_m, show_units)
+    if show_total_value:
+        total_box = draw.textbbox((0, 0), total_text, font=total_font)
+        total_text_width = total_box[2] - total_box[0]
+        text_layout = _progress_bar_text_layout(
+            left,
+            top,
+            w,
+            h,
+            label,
+            total_text_width=total_text_width,
+        )
+        track_right = max(
+            track_left + _scale_x(scale, 24),
+            text_layout.total_anchor[0] - _scale_x(scale, 12),
+        )
+    else:
+        text_layout = _progress_bar_text_layout(left, top, w, h, label)
     draw.rounded_rectangle((track_left, track_top, track_right,
                            track_bottom), radius=rail_radius, fill=rail_rgba)
     draw.line((track_left, track_y, track_right, track_y),
@@ -907,8 +939,8 @@ def _draw_progress_bar(
         current_text = _distance_label(progress_value_m, show_units)
         current_box = draw.textbbox((0, 0), current_text, font=current_font)
         current_text_width = current_box[2] - current_box[0]
-        current_text_x = max(track_left, progress_right -
-                             current_text_width - _scale_x(scale, 8))
+        current_text_x = max(text_layout.current_anchor[0], progress_right -
+                              current_text_width - _scale_x(scale, 8))
         draw.text(
             (current_text_x, text_layout.current_anchor[1]),
             current_text,
@@ -917,10 +949,10 @@ def _draw_progress_bar(
         )
     if show_total_value:
         draw.text(
-            text_layout.total_anchor,
-            _distance_label(goal_m, show_units),
+            (text_layout.total_anchor[0], track_y),
+            total_text,
             fill=tuple(theme.text_rgba),
-            anchor="ra",
+            anchor="lm",
             font=total_font,
         )
 
@@ -1099,27 +1131,27 @@ def _draw_route_map(
     w = _scale_x(scale, widget.width)
     h = _scale_y(scale, widget.height)
     shape = str(widget.style.get("shape", ROUTE_MAP_DEFAULT_SHAPE))
-    
+
     # Early return if not enough points
     if len(route_points) < 2:
         # Still need to draw background and label
         widget_image = _create_route_map_background(widget, w, h, shape, scale, theme)
         image.alpha_composite(widget_image, (left, top))
         return
-    
+
     # Check cache
     cache_key = route_map_cache_key or _route_map_cache_key(widget, route_points, theme, frame_width, frame_height, scale)
     cache = _route_map_cache.get(cache_key)
-    
+
     if cache is None:
         # Create static components and cache them
         cache = _create_route_map_cache(widget, route_points, w, h, shape, scale, theme)
         _store_route_map_cache_entry(cache_key, cache)
-    
+
     # Start with cached background (which already has the full route polyline)
     widget_image = cache.background_image.copy()
     widget_draw = ImageDraw.Draw(widget_image)
-    
+
     # Compute dynamic components
     show_north_marker = _style_bool(widget, "show_north_marker", True)
     show_bearing_label = _style_bool(widget, "show_bearing_label", True)
@@ -1127,26 +1159,26 @@ def _draw_route_map(
     bearing_label = ""
     if route_projection is not None and show_bearing_label:
         bearing_label = _format_bearing_label(route_projection.tangent)
-    
+
     unit_font = _unit_font(widget, theme, scale)
-    
+
     # Draw dynamic route overlays (frame-dynamic work only)
     completed_rgba = _style_rgba(widget, "completed_rgba", ROUTE_MAP_ROUTE_RGBA)
-    
+
     if route_projection is not None:
         # Have GPS position: overlay the completed portion in a different color
         # The base route is already rendered in the cached background
         split_index = route_projection.segment_index
         split_point_projected = cache.project_fn(route_projection.point)
-        
+
         # Build completed path using cached projections
         completed_projected = [*cache.projected_points[:split_index + 1], split_point_projected]
-        
+
         # Draw only the completed portion as a dynamic overlay
         if len(completed_projected) >= 2:
             widget_draw.line(completed_projected, fill=completed_rgba,
                              width=_scale_draw(scale, 4))
-        
+
         # Draw position marker
         heading_vector = _projected_route_vector(route_projection, cache.project_fn)
         _draw_position_marker_arrow(
@@ -1155,7 +1187,7 @@ def _draw_route_map(
             heading_vector,
             scale,
         )
-    
+
     # Composite widget to frame
     if shape == "circle":
         mask = Image.new("L", (w, h), 0)
@@ -1164,13 +1196,13 @@ def _draw_route_map(
         image.paste(widget_image, (left, top), mask)
     else:
         image.alpha_composite(widget_image, (left, top))
-    
+
     # Draw north marker above the widget (outside background)
     if show_north_marker:
         north_y = top - _scale_y(scale, 10)
         draw.text((left + w / 2, north_y), "N",
                   fill=tuple(theme.text_rgba), anchor="ms", font=unit_font)
-    
+
     # Draw bearing label below the widget (outside background)
     if bearing_label:
         bearing_y = top + h + _scale_y(scale, 10)
@@ -1190,7 +1222,7 @@ def _create_route_map_background(
     background_rgba = _style_rgba(widget, "background_rgba", ROUTE_MAP_PANEL_RGBA)
     widget_image = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     widget_draw = ImageDraw.Draw(widget_image)
-    
+
     if shape == "circle":
         if _widget_panel_enabled(widget):
             widget_draw.ellipse((0, 0, w, h), fill=background_rgba,
@@ -1203,13 +1235,13 @@ def _create_route_map_background(
                 fill=background_rgba,
                 outline=ROUTE_MAP_PANEL_OUTLINE_RGBA,
             )
-    
+
     label = str(widget.style.get("label", "Route map"))
     title_font = _title_font(widget, theme, scale)
     if label:
         widget_draw.text((_scale_x(scale, 12), _scale_y(scale, 10)),
                          label, fill=tuple(theme.text_rgba), font=title_font)
-    
+
     return widget_image
 
 
@@ -1225,7 +1257,7 @@ def _create_route_map_cache(
     """Create a cache entry with static route map components."""
     # Create background with label
     background_image = _create_route_map_background(widget, w, h, shape, scale, theme)
-    
+
     # Compute projection parameters
     label = str(widget.style.get("label", "Route map"))
     show_top_overlays = bool(label)
@@ -1250,22 +1282,22 @@ def _create_route_map_cache(
             offset_x + ((lon - lon_min) * projection_scale),
             offset_y + ((lat_max - lat) * projection_scale),
         )
-    
+
     # Pre-project all route points
     projected_points = [project(point) for point in route_points]
-    
+
     # Pre-render the full route polyline onto the background (clip-static work)
     # This is the key Task 2 fix: rasterize the route base layer into the cache
     background_with_route = background_image.copy()
     background_draw = ImageDraw.Draw(background_with_route)
-    
+
     # Get route color from widget style (use remaining color as the base/neutral color)
     base_route_rgba = _style_rgba(widget, "remaining_rgba", ROUTE_MAP_REMAINING_RGBA)
-    
+
     # Draw the full route polyline once during cache creation
     if len(projected_points) >= 2:
         background_draw.line(projected_points, fill=base_route_rgba, width=_scale_draw(scale, 4))
-    
+
     return RouteMapCache(
         background_image=background_with_route,
         projected_points=projected_points,

@@ -301,6 +301,31 @@ def test_render_hud_frame_shows_current_and_total_distance_on_ruler_by_default(m
     )
 
 
+def test_render_hud_frame_places_total_distance_to_the_right_of_the_rail(monkeypatch: pytest.MonkeyPatch) -> None:
+    draws = _rendered_text_draws(
+        monkeypatch,
+        broadcast_runner_preset(),
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=24600.0,
+            speed_mps=3.58,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        total_distance_m=24650.0,
+    )
+
+    current = next(pos for pos, text in draws if text == "24.60 KM")
+    total = next(pos for pos, text in draws if text == "24.65 KM")
+
+    assert total[0] > current[0] + 100
+    assert total[1] > current[1] + 10
+
+
 def test_draw_progress_bar_defaults_to_dense_green_ruler() -> None:
     image = Image.new("RGBA", (640, 96), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -2660,8 +2685,9 @@ def test_progress_bar_text_layout_aligns_current_and_total_values(monkeypatch: p
     current_xy = next(xy for text, xy in rendered_texts if text == "5.20 KM")
     total_xy = next(xy for text, xy in rendered_texts if text == "10.00 KM")
 
-    assert current_xy[1] == total_xy[1] == layout.current_anchor[1]
-    assert current_xy[0] > 150
+    assert current_xy[1] == layout.current_anchor[1]
+    assert total_xy[1] > current_xy[1]
+    assert current_xy[0] >= layout.current_anchor[0]
     assert total_xy[0] > current_xy[0]
 
 
