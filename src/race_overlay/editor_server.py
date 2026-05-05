@@ -21,6 +21,7 @@ from race_overlay.editor_preview import (
     select_editor_preset,
 )
 from race_overlay.editor_render import EditorRenderJobManager, RenderJobAlreadyRunningError
+from race_overlay.editor_render import RenderPreviewToggleInactiveError
 from race_overlay.pipeline import run_pipeline
 
 _ACTIVE_SERVERS: list[ThreadingHTTPServer] = []
@@ -146,6 +147,19 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
             if request_path == "/api/render":
                 self._write_json(200, _RENDER_JOB_MANAGER.snapshot())
                 return
+            if request_path == "/api/render/preview.png":
+                payload = _RENDER_JOB_MANAGER.latest_preview()
+                if payload is None:
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             self.send_response(404)
             self.end_headers()
 
@@ -159,6 +173,7 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 "/api/presets/save",
                 "/api/presets/select",
                 "/api/render",
+                "/api/render/preview",
                 "/api/render/cancel",
             }:
                 self.send_response(404)
@@ -190,6 +205,22 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 return
             except ValueError:
                 self._write_json(400, {"error": "invalid JSON payload"})
+                return
+            if request_path == "/api/render/preview":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("preview payload must be a JSON object")
+                    enabled = payload.get("enabled")
+                    if not isinstance(enabled, bool):
+                        raise ValueError("preview enabled flag must be a boolean")
+                    state = _RENDER_JOB_MANAGER.set_preview_enabled(enabled)
+                except RenderPreviewToggleInactiveError as exc:
+                    self._write_json(409, {"error": str(exc)})
+                    return
+                except ValueError as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                self._write_json(200, state)
                 return
             if request_path == "/api/preview":
                 try:

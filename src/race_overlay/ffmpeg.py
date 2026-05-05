@@ -1,6 +1,9 @@
 import subprocess
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from race_overlay.models import VideoClip
 
@@ -221,6 +224,32 @@ def build_overlay_video(frame_dir: Path, fps: float, output_path: Path) -> None:
         ],
         check=True,
     )
+
+
+def extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image.Image:
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(timestamp_seconds),
+            "-i",
+            str(source_path),
+            "-frames:v",
+            "1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "png",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    image = Image.open(BytesIO(result.stdout))
+    image.load()
+    return image
 
 
 def _append_main_video_encoding_args(command: list[str], plan: OutputEncodingPlan) -> None:

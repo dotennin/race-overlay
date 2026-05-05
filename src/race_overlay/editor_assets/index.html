@@ -101,6 +101,26 @@
               <span id="render-progress-percent" class="render-progress__value">0%</span>
             </div>
             <p id="render-stage" class="field-hint">Ready to render the current draft.</p>
+            <div class="render-preview-controls">
+              <button
+                id="render-preview-toggle"
+                type="button"
+                class="render-preview-toggle"
+                aria-controls="render-preview-pane"
+                aria-expanded="false"
+              >
+                Show preview
+              </button>
+            </div>
+            <section id="render-preview-pane" class="render-preview-pane" data-state="idle" hidden>
+              <p id="render-preview-status" class="render-preview-pane__status">Preview is off.</p>
+              <img
+                id="render-preview-image"
+                class="render-preview-pane__image"
+                alt="Render preview frame"
+                hidden
+              />
+            </section>
             <button id="render-cancel-button" type="button" hidden>Cancel</button>
             <pre id="render-console" class="render-console"></pre>
           </div>

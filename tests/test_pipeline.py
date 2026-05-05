@@ -11,6 +11,7 @@ from race_overlay.editor_preview import build_editor_state, save_editor_payload
 from race_overlay.hud_presets import broadcast_runner_preset
 from race_overlay.hud_schema import HudConfig, HudThemeConfig, HudWidgetConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, ActivitySample, ActivityTrack, ClipAlignment, HudSample, VideoClip
+from race_overlay.editor_render import RenderJobCanceledError
 from race_overlay.pipeline import FatalStreamingComposeError, run_pipeline
 from race_overlay.sampling import LapWaterfallState
 
@@ -54,15 +55,16 @@ def fake_activity() -> ActivityTrack:
 
 def fake_clip(path: Path, **overrides) -> VideoClip:
     start = datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc)
-    return VideoClip(
-        path=path,
-        creation_time=start,
-        duration_seconds=1.0,
-        width=1280,
-        height=720,
-        fps=1.0,
-        **overrides,
-    )
+    values = {
+        "path": path,
+        "creation_time": start,
+        "duration_seconds": 1.0,
+        "width": 1280,
+        "height": 720,
+        "fps": 1.0,
+    }
+    values.update(overrides)
+    return VideoClip(**values)
 
 
 def fake_alignment() -> ClipAlignment:
@@ -449,6 +451,44 @@ def test_run_pipeline_reports_skipped_outside_clips(tmp_path: Path, monkeypatch)
     assert any("Skipping clip.MP4" in message and "outside activity" in message for message in messages)
 
 
+def test_run_pipeline_skipped_outside_clips_do_not_enter_render_path(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    messages: list[str] = []
+    outside_alignment = ClipAlignment(
+        clip=fake_clip(tmp_path / "clip.MP4"),
+        status="outside",
+        clip_start=fake_clip(tmp_path / "clip.MP4").creation_time,
+        clip_end=fake_clip(tmp_path / "clip.MP4").creation_time + timedelta(seconds=1),
+        overlay_start=None,
+        overlay_end=None,
+    )
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: outside_alignment)
+
+    def fail_if_called(*args, **kwargs) -> None:
+        raise AssertionError("skipped clips must not enter any render path")
+
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", fail_if_called)
+    monkeypatch.setattr("race_overlay.pipeline.open_stream_compose_process", fail_if_called, raising=False)
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", fail_if_called)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", fail_if_called)
+
+    config = load_config(config_path)
+    config.timeline.outside_activity = "skip"
+    save_config(config_path, config)
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append)
+
+    assert any("Skipping clip.MP4" in message and "outside activity" in message for message in messages)
+    assert all("Encoding plan:" not in message for message in messages)
+    assert all("Render path:" not in message for message in messages)
+
+
 def test_editor_saved_hud_config_round_trips_through_pipeline(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -703,3 +743,307 @@ def test_render_overlay_frame_reuses_precomputed_route_map_cache_keys(
     )
 
     assert image.size == (clip.width, clip.height)
+
+
+def test_compose_preview_frame_alpha_composites_overlay_over_source() -> None:
+    from race_overlay.pipeline import _compose_preview_frame
+
+    source = Image.new("RGB", (2, 1), (10, 20, 30))
+    overlay = Image.new("RGBA", (2, 1), (210, 120, 60, 128))
+
+    composed = _compose_preview_frame(source_frame=source, overlay_frame=overlay)
+
+    assert composed.mode == "RGBA"
+    assert composed.size == (2, 1)
+    assert composed.getpixel((0, 0)) == (110, 70, 45, 255)
+
+
+def test_run_pipeline_skips_preview_work_when_preview_is_disabled(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    writes: list[bytes] = []
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: fake_clip(path, duration_seconds=2.0, fps=30.0),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (0, 0, 0, 0)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "race_overlay.pipeline.extract_video_frame",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("preview extraction should stay disabled")),
+        raising=False,
+    )
+
+    run_pipeline(config_path, only="clip.MP4")
+
+    assert writes
+
+
+def test_run_pipeline_allows_preview_after_mid_bucket_enable(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    writes: list[bytes] = []
+    preview_updates = []
+    extracted_timestamps: list[float] = []
+    preview_enabled = {"value": False}
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: fake_clip(path, duration_seconds=0.1, fps=30.0),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.align_clip",
+        lambda *args, **kwargs: ClipAlignment(
+            clip=fake_clip(tmp_path / "clip.MP4", duration_seconds=0.1, fps=30.0),
+            status="inside",
+            clip_start=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+            clip_end=datetime(2026, 4, 19, 9, 0, 0, 100000, tzinfo=timezone.utc),
+            overlay_start=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+            overlay_end=datetime(2026, 4, 19, 9, 0, 0, 100000, tzinfo=timezone.utc),
+        ),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr("race_overlay.pipeline.render_hud_frame", lambda **kwargs: Image.new("RGBA", (1280, 720), (200, 50, 25, 128)))
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    def fake_extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image.Image:
+        extracted_timestamps.append(timestamp_seconds)
+        return Image.new("RGB", (1280, 720), (25, 50, 200))
+
+    def preview_update(payload) -> bool:
+        preview_updates.append(payload)
+        if payload is None and not preview_enabled["value"]:
+            preview_enabled["value"] = True
+            return False
+        return True
+
+    monkeypatch.setattr("race_overlay.pipeline.extract_video_frame", fake_extract_video_frame, raising=False)
+
+    run_pipeline(config_path, only="clip.MP4", preview_update=preview_update)
+
+    assert writes
+    assert preview_updates[0] is None
+    assert preview_updates[1] is None
+    assert len([payload for payload in preview_updates if payload is not None]) == 1
+    assert [round(update.frame_time_seconds, 3) for update in preview_updates if update is not None] == [0.033]
+    assert [round(timestamp, 3) for timestamp in extracted_timestamps] == [0.033]
+
+
+def test_run_pipeline_emits_throttled_preview_updates_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    writes: list[bytes] = []
+    preview_updates = []
+    extracted_timestamps: list[float] = []
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: fake_clip(path, duration_seconds=2.0, fps=30.0),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: Image.new("RGBA", (1280, 720), (200, 50, 25, 128)),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    def fake_extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image.Image:
+        extracted_timestamps.append(timestamp_seconds)
+        return Image.new("RGB", (1280, 720), (25, 50, 200))
+
+    def preview_update(payload) -> bool:
+        if payload is None:
+            return True
+        preview_updates.append(payload)
+        return True
+
+    monkeypatch.setattr("race_overlay.pipeline.extract_video_frame", fake_extract_video_frame, raising=False)
+
+    run_pipeline(config_path, only="clip.MP4", preview_update=preview_update)
+
+    assert writes
+    assert [update.frame_index for update in preview_updates] == [1, 31]
+    assert [round(update.frame_time_seconds, 3) for update in preview_updates] == [0.0, 1.0]
+    assert [round(timestamp, 3) for timestamp in extracted_timestamps] == [0.0, 1.0]
+    assert all(update.clip_name == "clip.MP4" for update in preview_updates)
+    assert all(update.image_bytes.startswith(b"\x89PNG\r\n\x1a\n") for update in preview_updates)
+
+
+def test_run_pipeline_continues_when_preview_extraction_fails(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    writes: list[bytes] = []
+    preview_probes: list[object | None] = []
+    messages: list[str] = []
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.probe_video",
+        lambda path: fake_clip(path, duration_seconds=2.0, fps=30.0),
+    )
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: Image.new("RGBA", (1280, 720), (200, 50, 25, 128)),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess(writes),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "race_overlay.pipeline.extract_video_frame",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("preview extraction failed")),
+        raising=False,
+    )
+
+    def preview_update(payload) -> bool:
+        preview_probes.append(payload)
+        return True
+
+    run_pipeline(config_path, only="clip.MP4", progress=messages.append, preview_update=preview_update)
+
+    assert writes
+    assert preview_probes == [None, None]
+    assert any("Preview unavailable for clip.MP4" in message for message in messages)
+
+
+def test_preview_bucket_uses_single_bucket_for_non_positive_fps() -> None:
+    from race_overlay.pipeline import _preview_bucket
+
+    assert _preview_bucket(index=0, fps=0.0) == 0
+    assert _preview_bucket(index=30, fps=0.0) == 0
+    assert _preview_bucket(index=30, fps=-24.0) == 0
+
+
+def test_run_pipeline_skipped_outside_clips_do_not_emit_preview_updates(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    preview_updates = []
+    outside_alignment = ClipAlignment(
+        clip=fake_clip(tmp_path / "clip.MP4"),
+        status="outside",
+        clip_start=fake_clip(tmp_path / "clip.MP4").creation_time,
+        clip_end=fake_clip(tmp_path / "clip.MP4").creation_time + timedelta(seconds=1),
+        overlay_start=None,
+        overlay_end=None,
+    )
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: outside_alignment)
+    monkeypatch.setattr(
+        "race_overlay.pipeline.extract_video_frame",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("skipped clips must not extract preview frames")),
+        raising=False,
+    )
+
+    config = load_config(config_path)
+    config.timeline.outside_activity = "skip"
+    save_config(config_path, config)
+
+    run_pipeline(config_path, only="clip.MP4", preview_update=lambda payload: preview_updates.append(payload) or True)
+
+    assert preview_updates == []
+
+
+def test_run_pipeline_cancel_before_render_does_not_emit_preview_updates(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    preview_updates = []
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path, duration_seconds=2.0, fps=30.0))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.extract_video_frame",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("canceled renders must not extract preview frames")),
+        raising=False,
+    )
+
+    with pytest.raises(RenderJobCanceledError, match="render canceled"):
+        run_pipeline(
+            config_path,
+            only="clip.MP4",
+            preview_update=lambda payload: preview_updates.append(payload) or True,
+            cancel_requested=lambda: True,
+        )
+
+    assert preview_updates == []
+
+
+def test_run_pipeline_render_failure_does_not_emit_preview_updates(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    preview_updates = []
+    process = FakeStreamingProcess([], returncode=None)
+
+    monkeypatch.setattr("race_overlay.pipeline._discover_videos", lambda patterns: [tmp_path / "clip.MP4"])
+    monkeypatch.setattr("race_overlay.pipeline.load_activity", lambda path: fake_activity())
+    monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path))
+    monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
+    monkeypatch.setattr("race_overlay.pipeline.sample_at", lambda *args, **kwargs: fake_hud_sample())
+    monkeypatch.setattr(
+        "race_overlay.pipeline.render_hud_frame",
+        lambda **kwargs: (_ for _ in ()).throw(OSError("hud asset missing")),
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: process,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "race_overlay.pipeline.extract_video_frame",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("failed renders must not extract preview frames")),
+        raising=False,
+    )
+    monkeypatch.setattr("race_overlay.pipeline.build_overlay_video", lambda *args, **kwargs: None)
+    monkeypatch.setattr("race_overlay.pipeline.compose_video", lambda *args, **kwargs: None)
+
+    with pytest.raises(OSError, match="hud asset missing"):
+        run_pipeline(
+            config_path,
+            only="clip.MP4",
+            preview_update=lambda payload: preview_updates.append(payload) or True,
+        )
+
+    assert preview_updates == []

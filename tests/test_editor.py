@@ -23,7 +23,7 @@ from race_overlay.editor_preview import (
     save_editor_payload,
     select_editor_preset,
 )
-from race_overlay.editor_render import RenderJobCanceledError
+from race_overlay.editor_render import EditorRenderJobManager, RenderJobCanceledError
 from race_overlay.editor_server import (
     NativePickerUnavailableError,
     _ACTIVE_SERVERS,
@@ -1960,6 +1960,523 @@ def test_api_render_reports_failed_job(
     assert "Loading config from snapshot" in status_payload["logs"]
 
 
+def test_render_job_clears_preview_enabled_when_canceled_after_preview_publish(tmp_path: Path) -> None:
+    manager = EditorRenderJobManager()
+    render_entered = Event()
+    release_render = Event()
+    captured: dict[str, object] = {}
+
+    @contextmanager
+    def build_snapshot(_payload: dict[str, object]):
+        snapshot_path = tmp_path / "snapshot.yaml"
+        snapshot_path.write_text("snapshot", encoding="utf-8")
+        yield snapshot_path
+
+    def cancelable_run_pipeline(_snapshot_path: Path, only=None, *, progress=None, preview_update=None, cancel_requested=None) -> None:
+        captured["preview_update"] = preview_update
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+        if cancel_requested is not None and cancel_requested():
+            raise RenderJobCanceledError("render canceled")
+
+    manager.start({}, build_snapshot=build_snapshot, run_pipeline=cancelable_run_pipeline)
+    assert render_entered.wait(timeout=5)
+
+    preview_update = captured["preview_update"]
+    assert callable(preview_update)
+    assert manager.set_preview_enabled(True)["preview"]["enabled"] is True
+    assert preview_update(b"published-preview") is True
+    assert manager.cancel()["cancel_requested"] is True
+    release_render.set()
+
+    deadline = time.time() + 5
+    final_status: dict[str, object] = {}
+    while time.time() < deadline:
+        final_status = manager.snapshot()
+        if final_status.get("status") == "canceled":
+            break
+        time.sleep(0.05)
+
+    assert final_status["status"] == "canceled"
+    assert final_status["preview"]["enabled"] is False
+    assert final_status["preview"]["available"] is True
+    assert final_status["preview"]["version"] == 1
+
+
+def test_render_job_clears_preview_enabled_when_failed_after_preview_publish(tmp_path: Path) -> None:
+    manager = EditorRenderJobManager()
+    render_entered = Event()
+    release_render = Event()
+    captured: dict[str, object] = {}
+
+    @contextmanager
+    def build_snapshot(_payload: dict[str, object]):
+        snapshot_path = tmp_path / "snapshot.yaml"
+        snapshot_path.write_text("snapshot", encoding="utf-8")
+        yield snapshot_path
+
+    def failing_run_pipeline(_snapshot_path: Path, only=None, *, progress=None, preview_update=None) -> None:
+        captured["preview_update"] = preview_update
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+        raise RuntimeError("ffmpeg exploded")
+
+    manager.start({}, build_snapshot=build_snapshot, run_pipeline=failing_run_pipeline)
+    assert render_entered.wait(timeout=5)
+
+    preview_update = captured["preview_update"]
+    assert callable(preview_update)
+    assert manager.set_preview_enabled(True)["preview"]["enabled"] is True
+    assert preview_update(b"published-preview") is True
+    release_render.set()
+
+    deadline = time.time() + 5
+    final_status: dict[str, object] = {}
+    while time.time() < deadline:
+        final_status = manager.snapshot()
+        if final_status.get("status") == "failed":
+            break
+        time.sleep(0.05)
+
+    assert final_status["status"] == "failed"
+    assert final_status["preview"]["enabled"] is False
+    assert final_status["preview"]["available"] is True
+    assert final_status["preview"]["version"] == 1
+
+
+def test_render_job_clears_preview_enabled_when_succeeded_after_preview_publish(tmp_path: Path) -> None:
+    manager = EditorRenderJobManager()
+    render_entered = Event()
+    release_render = Event()
+    captured: dict[str, object] = {}
+
+    @contextmanager
+    def build_snapshot(_payload: dict[str, object]):
+        snapshot_path = tmp_path / "snapshot.yaml"
+        snapshot_path.write_text("snapshot", encoding="utf-8")
+        yield snapshot_path
+
+    def previewable_run_pipeline(_snapshot_path: Path, only=None, *, progress=None, preview_update=None) -> None:
+        captured["preview_update"] = preview_update
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+
+    manager.start({}, build_snapshot=build_snapshot, run_pipeline=previewable_run_pipeline)
+    assert render_entered.wait(timeout=5)
+
+    preview_update = captured["preview_update"]
+    assert callable(preview_update)
+    assert manager.set_preview_enabled(True)["preview"]["enabled"] is True
+    assert preview_update(b"published-preview") is True
+    release_render.set()
+
+    deadline = time.time() + 5
+    final_status: dict[str, object] = {}
+    while time.time() < deadline:
+        final_status = manager.snapshot()
+        if final_status.get("status") == "succeeded":
+            break
+        time.sleep(0.05)
+
+    assert final_status["status"] == "succeeded"
+    assert final_status["preview"]["enabled"] is False
+    assert final_status["preview"]["available"] is True
+    assert final_status["preview"]["version"] == 1
+
+
+def test_api_render_preview_toggle_and_fetches_latest_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    release_render = Event()
+    render_entered = Event()
+    captured: dict[str, object] = {}
+
+    def previewable_run_pipeline(
+        _snapshot_path: Path,
+        only=None,
+        *,
+        progress=None,
+        preview_update=None,
+    ) -> None:
+        captured["preview_update"] = preview_update
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", previewable_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        start_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            start_connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            start_response = start_connection.getresponse()
+            start_body = json.loads(start_response.read().decode("utf-8"))
+        finally:
+            start_connection.close()
+
+        assert start_response.status == 202
+        assert start_body["status"] == "running"
+        assert render_entered.wait(timeout=5)
+
+        toggle_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            toggle_connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps({"enabled": True}),
+                headers={"Content-Type": "application/json"},
+            )
+            toggle_response = toggle_connection.getresponse()
+            toggle_body = json.loads(toggle_response.read().decode("utf-8"))
+        finally:
+            toggle_connection.close()
+
+        status_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            status_connection.request("GET", "/api/render")
+            status_response = status_connection.getresponse()
+            status_body = json.loads(status_response.read().decode("utf-8"))
+        finally:
+            status_connection.close()
+
+        preview_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            preview_connection.request("GET", "/api/render/preview.png")
+            preview_response = preview_connection.getresponse()
+            preview_body = preview_response.read()
+        finally:
+            preview_connection.close()
+
+        preview_update = captured["preview_update"]
+        assert callable(preview_update)
+        preview_update(b"first-preview")
+
+        refreshed_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            refreshed_connection.request("GET", "/api/render")
+            refreshed_response = refreshed_connection.getresponse()
+            refreshed_body = json.loads(refreshed_response.read().decode("utf-8"))
+        finally:
+            refreshed_connection.close()
+
+        image_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            image_connection.request("GET", "/api/render/preview.png")
+            image_response = image_connection.getresponse()
+            image_body = image_response.read()
+        finally:
+            image_connection.close()
+
+        disable_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            disable_connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps({"enabled": False}),
+                headers={"Content-Type": "application/json"},
+            )
+            disable_response = disable_connection.getresponse()
+            disable_body = json.loads(disable_response.read().decode("utf-8"))
+        finally:
+            disable_connection.close()
+
+        preview_update(b"second-preview")
+
+        disabled_status_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            disabled_status_connection.request("GET", "/api/render")
+            disabled_status_response = disabled_status_connection.getresponse()
+            disabled_status_body = json.loads(disabled_status_response.read().decode("utf-8"))
+        finally:
+            disabled_status_connection.close()
+
+        disabled_image_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            disabled_image_connection.request("GET", "/api/render/preview.png")
+            disabled_image_response = disabled_image_connection.getresponse()
+            disabled_image_body = disabled_image_response.read()
+        finally:
+            disabled_image_connection.close()
+
+        release_render.set()
+
+        final_status = {}
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            final_connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                final_connection.request("GET", "/api/render")
+                final_response = final_connection.getresponse()
+                final_status = json.loads(final_response.read().decode("utf-8"))
+            finally:
+                final_connection.close()
+            if final_status.get("status") == "succeeded":
+                break
+            time.sleep(0.05)
+
+        final_image_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            final_image_connection.request("GET", "/api/render/preview.png")
+            final_image_response = final_image_connection.getresponse()
+            final_image_body = final_image_response.read()
+        finally:
+            final_image_connection.close()
+
+    assert toggle_response.status == 200
+    assert toggle_body["preview"] == {
+        "enabled": True,
+        "available": False,
+        "version": 0,
+        "updated_at": None,
+    }
+    assert status_body["preview"] == {
+        "enabled": True,
+        "available": False,
+        "version": 0,
+        "updated_at": None,
+    }
+    assert preview_response.status == 204
+    assert preview_body == b""
+    assert refreshed_body["preview"]["enabled"] is True
+    assert refreshed_body["preview"]["available"] is True
+    assert refreshed_body["preview"]["version"] == 1
+    assert "seq" not in refreshed_body["preview"]
+    assert isinstance(refreshed_body["preview"]["updated_at"], str)
+    assert image_response.status == 200
+    assert image_response.getheader("Content-Type") == "image/png"
+    assert image_body == b"first-preview"
+    assert disable_response.status == 200
+    assert disable_body["preview"]["enabled"] is False
+    assert disable_body["preview"]["available"] is True
+    assert disable_body["preview"]["version"] == 1
+    assert "seq" not in disable_body["preview"]
+    assert isinstance(disable_body["preview"]["updated_at"], str)
+    assert disabled_status_body["preview"]["enabled"] is False
+    assert disabled_status_body["preview"]["available"] is True
+    assert disabled_status_body["preview"]["version"] == 1
+    assert "seq" not in disabled_status_body["preview"]
+    assert isinstance(disabled_status_body["preview"]["updated_at"], str)
+    assert disabled_image_response.status == 200
+    assert disabled_image_body == b"first-preview"
+    assert final_status["status"] == "succeeded"
+    assert final_status["preview"]["enabled"] is False
+    assert final_status["preview"]["available"] is True
+    assert final_status["preview"]["version"] == 1
+    assert "seq" not in final_status["preview"]
+    assert isinstance(final_status["preview"]["updated_at"], str)
+    assert final_image_response.status == 200
+    assert final_image_body == b"first-preview"
+
+
+def test_api_render_preview_toggle_rejects_missing_active_render(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps({"enabled": True}),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = json.loads(response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+    assert response.status == 409
+    assert body == {"error": "no render is currently running"}
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ([], "preview payload must be a JSON object"),
+        ({"enabled": "true"}, "preview enabled flag must be a boolean"),
+    ],
+)
+def test_api_render_preview_rejects_malformed_payload_with_400(
+    tmp_path: Path,
+    payload,
+    message: str,
+) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            body = json.loads(response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+    assert response.status == 400
+    assert body == {"error": message}
+
+
+def test_api_render_preview_allows_disable_after_render_finishes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activity_path = tmp_path / "race.tcx"
+    video_path = tmp_path / "clip-a.MP4"
+    output_dir = tmp_path / "rendered"
+    activity_path.write_text("<TrainingCenterDatabase />", encoding="utf-8")
+    video_path.write_bytes(b"video-a")
+    output_dir.mkdir()
+
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=str(activity_path),
+            video_globs=[str(video_path)],
+            output_dir=str(output_dir),
+            hud=broadcast_runner_preset(),
+        ),
+    )
+    release_render = Event()
+    render_entered = Event()
+
+    def previewable_run_pipeline(
+        _snapshot_path: Path,
+        only=None,
+        *,
+        progress=None,
+        preview_update=None,
+    ) -> None:
+        render_entered.set()
+        if progress is not None:
+            progress("Loading config from snapshot")
+        release_render.wait(timeout=5)
+
+    monkeypatch.setattr("race_overlay.editor_server.run_pipeline", previewable_run_pipeline, raising=False)
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        start_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            start_connection.request(
+                "POST",
+                "/api/render",
+                body=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            start_response = start_connection.getresponse()
+            start_response.read()
+        finally:
+            start_connection.close()
+
+        assert start_response.status == 202
+        assert render_entered.wait(timeout=5)
+
+        enable_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            enable_connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps({"enabled": True}),
+                headers={"Content-Type": "application/json"},
+            )
+            enable_response = enable_connection.getresponse()
+            enable_body = json.loads(enable_response.read().decode("utf-8"))
+        finally:
+            enable_connection.close()
+
+        release_render.set()
+
+        final_status = {}
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            status_connection = HTTPConnection(parts.hostname, parts.port)
+            try:
+                status_connection.request("GET", "/api/render")
+                status_response = status_connection.getresponse()
+                final_status = json.loads(status_response.read().decode("utf-8"))
+            finally:
+                status_connection.close()
+            if final_status.get("status") == "succeeded":
+                break
+            time.sleep(0.05)
+
+        disable_connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            disable_connection.request(
+                "POST",
+                "/api/render/preview",
+                body=json.dumps({"enabled": False}),
+                headers={"Content-Type": "application/json"},
+            )
+            disable_response = disable_connection.getresponse()
+            disable_body = json.loads(disable_response.read().decode("utf-8"))
+        finally:
+            disable_connection.close()
+
+    assert enable_response.status == 200
+    assert enable_body["preview"] == {
+        "enabled": True,
+        "available": False,
+        "version": 0,
+        "updated_at": None,
+    }
+    assert final_status["status"] == "succeeded"
+    assert disable_response.status == 200
+    assert disable_body["preview"] == {
+        "enabled": False,
+        "available": False,
+        "version": 0,
+        "updated_at": None,
+    }
+
+
 def test_api_config_rejects_stale_hud_save_with_409(tmp_path: Path) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
@@ -2932,6 +3449,8 @@ def test_editor_assets_expose_render_panel_controls() -> None:
 
     assert 'id="render-button"' in html
     assert 'id="render-panel"' in html
+    assert 'id="render-minimize-button"' in html
+    assert 'id="render-drawer-tab"' in html
     assert 'id="render-status"' in html
     assert 'id="render-stage"' in html
     assert 'id="render-console"' in html
@@ -2947,12 +3466,169 @@ def test_editor_assets_expose_render_panel_controls() -> None:
     assert "renderCancelButton" in app_js
     assert "renderProgress" in app_js
     assert "renderPercent" in app_js
+    assert "renderMinimizeButton" in app_js
+    assert "renderDrawerTab" in app_js
     assert "window.confirm(\"Cancel current render? Partial output will be kept.\")" in app_js
     assert "renderPanel" in app_js
     assert "#render-panel" in css
+    assert ".render-bottom-sheet__minimize" in css
+    assert ".render-drawer-tab" in css
     assert ".render-console" in css
     assert "#render-progress" in css
     assert "#render-cancel-button" in css
+
+
+def test_editor_assets_expose_render_preview_controls() -> None:
+    html = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8")
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    css = files("race_overlay.editor_assets").joinpath("styles.css").read_text(encoding="utf-8")
+
+    assert 'id="render-preview-toggle"' in html
+    assert 'class="render-preview-controls"' in html
+    assert 'class="render-preview-toggle"' in html
+    assert 'id="render-preview-pane"' in html
+    assert 'id="render-preview-image"' in html
+    assert 'id="render-preview-status"' in html
+    assert 'Show preview' in html
+    assert 'fetch("/api/render/preview"' in app_js
+    assert 'fetch(`/api/render/preview.png?v=${version}`)' in app_js
+    assert "renderPreviewOpen" in app_js
+    assert "renderPreviewVersion" in app_js
+    assert "renderPreviewObjectUrl" in app_js
+    assert "clearRenderPreviewPoll()" in app_js
+    assert "URL.revokeObjectURL(renderPreviewObjectUrl)" in app_js
+    assert ".render-preview-controls" in css
+    assert ".render-preview-toggle" in css
+    assert ".render-preview-pane" in css
+    assert ".render-preview-pane__image" in css
+    assert ".render-preview-pane__status" in css
+
+
+def test_editor_app_keeps_previous_render_preview_visible_when_render_restarts() -> None:
+    app_js = files("race_overlay.editor_assets").joinpath("app.js").read_text(encoding="utf-8")
+    start_block = app_js.split("async function startRenderJob()", 1)[1].split("async function cancelRenderJob()", 1)[0]
+
+    assert "renderPreviewVersion = 0;" in start_block
+    assert "clearRenderPreviewPoll();" in start_block
+    assert "clearRenderPreviewUrl();" not in start_block
+
+
+def test_editor_app_discards_stale_render_preview_response_after_invalidation() -> None:
+    app_js_path = files("race_overlay.editor_assets").joinpath("app.js")
+    script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+
+const source = fs.readFileSync({json.dumps(str(app_js_path))}, "utf8")
+  .split("updateSaveButtonState();\\nupdateRenderButtonState();")[0]
+  + '\\n;globalThis.__test = {{\\n'
+  + '  refreshRenderPreview,\\n'
+  + '  clearRenderPreviewPoll,\\n'
+  + '  setState(next) {{\\n'
+  + '    if ("renderState" in next) renderState = next.renderState;\\n'
+  + '    if ("renderPreviewOpen" in next) renderPreviewOpen = next.renderPreviewOpen;\\n'
+  + '    if ("renderPanelMinimized" in next) renderPanelMinimized = next.renderPanelMinimized;\\n'
+  + '    if ("renderPreviewVersion" in next) renderPreviewVersion = next.renderPreviewVersion;\\n'
+  + '    if ("renderPreviewObjectUrl" in next) renderPreviewObjectUrl = next.renderPreviewObjectUrl;\\n'
+  + '  }},\\n'
+  + '  getImage() {{ return elements.renderPreviewImage; }},\\n'
+  + '  getVersion() {{ return renderPreviewVersion; }},\\n'
+  + '}};';
+
+function makeElement(id) {{
+  return {{
+    id,
+    hidden: false,
+    dataset: {{}},
+    style: {{}},
+    textContent: "",
+    value: "",
+    src: "initial://frame",
+    addEventListener() {{}},
+    setAttribute() {{}},
+    removeAttribute() {{}},
+    appendChild() {{}},
+    append() {{}},
+    replaceChildren() {{}},
+    getBoundingClientRect() {{ return {{ left: 0, top: 0, width: 100, height: 100 }}; }},
+  }};
+}}
+
+const elements = new Map();
+const stub = new Proxy({{}}, {{
+  get(_, prop) {{
+    if (!elements.has(prop)) {{
+      elements.set(prop, makeElement(prop));
+    }}
+    return elements.get(prop);
+  }},
+}});
+
+let createCalls = 0;
+let releaseFetch;
+const context = {{
+  console,
+  URL: {{
+    createObjectURL() {{
+      createCalls += 1;
+      return `blob://frame-${{createCalls}}`;
+    }},
+    revokeObjectURL() {{}},
+  }},
+  Blob,
+  Date,
+  setTimeout,
+  clearTimeout,
+  window: {{ setTimeout, clearTimeout, addEventListener() {{}}, confirm() {{ return true; }} }},
+  document: {{
+    getElementById(id) {{
+      return stub[id];
+    }},
+    addEventListener() {{}},
+  }},
+  confirm() {{ return true; }},
+  fetch: () => new Promise((resolve) => {{
+    releaseFetch = () => resolve({{
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(["frame"]),
+    }});
+  }}),
+}};
+
+vm.createContext(context);
+vm.runInContext(source, context);
+
+context.__test.setState({{
+  renderState: {{ status: "running", preview: {{ available: true, version: 7 }}, logs: [] }},
+  renderPreviewOpen: true,
+  renderPanelMinimized: false,
+  renderPreviewVersion: 6,
+  renderPreviewObjectUrl: "",
+}});
+
+(async () => {{
+  const request = context.__test.refreshRenderPreview(7);
+  context.__test.clearRenderPreviewPoll();
+  releaseFetch();
+  await request;
+  const result = {{
+    src: context.__test.getImage().src,
+    version: context.__test.getVersion(),
+    createCalls,
+  }};
+  if (result.src !== "initial://frame" || result.version !== 6 || result.createCalls !== 0) {{
+    throw new Error(JSON.stringify(result));
+  }}
+  console.log(JSON.stringify(result));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    completed = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
 def test_load_state_reenables_render_button_after_hud_load() -> None:

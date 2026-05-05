@@ -49,6 +49,10 @@ const elements = {
   renderProgress: document.getElementById("render-progress"),
   renderPercent: document.getElementById("render-progress-percent"),
   renderStage: document.getElementById("render-stage"),
+  renderPreviewToggle: document.getElementById("render-preview-toggle"),
+  renderPreviewPane: document.getElementById("render-preview-pane"),
+  renderPreviewStatus: document.getElementById("render-preview-status"),
+  renderPreviewImage: document.getElementById("render-preview-image"),
   renderCancelButton: document.getElementById("render-cancel-button"),
   renderConsole: document.getElementById("render-console"),
   helpButton: document.getElementById("help-button"),
@@ -74,6 +78,12 @@ let activeSnapGuides = [];
 let renderState = { status: "idle", stage: "", logs: [], error: null, cancel_requested: false, clip_name: null, frame_index: null, frame_total: null, percent: null };
 let renderPollTimer = null;
 let renderPanelMinimized = false;
+let renderPreviewOpen = false;
+let renderPreviewVersion = 0;
+let renderPreviewObjectUrl = "";
+let renderPreviewLastFetchAt = 0;
+let renderPreviewRequestInFlight = false;
+let renderPreviewRequestGeneration = 0;
 const accordionStates = {
   browse: true,
   layers: true,
@@ -125,6 +135,68 @@ function updateRenderButtonState() {
   }
   elements.renderButton.disabled = !draftState || renderState.status === "running";
   elements.renderButton.textContent = renderState.status === "running" ? "Rendering..." : "Render";
+}
+
+function clearRenderPreviewUrl() {
+  if (renderPreviewObjectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+    URL.revokeObjectURL(renderPreviewObjectUrl);
+  }
+  renderPreviewObjectUrl = "";
+  if (elements.renderPreviewImage) {
+    elements.renderPreviewImage.removeAttribute("src");
+    elements.renderPreviewImage.hidden = true;
+  }
+}
+
+function clearRenderPreviewPoll() {
+  renderPreviewRequestGeneration += 1;
+  renderPreviewLastFetchAt = 0;
+  renderPreviewRequestInFlight = false;
+}
+
+function renderRenderPreviewPane({ loading = false } = {}) {
+  if (!elements.renderPreviewToggle || !elements.renderPreviewPane || !elements.renderPreviewStatus || !elements.renderPreviewImage) {
+    return;
+  }
+  elements.renderPreviewToggle.textContent = renderPreviewOpen ? "Hide preview" : "Show preview";
+  if (typeof elements.renderPreviewToggle.setAttribute === "function") {
+    elements.renderPreviewToggle.setAttribute("aria-expanded", renderPreviewOpen ? "true" : "false");
+  } else {
+    elements.renderPreviewToggle["aria-expanded"] = renderPreviewOpen ? "true" : "false";
+  }
+  elements.renderPreviewPane.hidden = !renderPreviewOpen;
+  if (!renderPreviewOpen) {
+    return;
+  }
+
+  const hasImage = Boolean(renderPreviewObjectUrl);
+  let status = "Preview will appear when rendering starts.";
+  let state = "idle";
+  if (loading) {
+    status = hasImage ? "Refreshing preview…" : "Loading preview…";
+    state = "loading";
+  } else if (renderPanelMinimized) {
+    status = hasImage ? "Preview paused while the render panel is minimized." : "Restore the render panel to load the preview.";
+    state = "paused";
+  } else if (renderState.status === "running") {
+    if (hasImage) {
+      status = "Live preview updates automatically while rendering.";
+      state = "ready";
+    } else if (renderState.preview?.available) {
+      status = "Loading latest preview frame…";
+      state = "loading";
+    } else {
+      status = "Waiting for first frame…";
+      state = "waiting";
+    }
+  } else if (hasImage) {
+    status = "Last preview frame is ready for inspection.";
+    state = "ready";
+  }
+
+  elements.renderPreviewPane.dataset.state = state;
+  elements.renderPreviewStatus.textContent = status;
+  elements.renderPreviewImage.hidden = !hasImage;
 }
 
 async function fetchJson(url, fallbackMessage) {
@@ -185,6 +257,7 @@ function renderRenderPanel() {
     elements.renderCancelButton.hidden = status !== "running";
   }
   updateRenderButtonState();
+  renderRenderPreviewPane();
 }
 
 function scheduleRenderPoll(delay = 300) {
@@ -197,10 +270,112 @@ function scheduleRenderPoll(delay = 300) {
   }, delay);
 }
 
+async function postRenderPreviewEnabled(enabled) {
+  const response = await fetch("/api/render/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed to update render preview");
+  }
+  return payload;
+}
+
+async function refreshRenderPreview(version) {
+  if (!elements.renderPreviewImage || renderPreviewRequestInFlight) {
+    return;
+  }
+  renderPreviewRequestInFlight = true;
+  const requestGeneration = renderPreviewRequestGeneration;
+  renderRenderPreviewPane({ loading: true });
+  try {
+    const response = await fetch(`/api/render/preview.png?v=${version}`);
+    if (response.status === 204) {
+      return;
+    }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error ?? "Failed to load render preview");
+    }
+    const latestPreviewVersion = Number(renderState.preview?.version ?? 0) || 0;
+    if (
+      requestGeneration !== renderPreviewRequestGeneration
+      || !renderPreviewOpen
+      || renderPanelMinimized
+      || version !== latestPreviewVersion
+    ) {
+      return;
+    }
+    const blob = await response.blob();
+    const currentPreviewVersion = Number(renderState.preview?.version ?? 0) || 0;
+    if (
+      requestGeneration !== renderPreviewRequestGeneration
+      || !renderPreviewOpen
+      || renderPanelMinimized
+      || version !== currentPreviewVersion
+    ) {
+      return;
+    }
+    clearRenderPreviewUrl();
+    renderPreviewObjectUrl = typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : "";
+    renderPreviewVersion = version;
+    renderPreviewLastFetchAt = Date.now();
+    if (renderPreviewObjectUrl) {
+      elements.renderPreviewImage.src = renderPreviewObjectUrl;
+    }
+  } finally {
+    renderPreviewRequestInFlight = false;
+    renderRenderPreviewPane();
+  }
+}
+
+async function syncRenderPreviewState(previousStatus = renderState.status) {
+  const previewState = renderState.preview ?? {};
+  const previewVersion = Number(previewState.version ?? 0) || 0;
+  const previewAvailable = Boolean(previewState.available);
+  const shouldRun = renderPreviewOpen && !renderPanelMinimized && renderState.status === "running";
+
+  if (shouldRun && previewState.enabled !== true) {
+    try {
+      renderState = await postRenderPreviewEnabled(true);
+    } catch (error) {
+      setStatusMessage(readErrorMessage(error, "Failed to enable render preview"));
+    }
+  } else if (!shouldRun && previewState.enabled === true) {
+    try {
+      renderState = await postRenderPreviewEnabled(false);
+      clearRenderPreviewPoll();
+    } catch (error) {
+      setStatusMessage(readErrorMessage(error, "Failed to disable render preview"));
+    }
+  }
+
+  const renderJustFinished = previousStatus === "running" && renderState.status !== "running";
+  const shouldFetchPreview = renderPreviewOpen
+    && !renderPanelMinimized
+    && previewAvailable
+    && previewVersion > renderPreviewVersion
+    && (renderJustFinished || Date.now() - renderPreviewLastFetchAt >= 1000);
+
+  if (shouldFetchPreview) {
+    try {
+      await refreshRenderPreview(previewVersion);
+    } catch (error) {
+      setStatusMessage(readErrorMessage(error, "Failed to load render preview"));
+    }
+  }
+
+  renderRenderPreviewPane();
+}
+
 async function pollRenderStatus() {
+  const previousStatus = renderState.status;
   try {
     renderState = await fetchJson("/api/render", "Failed to load render status");
     renderRenderPanel();
+    await syncRenderPreviewState(previousStatus);
     if (renderState.status === "running") {
       scheduleRenderPoll();
     }
@@ -213,6 +388,8 @@ async function startRenderJob() {
   if (!draftState) {
     return;
   }
+  renderPreviewVersion = 0;
+  clearRenderPreviewPoll();
   const response = await fetch("/api/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -224,6 +401,7 @@ async function startRenderJob() {
   }
   renderState = payload;
   renderRenderPanel();
+  await syncRenderPreviewState("idle");
   scheduleRenderPoll(150);
 }
 
@@ -242,6 +420,7 @@ async function cancelRenderJob() {
     }
     renderState = payload;
     renderRenderPanel();
+    await syncRenderPreviewState("running");
     scheduleRenderPoll(150);
   } catch (error) {
     setStatusMessage(readErrorMessage(error, "Failed to cancel render"));
@@ -1606,12 +1785,16 @@ async function loadState() {
     renderCanvasOverlays();
     updateRenderButtonState();
     await refreshPreview();
+    renderRenderPreviewPane();
     return true;
   } catch (error) {
     savedState = null;
     draftState = null;
     selectedWidgetId = null;
     clearPreviewUrl();
+    clearRenderPreviewPoll();
+    clearRenderPreviewUrl();
+    renderPreviewVersion = 0;
     if (elements.presetSelect) {
       elements.presetSelect.innerHTML = "";
     }
@@ -1644,6 +1827,7 @@ async function loadState() {
     renderSnapGuides();
     updateSaveButtonState();
     updateRenderButtonState();
+    renderRenderPreviewPane();
     setStatusMessage(readErrorMessage(error, "Failed to load HUD config"));
     return false;
   }
@@ -1717,12 +1901,24 @@ if (elements.renderMinimizeButton) {
   elements.renderMinimizeButton.addEventListener("click", () => {
     renderPanelMinimized = true;
     renderRenderPanel();
+    void syncRenderPreviewState(renderState.status);
   });
 }
 if (elements.renderDrawerTab) {
   elements.renderDrawerTab.addEventListener("click", () => {
     renderPanelMinimized = false;
     renderRenderPanel();
+    void syncRenderPreviewState(renderState.status);
+  });
+}
+if (elements.renderPreviewToggle) {
+  elements.renderPreviewToggle.addEventListener("click", async () => {
+    renderPreviewOpen = !renderPreviewOpen;
+    if (!renderPreviewOpen) {
+      clearRenderPreviewPoll();
+    }
+    renderRenderPreviewPane();
+    await syncRenderPreviewState(renderState.status);
   });
 }
 if (elements.browseToggle) {
@@ -1759,6 +1955,7 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
 updateSaveButtonState();
 updateRenderButtonState();
 renderRenderPanel();
+renderRenderPreviewPane();
 syncAccordionPanels();
 renderProjectControls();
 renderOverlayLibrary();

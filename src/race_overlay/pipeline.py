@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from glob import glob
+from io import BytesIO
 import os
 import fnmatch
 from pathlib import Path
@@ -20,10 +21,11 @@ from race_overlay.config import (
 from race_overlay.ffmpeg import (
     build_overlay_video,
     compose_video,
+    extract_video_frame,
     open_stream_compose_process,
     resolve_output_encoding_plan,
 )
-from race_overlay.editor_render import RenderJobCanceledError, RenderProgressUpdate
+from race_overlay.editor_render import RenderJobCanceledError, RenderPreviewUpdate, RenderProgressUpdate
 from race_overlay.hud import (
     prime_route_map_caches,
     render_hud_frame as _render_hud_frame,
@@ -36,6 +38,7 @@ from race_overlay.video_probe import probe_video
 
 ProgressReporter = Callable[[str], None]
 ProgressUpdateReporter = Callable[[RenderProgressUpdate], None]
+PreviewUpdateReporter = Callable[[RenderPreviewUpdate | None], bool]
 
 
 @dataclass(slots=True, frozen=True)
@@ -236,6 +239,18 @@ def _frame_count(clip) -> int:
     return int(clip.duration_seconds * clip.fps)
 
 
+def _frame_time_seconds(*, index: int, fps: float) -> float:
+    if fps <= 0:
+        return 0.0
+    return index / fps
+
+
+def _preview_bucket(*, index: int, fps: float) -> int:
+    if fps <= 0:
+        return 0
+    return int(_frame_time_seconds(index=index, fps=fps))
+
+
 def _create_empty_frame_bytes(width: int, height: int) -> bytes:
     """Create pre-computed empty RGBA frame bytes for transparent overlay.
     
@@ -243,6 +258,57 @@ def _create_empty_frame_bytes(width: int, height: int) -> bytes:
     significantly speeding up rendering of partial clips.
     """
     return Image.new("RGBA", (width, height), (0, 0, 0, 0)).tobytes()
+
+
+def _compose_preview_frame(*, source_frame: Image.Image, overlay_frame: Image.Image | None) -> Image.Image:
+    composed = source_frame.convert("RGBA")
+    if overlay_frame is not None:
+        composed.alpha_composite(overlay_frame.convert("RGBA"))
+    return composed
+
+
+def _encode_preview_png(image: Image.Image) -> bytes:
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _maybe_publish_preview(
+    *,
+    clip,
+    index: int,
+    overlay_frame: Image.Image | None,
+    preview_update: PreviewUpdateReporter | None,
+    progress: ProgressReporter | None,
+    last_preview_bucket: int | None,
+) -> int | None:
+    if preview_update is None:
+        return last_preview_bucket
+    current_bucket = _preview_bucket(index=index, fps=clip.fps)
+    if current_bucket == last_preview_bucket:
+        return last_preview_bucket
+    if not preview_update(None):
+        return last_preview_bucket
+    frame_time_seconds = _frame_time_seconds(index=index, fps=clip.fps)
+    try:
+        source_frame = extract_video_frame(clip.path, timestamp_seconds=frame_time_seconds)
+        preview_image = _compose_preview_frame(source_frame=source_frame, overlay_frame=overlay_frame)
+        preview_bytes = _encode_preview_png(preview_image)
+    except Exception as exc:
+        _emit(
+            progress,
+            f"Preview unavailable for {clip.path.name} frame {index + 1}/{max(_frame_count(clip), 1)}: {exc}",
+        )
+        return current_bucket
+    preview_update(
+        RenderPreviewUpdate(
+            clip_name=clip.path.name,
+            frame_index=index + 1,
+            frame_time_seconds=frame_time_seconds,
+            image_bytes=preview_bytes,
+        )
+    )
+    return current_bucket
 
 
 def _emit_encoding_plan(progress: ProgressReporter | None, clip, plan) -> None:
@@ -328,6 +394,7 @@ def _render_clip_streaming(
     plan,
     progress: ProgressReporter | None = None,
     progress_update: ProgressUpdateReporter | None = None,
+    preview_update: PreviewUpdateReporter | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     try:
@@ -341,6 +408,7 @@ def _render_clip_streaming(
 
     try:
         frame_total = max(_frame_count(clip), 1)
+        last_preview_bucket: int | None = None
         empty_frame_bytes = _create_empty_frame_bytes(clip.width, clip.height)
         for index in range(frame_total):
             if cancel_requested is not None and cancel_requested():
@@ -361,6 +429,14 @@ def _render_clip_streaming(
                 frame_index=frame_number,
                 frame_total=frame_total,
                 message=message,
+            )
+            last_preview_bucket = _maybe_publish_preview(
+                clip=clip,
+                index=index,
+                overlay_frame=image,
+                preview_update=preview_update,
+                progress=progress,
+                last_preview_bucket=last_preview_bucket,
             )
             try:
                 frame_bytes = empty_frame_bytes if image is None else image.tobytes()
@@ -398,12 +474,14 @@ def _render_clip_via_cache(
     progress: ProgressReporter | None,
     plan,
     progress_update: ProgressUpdateReporter | None = None,
+    preview_update: PreviewUpdateReporter | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     frame_dir = cache_dir / clip.path.stem / "frames"
     frame_dir.mkdir(parents=True, exist_ok=True)
     _emit(progress, f"Generating frame cache at {frame_dir}")
     frame_total = max(_frame_count(clip), 1)
+    last_preview_bucket: int | None = None
     empty_frame = Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
     for index in range(frame_total):
         if cancel_requested is not None and cancel_requested():
@@ -424,6 +502,14 @@ def _render_clip_via_cache(
             frame_index=frame_number,
             frame_total=frame_total,
             message=message,
+        )
+        last_preview_bucket = _maybe_publish_preview(
+            clip=clip,
+            index=index,
+            overlay_frame=image,
+            preview_update=preview_update,
+            progress=progress,
+            last_preview_bucket=last_preview_bucket,
         )
         frame_to_save = empty_frame if image is None else image
         frame_to_save.save(frame_dir / f"{index:06d}.png")
@@ -448,6 +534,7 @@ def run_pipeline(
     *,
     progress: ProgressReporter | None = None,
     progress_update: ProgressUpdateReporter | None = None,
+    preview_update: PreviewUpdateReporter | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     _emit(progress, f"Loading config from {config_path}")
@@ -480,6 +567,7 @@ def run_pipeline(
         )
         outside_policy = override.outside_activity or config.timeline.outside_activity
         if alignment.status == "outside" and outside_policy == "skip":
+            # Skipped clips must not enter any render/preview path.
             _emit(progress, f"Skipping {clip.path.name}: outside activity window and policy=skip")
             continue
 
@@ -508,6 +596,7 @@ def run_pipeline(
                 plan=plan,
                 progress=progress,
                 progress_update=progress_update,
+                preview_update=preview_update,
                 cancel_requested=cancel_requested,
             )
         except RecoverableStreamingComposeError as exc:
@@ -523,6 +612,7 @@ def run_pipeline(
                 progress=progress,
                 plan=plan,
                 progress_update=progress_update,
+                preview_update=preview_update,
                 cancel_requested=cancel_requested,
             )
         _emit(progress, f"Finished {clip.path.name}")
