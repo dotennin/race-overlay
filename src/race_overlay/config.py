@@ -31,6 +31,7 @@ class ProjectConfig:
     cache_dir: str = "cache"
     timeline: TimelineConfig = field(default_factory=TimelineConfig)
     hud: HudConfig = field(default_factory=broadcast_runner_preset)
+    hud_presets: dict[str, HudConfig] = field(default_factory=dict)
     overrides: dict[str, dict[str, float | str]] = field(default_factory=dict)
 
 
@@ -81,15 +82,41 @@ def _load_hud_config(payload: dict[str, object], *, require_complete: bool = Fal
     return migrate_broadcast_runner_config(deserialize_hud_config(normalized_payload, require_complete=require_complete))
 
 
+def _clone_hud_config(hud: HudConfig) -> HudConfig:
+    return deserialize_hud_config(serialize_hud_config(hud), require_complete=True)
+
+
+def _normalize_hud_presets(current_hud: HudConfig, presets_payload: object) -> dict[str, HudConfig]:
+    presets: dict[str, HudConfig] = {}
+    if presets_payload is not None:
+        if not isinstance(presets_payload, dict):
+            raise TypeError("presets must be a mapping")
+        for name, preset_payload in presets_payload.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("preset names must be non-empty strings")
+            if isinstance(preset_payload, HudConfig):
+                preset = _clone_hud_config(preset_payload)
+            else:
+                if not isinstance(preset_payload, dict):
+                    raise TypeError("presets entries must be mappings")
+                preset = _load_hud_config(preset_payload, require_complete=True)
+            preset.preset = name
+            presets[name] = preset
+    presets[current_hud.preset] = _clone_hud_config(current_hud)
+    return presets
+
+
 def load_config(path: Path) -> ProjectConfig:
     payload = yaml.safe_load(path.read_text())
+    hud = _load_hud_config(payload["hud"])
     return ProjectConfig(
         activity_file=payload["activity_file"],
         video_globs=payload["video_globs"],
         output_dir=payload["output_dir"],
         cache_dir=payload["cache_dir"],
         timeline=TimelineConfig(**payload["timeline"]),
-        hud=_load_hud_config(payload["hud"]),
+        hud=hud,
+        hud_presets=_normalize_hud_presets(hud, payload.get("presets")),
         overrides=payload.get("overrides", {}),
     )
 
@@ -128,6 +155,8 @@ def _locked_config_save(path: Path):
 
 def _save_config_unlocked(path: Path, config: ProjectConfig) -> None:
     validate_hud_config(config.hud)
+    for preset in _normalize_hud_presets(config.hud, config.hud_presets).values():
+        validate_hud_config(preset)
     _write_text_atomic(path, yaml.safe_dump(_serialize_config(config), sort_keys=False))
 
 
@@ -171,6 +200,7 @@ def _write_text_atomic(path: Path, contents: str) -> None:
 
 
 def _serialize_config(config: ProjectConfig) -> dict[str, object]:
+    presets = _normalize_hud_presets(config.hud, config.hud_presets)
     return {
         "activity_file": config.activity_file,
         "video_globs": list(config.video_globs),
@@ -181,5 +211,6 @@ def _serialize_config(config: ProjectConfig) -> dict[str, object]:
             "outside_activity": config.timeline.outside_activity,
         },
         "hud": serialize_hud_config(config.hud),
+        "presets": {name: serialize_hud_config(hud) for name, hud in presets.items()},
         "overrides": {filename: dict(values) for filename, values in config.overrides.items()},
     }

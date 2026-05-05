@@ -15,8 +15,10 @@ from race_overlay.editor_preview import (
     load_editor_config,
     render_preview_payload,
     render_preview_png,
+    save_editor_preset_payload,
     save_editor_project_payload,
     save_editor_payload,
+    select_editor_preset,
 )
 from race_overlay.editor_render import EditorRenderJobManager, RenderJobAlreadyRunningError
 from race_overlay.pipeline import run_pipeline
@@ -154,6 +156,8 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 "/api/preview",
                 "/api/project",
                 "/api/project/picker",
+                "/api/presets/save",
+                "/api/presets/select",
                 "/api/render",
                 "/api/render/cancel",
             }:
@@ -207,6 +211,37 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                     if not isinstance(payload, dict):
                         raise ValueError("project config payload must be a JSON object")
                     save_editor_project_payload(config_path, payload)
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                except OSError as exc:
+                    self._write_json(500, {"error": str(exc)})
+                    return
+                self.send_response(204)
+                self.end_headers()
+                return
+            if request_path == "/api/presets/save":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("preset payload must be a JSON object")
+                    save_editor_preset_payload(config_path, payload)
+                except StaleHudSaveError as exc:
+                    self._write_json(409, {"error": str(exc)})
+                    return
+                except (TypeError, ValueError) as exc:
+                    self._write_json(400, {"error": str(exc)})
+                    return
+                except OSError as exc:
+                    self._write_json(500, {"error": str(exc)})
+                    return
+                self.send_response(204)
+                self.end_headers()
+                return
+            if request_path == "/api/presets/select":
+                try:
+                    if not isinstance(payload, dict):
+                        raise ValueError("preset selection payload must be a JSON object")
+                    select_editor_preset(config_path, payload)
                 except (TypeError, ValueError) as exc:
                     self._write_json(400, {"error": str(exc)})
                     return

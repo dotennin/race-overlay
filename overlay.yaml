@@ -1,24 +1,27 @@
-activity_file: /Users/dotennin-mac14/Downloads/activity_22734784243.tcx
+activity_file: /Users/dotennin-mac14/Downloads/activity_22757462988 (1).tcx
 video_globs:
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173249_0010_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173833_0011_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502173933_0012_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502174433_0013_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502174551_0014_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175016_0015_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175034_0016_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175143_0017_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175333_0018_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175704_0019_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502175952_0020_D.MP4
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260502180331_0021_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504174842_0038_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504154231_0023_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504154446_0024_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504154843_0025_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504155019_0026_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504155346_0027_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504155810_0028_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504160110_0029_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504160513_0030_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504160946_0031_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504161247_0032_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504161304_0033_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504161434_0034_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504161906_0035_D.MP4
+- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260504174337_0036_D.MP4
 output_dir: /Users/dotennin-mac14/Downloads/new/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0
   outside_activity: no_data
 hud:
-  preset: broadcast-runner
+  preset: bike
   theme:
     text_rgba:
     - 255
@@ -65,7 +68,7 @@ hud:
       value: distance_m
     anchor: top-left
     x: 360
-    y: 0
+    y: 20
     width: 560
     height: 56
     z_index: 40
@@ -98,8 +101,8 @@ hud:
     bindings:
       value: altitude_m
     anchor: top-left
-    x: 1144
-    y: 76
+    x: 1143
+    y: 95
     width: 127
     height: 73
     z_index: 30
@@ -116,7 +119,7 @@ hud:
       value: heart_rate_bpm
     anchor: top-right
     x: 1152
-    y: 272
+    y: 398
     width: 128
     height: 76
     z_index: 30
@@ -131,7 +134,7 @@ hud:
       value: pace_seconds_per_km
     anchor: bottom-right
     x: 1154
-    y: 348
+    y: 474
     width: 126
     height: 76
     z_index: 20
@@ -140,28 +143,13 @@ hud:
       label: Pace
       variant: compact
       align: left
-  - id: cadence-chip
-    type: metric_card
-    bindings:
-      value: cadence_spm
-    anchor: bottom-right
-    x: 1154
-    y: 568
-    width: 126
-    height: 76
-    z_index: 20
-    visible: true
-    style:
-      label: Cadence
-      variant: compact
-      align: left
   - id: elapsed-chip
     type: metric_card
     bindings:
       value: elapsed_seconds
     anchor: bottom-right
-    x: 1144
-    y: 0
+    x: 1143
+    y: 18
     width: 126
     height: 76
     z_index: 20
@@ -174,23 +162,27 @@ hud:
     bindings:
       value: speed_mps
     anchor: bottom-right
-    x: 1154
-    y: 424
-    width: 126
-    height: 126
+    x: 1110
+    y: 550
+    width: 170
+    height: 170
     z_index: 20
     visible: true
     style:
       label: Speed
       variant: speed_gauge
       align: left
+      unit_font_size_px: 17
+      unit_font_family: broadcast_ui
+      unit_font_weight: regular
+      value_font_size_px: 50
   - id: route-map
     type: route_map
     bindings:
       value: route_points
     anchor: top-left
     x: 0
-    y: 486
+    y: 488
     width: 196
     height: 196
     z_index: 20
@@ -238,18 +230,450 @@ hud:
       show_time: true
       fade_after_seconds: 10
       value_font_size_px: 24
-  - id: stride-chip
-    type: metric_card
-    bindings:
-      value: stride_length_m
-    anchor: bottom-right
-    x: 1154
-    y: 644
-    width: 126
-    height: 76
-    z_index: 20
-    visible: true
-    style:
-      label: Stride
-      variant: compact
+presets:
+  broadcast-runner:
+    preset: broadcast-runner
+    theme:
+      text_rgba:
+      - 255
+      - 255
+      - 255
+      - 255
+      note_text: Race Day
+      font_family: broadcast_value
+      font_weight: regular
+      font_size_px: 25
+      title_font_family: broadcast_value
+      title_font_weight: bold
+      title_font_size_px: 17
+      value_font_family: broadcast_value
+      value_font_weight: bold
+      value_font_size_px: 32
+      unit_font_family: broadcast_value
+      unit_font_weight: regular
+      unit_font_size_px: 17
+      show_units: true
+    widgets:
+    - id: time-chip
+      type: context_card
+      bindings:
+        value: timestamp
+      anchor: top-left
+      x: 0
+      y: 0
+      width: 292
+      height: 56
+      z_index: 36
+      visible: true
+      style:
+        variant: timestamp_chip
+        format: '%Y/%m/%d %H:%M:%S'
+        transparent_panel: true
+        value_font_size_px: 19
+        value_font_weight: bold
+        value_font_family: broadcast_value
+        label: DD
+    - id: distance-ruler
+      type: progress_bar
+      bindings:
+        value: distance_m
+      anchor: top-left
+      x: 360
+      y: 20
+      width: 560
+      height: 56
+      z_index: 40
+      visible: true
+      style:
+        label: ''
+        variant: ruler
+        show_current_value: true
+        show_total_value: true
+        fill_rgba:
+        - 34
+        - 255
+        - 138
+        - 255
+        rail_rgba:
+        - 0
+        - 0
+        - 0
+        - 220
+        tick_rgba:
+        - 0
+        - 0
+        - 0
+        - 168
+        transparent_panel: true
+        unit_font_size_px: 17
+        current_font_size_px: 15
+    - id: elevation-stat
+      type: stat_block
+      bindings:
+        value: altitude_m
+      anchor: top-left
+      x: 1143
+      y: 95
+      width: 127
+      height: 73
+      z_index: 30
+      visible: true
+      style:
+        label: Elevation
+        unit: M
+        show_unit: true
+        transparent_panel: true
+        align: left
+    - id: heart-rate-stat
+      type: stat_block
+      bindings:
+        value: heart_rate_bpm
+      anchor: top-right
+      x: 1152
+      y: 272
+      width: 128
+      height: 76
+      z_index: 30
+      visible: true
+      style:
+        label: Heart rate
+        unit: BPM
+        align: left
+    - id: pace-chip
+      type: metric_card
+      bindings:
+        value: pace_seconds_per_km
+      anchor: bottom-right
+      x: 1154
+      y: 348
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Pace
+        variant: compact
+        align: left
+    - id: cadence-chip
+      type: metric_card
+      bindings:
+        value: cadence_spm
+      anchor: bottom-right
+      x: 1154
+      y: 568
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Cadence
+        variant: compact
+        align: left
+    - id: elapsed-chip
+      type: metric_card
+      bindings:
+        value: elapsed_seconds
+      anchor: bottom-right
+      x: 1143
+      y: 18
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Elapsed
+        variant: compact
+    - id: speed-chip
+      type: metric_card
+      bindings:
+        value: speed_mps
+      anchor: bottom-right
+      x: 1154
+      y: 424
+      width: 126
+      height: 126
+      z_index: 20
+      visible: true
+      style:
+        label: Speed
+        variant: speed_gauge
+        align: left
+    - id: route-map
+      type: route_map
+      bindings:
+        value: route_points
+      anchor: top-left
+      x: 0
+      y: 486
+      width: 196
+      height: 196
+      z_index: 20
+      visible: true
+      style:
+        label: ''
+        shape: circle
+        show_panel: true
+        show_north_marker: true
+        show_bearing_label: true
+        background_rgba:
+        - 6
+        - 10
+        - 18
+        - 148
+        completed_rgba:
+        - 34
+        - 255
+        - 138
+        - 255
+        remaining_rgba:
+        - 240
+        - 247
+        - 249
+        - 255
+        zoom_percent: 90
+    - id: lap-waterfall
+      type: lap_waterfall
+      bindings:
+        value: laps
+      anchor: bottom-right
+      x: 0
+      y: 168
+      width: 488
+      height: 169
+      z_index: 30
+      visible: true
+      style:
+        visible_rows: 5
+        always_show: false
+        show_distance: true
+        show_pace: true
+        show_heart_rate: true
+        show_elevation: true
+        show_time: true
+        fade_after_seconds: 10
+        value_font_size_px: 24
+    - id: stride-chip
+      type: metric_card
+      bindings:
+        value: stride_length_m
+      anchor: bottom-right
+      x: 1154
+      y: 644
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Stride
+        variant: compact
+  bike:
+    preset: bike
+    theme:
+      text_rgba:
+      - 255
+      - 255
+      - 255
+      - 255
+      note_text: Race Day
+      font_family: broadcast_value
+      font_weight: regular
+      font_size_px: 25
+      title_font_family: broadcast_value
+      title_font_weight: bold
+      title_font_size_px: 17
+      value_font_family: broadcast_value
+      value_font_weight: bold
+      value_font_size_px: 32
+      unit_font_family: broadcast_value
+      unit_font_weight: regular
+      unit_font_size_px: 17
+      show_units: true
+    widgets:
+    - id: time-chip
+      type: context_card
+      bindings:
+        value: timestamp
+      anchor: top-left
+      x: 0
+      y: 0
+      width: 292
+      height: 56
+      z_index: 36
+      visible: true
+      style:
+        variant: timestamp_chip
+        format: '%Y/%m/%d %H:%M:%S'
+        transparent_panel: true
+        value_font_size_px: 19
+        value_font_weight: bold
+        value_font_family: broadcast_value
+        label: DD
+    - id: distance-ruler
+      type: progress_bar
+      bindings:
+        value: distance_m
+      anchor: top-left
+      x: 360
+      y: 20
+      width: 560
+      height: 56
+      z_index: 40
+      visible: true
+      style:
+        label: ''
+        variant: ruler
+        show_current_value: true
+        show_total_value: true
+        fill_rgba:
+        - 34
+        - 255
+        - 138
+        - 255
+        rail_rgba:
+        - 0
+        - 0
+        - 0
+        - 220
+        tick_rgba:
+        - 0
+        - 0
+        - 0
+        - 168
+        transparent_panel: true
+        unit_font_size_px: 17
+        current_font_size_px: 15
+    - id: elevation-stat
+      type: stat_block
+      bindings:
+        value: altitude_m
+      anchor: top-left
+      x: 1143
+      y: 95
+      width: 127
+      height: 73
+      z_index: 30
+      visible: true
+      style:
+        label: Elevation
+        unit: M
+        show_unit: true
+        transparent_panel: true
+        align: left
+    - id: heart-rate-stat
+      type: stat_block
+      bindings:
+        value: heart_rate_bpm
+      anchor: top-right
+      x: 1152
+      y: 398
+      width: 128
+      height: 76
+      z_index: 30
+      visible: true
+      style:
+        label: Heart rate
+        unit: BPM
+        align: left
+    - id: pace-chip
+      type: metric_card
+      bindings:
+        value: pace_seconds_per_km
+      anchor: bottom-right
+      x: 1154
+      y: 474
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Pace
+        variant: compact
+        align: left
+    - id: elapsed-chip
+      type: metric_card
+      bindings:
+        value: elapsed_seconds
+      anchor: bottom-right
+      x: 1143
+      y: 18
+      width: 126
+      height: 76
+      z_index: 20
+      visible: true
+      style:
+        label: Elapsed
+        variant: compact
+    - id: speed-chip
+      type: metric_card
+      bindings:
+        value: speed_mps
+      anchor: bottom-right
+      x: 1110
+      y: 550
+      width: 170
+      height: 170
+      z_index: 20
+      visible: true
+      style:
+        label: Speed
+        variant: speed_gauge
+        align: left
+        unit_font_size_px: 17
+        unit_font_family: broadcast_ui
+        unit_font_weight: regular
+        value_font_size_px: 50
+    - id: route-map
+      type: route_map
+      bindings:
+        value: route_points
+      anchor: top-left
+      x: 0
+      y: 488
+      width: 196
+      height: 196
+      z_index: 20
+      visible: true
+      style:
+        label: ''
+        shape: circle
+        show_panel: true
+        show_north_marker: true
+        show_bearing_label: true
+        background_rgba:
+        - 6
+        - 10
+        - 18
+        - 148
+        completed_rgba:
+        - 34
+        - 255
+        - 138
+        - 255
+        remaining_rgba:
+        - 240
+        - 247
+        - 249
+        - 255
+        zoom_percent: 90
+    - id: lap-waterfall
+      type: lap_waterfall
+      bindings:
+        value: laps
+      anchor: bottom-right
+      x: 0
+      y: 168
+      width: 488
+      height: 169
+      z_index: 30
+      visible: true
+      style:
+        visible_rows: 5
+        always_show: false
+        show_distance: true
+        show_pace: true
+        show_heart_rate: true
+        show_elevation: true
+        show_time: true
+        fade_after_seconds: 10
+        value_font_size_px: 24
 overrides: {}

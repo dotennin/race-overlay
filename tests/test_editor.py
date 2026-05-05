@@ -18,8 +18,10 @@ from race_overlay.editor_preview import (
     build_editor_state,
     load_editor_config,
     render_preview_payload,
+    save_editor_preset_payload,
     save_editor_project_payload,
     save_editor_payload,
+    select_editor_preset,
 )
 from race_overlay.editor_render import RenderJobCanceledError
 from race_overlay.editor_server import (
@@ -84,6 +86,32 @@ def test_build_editor_state_exposes_project_config_context_and_candidates(tmp_pa
     assert state["project"]["choices"]["video_files"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
     assert "rendered" in state["project"]["choices"]["output_dirs"]
     assert "exports" in state["project"]["choices"]["output_dirs"]
+
+
+def test_build_editor_state_exposes_named_presets_and_active_preset(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    active_hud = broadcast_runner_preset()
+    night_hud = broadcast_runner_preset()
+    night_hud.preset = "night-run"
+    night_hud.theme.note_text = "Night race"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=active_hud,
+            hud_presets={
+                "broadcast-runner": active_hud,
+                "night-run": night_hud,
+            },
+        ),
+    )
+
+    state = build_editor_state(config=load_config(config_path), width=1280, height=720, config_path=config_path)
+
+    assert state["presets"] == {
+        "active": "broadcast-runner",
+        "names": ["broadcast-runner", "night-run"],
+    }
 
 
 def test_build_editor_state_exposes_overlay_library_with_lap_waterfall() -> None:
@@ -550,6 +578,88 @@ def test_save_editor_payload_updates_overlay_yaml(tmp_path: Path) -> None:
     pace_widget = next(widget for widget in reloaded.hud.widgets if widget.id == "pace-chip")
     assert pace_widget.x == 48
     assert len(reloaded.hud.widgets) == len(broadcast_runner_preset().widgets)
+
+
+def test_save_editor_payload_updates_active_named_preset(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    active_hud = broadcast_runner_preset()
+    night_hud = broadcast_runner_preset()
+    night_hud.preset = "night-run"
+    night_hud.theme.note_text = "Night race"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=active_hud,
+            hud_presets={
+                "broadcast-runner": active_hud,
+                "night-run": night_hud,
+            },
+        ),
+    )
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["revision"] = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+    payload["theme"]["note_text"] = "Updated active preset"
+
+    save_editor_payload(config_path, payload)
+
+    reloaded = load_config(config_path)
+
+    assert reloaded.hud.theme.note_text == "Updated active preset"
+    assert reloaded.hud_presets["broadcast-runner"].theme.note_text == "Updated active preset"
+    assert reloaded.hud_presets["night-run"].theme.note_text == "Night race"
+
+
+def test_save_editor_preset_payload_persists_named_preset_and_activates_it(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    payload = serialize_hud_config(broadcast_runner_preset())
+    payload["theme"]["note_text"] = "Saved as night"
+    revision = build_editor_state(load_config(config_path), width=1280, height=720)["revision"]
+
+    save_editor_preset_payload(
+        config_path,
+        {
+            "name": "night-run",
+            "hud": payload,
+            "revision": revision,
+        },
+    )
+
+    reloaded = load_config(config_path)
+
+    assert reloaded.hud.preset == "night-run"
+    assert reloaded.hud.theme.note_text == "Saved as night"
+    assert set(reloaded.hud_presets) == {"broadcast-runner", "night-run"}
+    assert reloaded.hud_presets["night-run"].theme.note_text == "Saved as night"
+
+
+def test_select_editor_preset_loads_saved_preset_into_active_hud(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    active_hud = broadcast_runner_preset()
+    night_hud = broadcast_runner_preset()
+    night_hud.preset = "night-run"
+    night_hud.theme.note_text = "Night race"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=active_hud,
+            hud_presets={
+                "broadcast-runner": active_hud,
+                "night-run": night_hud,
+            },
+        ),
+    )
+
+    select_editor_preset(config_path, {"name": "night-run"})
+
+    reloaded = load_config(config_path)
+
+    assert reloaded.hud.preset == "night-run"
+    assert reloaded.hud.theme.note_text == "Night race"
 
 
 def test_save_editor_project_payload_updates_activity_video_paths_and_output_dir(tmp_path: Path) -> None:
@@ -1934,6 +2044,105 @@ def test_api_state_exposes_project_config_context_and_candidates(tmp_path: Path)
     assert body["project"]["choices"]["video_files"] == ["videos/clip-a.MP4", "videos/clip-b.mov"]
     assert "rendered" in body["project"]["choices"]["output_dirs"]
     assert "exports" in body["project"]["choices"]["output_dirs"]
+
+
+def test_api_state_exposes_named_presets(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    active_hud = broadcast_runner_preset()
+    night_hud = broadcast_runner_preset()
+    night_hud.preset = "night-run"
+    night_hud.theme.note_text = "Night race"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=active_hud,
+            hud_presets={
+                "broadcast-runner": active_hud,
+                "night-run": night_hud,
+            },
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            response = connection.getresponse()
+            body = json.loads(response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+    assert response.status == 200
+    assert body["presets"] == {
+        "active": "broadcast-runner",
+        "names": ["broadcast-runner", "night-run"],
+    }
+
+
+def test_api_presets_save_and_select_persist_named_presets(tmp_path: Path) -> None:
+    config_path = tmp_path / "overlay.yaml"
+    save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request("GET", "/api/state")
+            state_response = connection.getresponse()
+            state = json.loads(state_response.read().decode("utf-8"))
+        finally:
+            connection.close()
+
+        save_payload = dict(state["hud"])
+        save_payload["theme"] = dict(state["hud"]["theme"])
+        save_payload["widgets"] = [
+            {**widget, "bindings": dict(widget["bindings"]), "style": dict(widget["style"])}
+            for widget in state["hud"]["widgets"]
+        ]
+        save_payload["theme"]["note_text"] = "Night race"
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/presets/save",
+                body=json.dumps(
+                    {
+                        "name": "night-run",
+                        "hud": save_payload,
+                        "revision": state["revision"],
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+            save_response = connection.getresponse()
+            save_response.read()
+        finally:
+            connection.close()
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        try:
+            connection.request(
+                "POST",
+                "/api/presets/select",
+                body=json.dumps({"name": "broadcast-runner"}),
+                headers={"Content-Type": "application/json"},
+            )
+            select_response = connection.getresponse()
+            select_response.read()
+        finally:
+            connection.close()
+
+    reloaded = load_config(config_path)
+
+    assert save_response.status == 204
+    assert select_response.status == 204
+    assert set(reloaded.hud_presets) == {"broadcast-runner", "night-run"}
+    assert reloaded.hud_presets["night-run"].theme.note_text == "Night race"
+    assert reloaded.hud.preset == "broadcast-runner"
 
 
 def test_api_project_updates_activity_video_paths_and_output_dir(tmp_path: Path) -> None:

@@ -34,6 +34,7 @@ def test_init_writes_default_overlay_yaml(tmp_path: Path, monkeypatch) -> None:
     assert payload["hud"]["preset"] == "broadcast-runner"
     assert payload["hud"]["theme"]["note_text"] == "Race Day"
     assert any(widget["id"] == "distance-ruler" for widget in payload["hud"]["widgets"])
+    assert payload["presets"]["broadcast-runner"]["preset"] == "broadcast-runner"
 
 
 def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: Path) -> None:
@@ -71,6 +72,39 @@ def test_load_config_maps_legacy_fields_to_default_widget_visibility(tmp_path: P
     assert visibility["pace-chip"] is True
     assert visibility["route-map"] is False
     assert visibility["heart-rate-stat"] is True
+
+
+def test_save_config_round_trips_multiple_hud_presets(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    active_hud = broadcast_runner_preset()
+    active_hud.theme.note_text = "Day race"
+    night_hud = copy.deepcopy(active_hud)
+    night_hud.preset = "night-run"
+    night_hud.theme.note_text = "Night race"
+    night_hud.widgets[0].x = 320
+
+    save_config(
+        path,
+        ProjectConfig(
+            activity_file="activity_22577902433.tcx",
+            hud=active_hud,
+            hud_presets={
+                "broadcast-runner": active_hud,
+                "night-run": night_hud,
+            },
+        ),
+    )
+
+    payload = yaml.safe_load(path.read_text())
+    reloaded = load_config(path)
+
+    assert payload["presets"]["broadcast-runner"]["theme"]["note_text"] == "Day race"
+    assert payload["presets"]["night-run"]["theme"]["note_text"] == "Night race"
+    assert payload["presets"]["night-run"]["widgets"][0]["x"] == 320
+    assert reloaded.hud.theme.note_text == "Day race"
+    assert set(reloaded.hud_presets) == {"broadcast-runner", "night-run"}
+    assert reloaded.hud_presets["night-run"].preset == "night-run"
+    assert reloaded.hud_presets["night-run"].theme.note_text == "Night race"
 
 
 def test_load_config_legacy_only_fields_disable_context_card(tmp_path: Path) -> None:

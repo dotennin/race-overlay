@@ -538,6 +538,10 @@ def build_editor_state(
 ) -> dict[str, object]:
     return {
         "hud": serialize_hud_config(config.hud),
+        "presets": {
+            "active": config.hud.preset,
+            "names": sorted(config.hud_presets),
+        },
         "project": _build_project_state(config, config_path),
         "schema": _build_editor_schema(config.hud),
         "overlay_library": _overlay_library(config.hud),
@@ -667,6 +671,67 @@ def save_editor_payload(config_path: Path, payload: dict[str, object]) -> None:
             if _hud_revision(latest_config.hud) != expected_revision:
                 raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
             latest_config.hud = updated_hud
+            latest_config.hud_presets[updated_hud.preset] = _load_hud_config(
+                serialize_hud_config(updated_hud),
+                require_complete=True,
+            )
+            save_config(config_path, latest_config)
+
+
+def save_editor_preset_payload(config_path: Path, payload: dict[str, object]) -> None:
+    if not isinstance(payload, dict):
+        raise TypeError("preset payload must be a JSON object")
+    unexpected_keys = set(payload) - {"name", "hud", "revision", "overwrite"}
+    if unexpected_keys:
+        raise ValueError(f"preset payload contains unsupported fields: {', '.join(sorted(unexpected_keys))}")
+    name = payload.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("preset name must be a non-empty string")
+    hud_payload = payload.get("hud")
+    if not isinstance(hud_payload, dict):
+        raise ValueError("preset HUD payload must be a JSON object")
+    overwrite = payload.get("overwrite", False)
+    if not isinstance(overwrite, bool):
+        raise ValueError("preset overwrite flag must be boolean")
+
+    config = load_editor_config(config_path)
+    _validate_complete_hud_payload(config.hud, hud_payload)
+    updated_hud = _load_hud_config(hud_payload, require_complete=True)
+    updated_hud.preset = name.strip()
+    expected_revision = _editor_payload_revision(payload)
+
+    with _EDITOR_SAVE_LOCK:
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            if _hud_revision(latest_config.hud) != expected_revision:
+                raise StaleHudSaveError("stale HUD save rejected; reload the editor state and try again")
+            if updated_hud.preset in latest_config.hud_presets and not overwrite:
+                raise ValueError(f"preset already exists: {updated_hud.preset}")
+            latest_config.hud = updated_hud
+            latest_config.hud_presets[updated_hud.preset] = _load_hud_config(
+                serialize_hud_config(updated_hud),
+                require_complete=True,
+            )
+            save_config(config_path, latest_config)
+
+
+def select_editor_preset(config_path: Path, payload: dict[str, object]) -> None:
+    if not isinstance(payload, dict):
+        raise TypeError("preset selection payload must be a JSON object")
+    unexpected_keys = set(payload) - {"name"}
+    if unexpected_keys:
+        raise ValueError(f"preset selection payload contains unsupported fields: {', '.join(sorted(unexpected_keys))}")
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError("preset name must be a non-empty string")
+
+    with _EDITOR_SAVE_LOCK:
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            selected = latest_config.hud_presets.get(name)
+            if selected is None:
+                raise ValueError(f"unknown preset: {name}")
+            latest_config.hud = _load_hud_config(serialize_hud_config(selected), require_complete=True)
             save_config(config_path, latest_config)
 
 

@@ -24,7 +24,8 @@ const STYLE_THEME_FALLBACKS = {
 
 const elements = {
   statusMessage: document.getElementById("status-message"),
-  preset: document.getElementById("preset"),
+  presetSelect: document.getElementById("preset-select"),
+  savePresetButton: document.getElementById("save-preset-button"),
   projectConfigPanel: document.getElementById("project-config-panel"),
   projectActivityFile: document.getElementById("project-activity-file"),
   projectVideoGlobs: document.getElementById("project-video-globs"),
@@ -477,9 +478,22 @@ function isDraftDirty() {
 
 function updateSaveButtonState() {
   if (!elements.saveButton) {
+    updatePresetControlsState();
     return;
   }
   elements.saveButton.disabled = !savedState || !draftState;
+  updatePresetControlsState();
+}
+
+function updatePresetControlsState() {
+  if (elements.savePresetButton) {
+    elements.savePresetButton.disabled = !savedState || !draftState;
+  }
+  if (!elements.presetSelect) {
+    return;
+  }
+  const presetNames = Array.isArray(savedState?.presets?.names) ? savedState.presets.names : [];
+  elements.presetSelect.disabled = !savedState || !draftState || presetNames.length === 0;
 }
 
 function schedulePreviewRefresh({ immediate = false, drag = false } = {}) {
@@ -984,6 +998,98 @@ async function saveProjectState(payload) {
   setStatusMessage("Saved project settings.", "info");
 }
 
+function renderPresetControls() {
+  if (!elements.presetSelect) {
+    return;
+  }
+  const presetNames = Array.isArray(savedState?.presets?.names) ? savedState.presets.names : [];
+  const activePreset = draftState?.preset || savedState?.presets?.active || "";
+  elements.presetSelect.innerHTML = "";
+  presetNames.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    elements.presetSelect.appendChild(option);
+  });
+  if (activePreset) {
+    elements.presetSelect.value = activePreset;
+  }
+  updatePresetControlsState();
+}
+
+async function savePreset() {
+  if (!savedState || !draftState) {
+    return;
+  }
+  const suggestedName = draftState.preset || savedState.presets?.active || "custom-preset";
+  const rawName = window.prompt("Preset name", suggestedName);
+  if (rawName === null) {
+    return;
+  }
+  const name = rawName.trim();
+  if (!name) {
+    setStatusMessage("Preset name is required.");
+    return;
+  }
+  const presetNames = new Set(Array.isArray(savedState?.presets?.names) ? savedState.presets.names : []);
+  const overwrite = presetNames.has(name);
+  if (overwrite && !window.confirm(`Overwrite preset "${name}"?`)) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/presets/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        hud: cloneHud(draftState),
+        revision: savedState.revision,
+        overwrite,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error ?? "Failed to save preset");
+    }
+    setStatusMessage(`Saved preset "${name}".`, "info");
+    await loadState();
+  } catch (error) {
+    setStatusMessage(readErrorMessage(error, "Failed to save preset"));
+  }
+}
+
+async function selectPreset(name) {
+  if (!savedState || !draftState || !name) {
+    renderPresetControls();
+    return;
+  }
+  const currentPreset = savedState?.presets?.active || savedState?.hud?.preset || "";
+  if (name === currentPreset && !isDraftDirty()) {
+    renderPresetControls();
+    return;
+  }
+  if (isDraftDirty() && !window.confirm(`Switch to preset "${name}" and discard unsaved local changes?`)) {
+    renderPresetControls();
+    return;
+  }
+  try {
+    const response = await fetch("/api/presets/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error ?? "Failed to load preset");
+    }
+    setStatusMessage(`Loaded preset "${name}".`, "info");
+    await loadState();
+  } catch (error) {
+    setStatusMessage(readErrorMessage(error, "Failed to load preset"));
+    renderPresetControls();
+  }
+}
+
 async function pickProjectPath(field) {
   const response = await fetch("/api/project/picker", {
     method: "POST",
@@ -1104,6 +1210,7 @@ function renderInspector() {
   }
   elements.inspectorContent.innerHTML = "";
   if (!draftState) {
+    renderPresetControls();
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = "Load a HUD document to inspect widgets.";
@@ -1111,9 +1218,7 @@ function renderInspector() {
     return;
   }
 
-  if (elements.preset) {
-    elements.preset.value = draftState.preset;
-  }
+  renderPresetControls();
   renderThemeControls();
   syncThemeDefaultsAccordion();
 
@@ -1492,6 +1597,7 @@ async function loadState() {
       elements.preview.style.aspectRatio = `${savedState.preview.width} / ${savedState.preview.height}`;
     }
     updateSaveButtonState();
+    renderPresetControls();
     renderProjectControls();
     syncAccordionPanels();
     renderOverlayLibrary();
@@ -1506,8 +1612,8 @@ async function loadState() {
     draftState = null;
     selectedWidgetId = null;
     clearPreviewUrl();
-    if (elements.preset) {
-      elements.preset.value = "";
+    if (elements.presetSelect) {
+      elements.presetSelect.innerHTML = "";
     }
     if (elements.themeControls) {
       elements.themeControls.innerHTML = "";
@@ -1585,6 +1691,14 @@ if (elements.helpModal) {
 }
 if (elements.saveButton) {
   elements.saveButton.addEventListener("click", saveState);
+}
+if (elements.savePresetButton) {
+  elements.savePresetButton.addEventListener("click", savePreset);
+}
+if (elements.presetSelect) {
+  elements.presetSelect.addEventListener("change", (event) => {
+    void selectPreset(event.target.value);
+  });
 }
 if (elements.renderButton) {
   elements.renderButton.addEventListener("click", async () => {
