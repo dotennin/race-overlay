@@ -174,6 +174,28 @@ def test_build_editor_state_exposes_square_speed_chip_overlay_library_entry() ->
     assert speed_entry["defaults"]["width"] == speed_entry["defaults"]["height"]
 
 
+def test_build_editor_state_exposes_speed_chip_value_font_schema() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    speed_chip_style = state["schema"]["widgets"]["speed-chip"]["style"]
+
+    assert speed_chip_style["value_font_family"] == {
+        "kind": "enum",
+        "label": "Value font family",
+        "options": list(HUD_FONT_FAMILY_OPTIONS),
+    }
+    assert speed_chip_style["value_font_weight"] == {
+        "kind": "enum",
+        "label": "Value font weight",
+        "options": list(HUD_FONT_WEIGHT_OPTIONS),
+    }
+    assert speed_chip_style["value_font_size_px"] == {"kind": "integer", "label": "Value font size", "min": 8}
+
+
 def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     state = build_editor_state(
         config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
