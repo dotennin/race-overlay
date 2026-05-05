@@ -1423,6 +1423,44 @@ def test_render_hud_frame_speed_gauge_metric_card_draws_visible_pixels() -> None
     assert _region_has_alpha(image, _widget_bounds(widget, 1280, 720))
 
 
+def test_render_hud_frame_speed_gauge_metric_card_uses_translucent_round_background() -> None:
+    widget = HudWidgetConfig(
+        id="speed-chip",
+        type="metric_card",
+        bindings={"value": "speed_mps"},
+        anchor="top-left",
+        x=24,
+        y=24,
+        width=136,
+        height=136,
+        style={"label": "Speed", "variant": "speed_gauge"},
+    )
+    hud_config = HudConfig(preset="speed-gauge", theme=HudThemeConfig(), widgets=[widget])
+
+    image = render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+            latitude=36.0833,
+            longitude=140.2106,
+            altitude_m=25.0,
+            distance_m=5210.0,
+            speed_mps=6.94,
+            pace_seconds_per_km=278.0,
+            heart_rate_bpm=162,
+            cadence_spm=178,
+        ),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=hud_config,
+        elapsed_seconds=6852,
+    )
+
+    center = image.getpixel((widget.x + 40, widget.y + widget.height // 2))
+
+    assert 0 < center[3] < 180
+
+
 def test_render_hud_frame_route_map_uses_widget_label(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _rendered_text_labels(
         monkeypatch,

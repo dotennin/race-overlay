@@ -53,6 +53,12 @@ def test_broadcast_runner_preset_uses_speed_gauge_variant_for_speed_chip() -> No
     assert speed_chip.style["variant"] == "speed_gauge"
 
 
+def test_broadcast_runner_preset_uses_square_speed_chip_geometry() -> None:
+    speed_chip = next(widget for widget in broadcast_runner_preset().widgets if widget.id == "speed-chip")
+
+    assert speed_chip.width == speed_chip.height
+
+
 def test_broadcast_runner_preset_keeps_route_map_refresh_scoped_to_route_map() -> None:
     config = broadcast_runner_preset()
     route_map = next(widget for widget in config.widgets if widget.id == "route-map")

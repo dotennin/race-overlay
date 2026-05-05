@@ -1479,7 +1479,7 @@ def _draw_speed_gauge_metric_card(
 
     draw.ellipse(
         (gauge_left, gauge_top, gauge_right, gauge_bottom),
-        fill=(10, 14, 22, 220),
+        fill=(10, 14, 22, 148),
         outline=(168, 174, 182, 255),
         width=_scale_draw(scale, 3),
     )
