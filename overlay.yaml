@@ -177,7 +177,7 @@ hud:
     x: 1154
     y: 424
     width: 126
-    height: 76
+    height: 126
     z_index: 20
     visible: true
     style:

@@ -402,7 +402,7 @@ def _overlay_library(hud_config: HudConfig) -> list[dict[str, object]]:
                         "x": 1110,
                         "y": 642,
                         "width": 120,
-                        "height": 72,
+                        "height": 120,
                         "z_index": 20,
                         "visible": True,
                         "style": {"label": "Speed", "variant": "speed_gauge"},

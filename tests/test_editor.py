@@ -162,6 +162,18 @@ def test_build_editor_state_exposes_speed_chip_overlay_library_entry_with_speed_
     assert speed_entry["defaults"]["style"] == {"label": "Speed", "variant": "speed_gauge"}
 
 
+def test_build_editor_state_exposes_square_speed_chip_overlay_library_entry() -> None:
+    state = build_editor_state(
+        config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
+        width=1280,
+        height=720,
+    )
+
+    speed_entry = next(item for item in state["overlay_library"] if item["label"] == "Speed chip")
+
+    assert speed_entry["defaults"]["width"] == speed_entry["defaults"]["height"]
+
+
 def test_build_editor_state_exposes_theme_and_widget_style_schema() -> None:
     state = build_editor_state(
         config=ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()),
