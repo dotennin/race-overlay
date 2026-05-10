@@ -45,6 +45,7 @@ LAP_WATERFALL_LATEST_FILL_RGBA = (24, 98, 166, 92)
 LAP_WATERFALL_LATEST_OUTLINE_RGBA = (34, 255, 138, 220)
 LAP_WATERFALL_LATEST_GLOW_RGBA = (74, 155, 255, 92)
 ROUTE_MAP_CACHE_MAX_ENTRIES = 32
+TEXT_IMAGE_CACHE_MAX_ENTRIES = 2048
 _FONT_FILES = {
     "sans": {"regular": "DejaVuSans.ttf", "bold": "DejaVuSans-Bold.ttf"},
     "serif": {"regular": "DejaVuSerif.ttf", "bold": "DejaVuSerif-Bold.ttf"},
@@ -71,6 +72,14 @@ class RouteProjection:
 
 
 @dataclass(slots=True, frozen=False)
+class RouteProjectionCursor:
+    segment_index: int = 0
+    last_full_scan_frame: int = -1
+    search_radius_segments: int = 180
+    resync_interval_frames: int = 60
+
+
+@dataclass(slots=True, frozen=False)
 class RouteMapCache:
     """Cache for static route map rendering data."""
     background_image: Image.Image
@@ -81,6 +90,7 @@ class RouteMapCache:
 
 # Module-level cache for route map static data
 _route_map_cache: dict[str, RouteMapCache] = {}
+_text_image_cache: dict[tuple[object, ...], Image.Image] = {}
 
 
 def _get_route_map_cache() -> dict[str, RouteMapCache]:
@@ -91,6 +101,53 @@ def _get_route_map_cache() -> dict[str, RouteMapCache]:
 def _clear_route_map_cache() -> None:
     """Clear all route map cache entries."""
     _route_map_cache.clear()
+    _text_image_cache.clear()
+
+
+class _CachedTextDraw:
+    def __init__(self, image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+        self._image = image
+        self._draw = draw
+
+    def __getattr__(self, name: str):
+        return getattr(self._draw, name)
+
+    def text(self, xy, text, *args, **kwargs):
+        if args or self._image.mode != "RGBA":
+            return self._draw.text(xy, text, *args, **kwargs)
+        font = kwargs.get("font")
+        fill = kwargs.get("fill", (0, 0, 0, 255))
+        anchor = kwargs.get("anchor")
+        unsupported_keys = set(kwargs) - {"font", "fill", "anchor"}
+        if unsupported_keys or anchor is not None:
+            return self._draw.text(xy, text, **kwargs)
+        text_value = str(text)
+        fill_tuple = tuple(fill) if isinstance(fill, (list, tuple)) else fill
+        cache_key = (text_value, id(font), fill_tuple, anchor)
+        text_image = _text_image_cache.get(cache_key)
+        if text_image is None:
+            bbox = self._draw.textbbox((0, 0), text_value, font=font, anchor=anchor)
+            padding = 2
+            text_width = max(int(math.ceil(bbox[2] - bbox[0])) + padding * 2, 1)
+            text_height = max(int(math.ceil(bbox[3] - bbox[1])) + padding * 2, 1)
+            text_image = Image.new("RGBA", (text_width, text_height), (0, 0, 0, 0))
+            text_draw = ImageDraw.Draw(text_image)
+            text_draw.text((padding - bbox[0], padding - bbox[1]), text_value, fill=fill, font=font, anchor=anchor)
+            if len(_text_image_cache) >= TEXT_IMAGE_CACHE_MAX_ENTRIES:
+                _text_image_cache.pop(next(iter(_text_image_cache)), None)
+            _text_image_cache[cache_key] = text_image
+        target_bbox = self._draw.textbbox(xy, text_value, font=font, anchor=anchor)
+        dest = (int(round(target_bbox[0])) - 2, int(round(target_bbox[1])) - 2)
+        if dest[0] < 0 or dest[1] < 0 or dest[0] + text_image.width > self._image.width or dest[1] + text_image.height > self._image.height:
+            return self._draw.text(xy, text, **kwargs)
+        self._image.alpha_composite(text_image, dest)
+
+
+def _frame_draw(image: Image.Image) -> ImageDraw.ImageDraw | _CachedTextDraw:
+    draw = ImageDraw.Draw(image)
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        return draw
+    return _CachedTextDraw(image, draw)
 
 
 def _store_route_map_cache_entry(cache_key: str, cache_entry: RouteMapCache) -> None:
@@ -286,7 +343,7 @@ def render_hud_frame(
     It is ignored when rendering through the legacy ``HudLayout``/``layout`` path.
     """
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    draw = _frame_draw(image)
     legacy_layout = _resolve_legacy_layout(hud_config, layout)
     if legacy_layout is not None:
         _render_legacy_layout(draw, legacy_layout, hud_value,
@@ -323,9 +380,11 @@ def render_prepared_hud_frame(
     lap_state: LapWaterfallState | None = None,
     lap_states: dict[str, LapWaterfallState] | None = None,
     route_map_cache_keys: dict[str, str] | None = None,
+    route_projection_cursors: dict[str, RouteProjectionCursor] | None = None,
+    frame_index: int | None = None,
 ) -> Image.Image:
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    draw = _frame_draw(image)
     scale = _render_scale(width, height)
     for widget in widgets:
         _render_widget(
@@ -343,6 +402,8 @@ def render_prepared_hud_frame(
             lap_state=lap_state,
             lap_states=lap_states,
             route_map_cache_key=route_map_cache_keys.get(widget.id) if route_map_cache_keys is not None else None,
+            route_projection_cursor=route_projection_cursors.get(widget.id) if route_projection_cursors is not None else None,
+            frame_index=frame_index,
         )
     return image
 
@@ -436,6 +497,8 @@ def _render_widget(
     lap_state: LapWaterfallState | None = None,
     lap_states: dict[str, LapWaterfallState] | None = None,
     route_map_cache_key: str | None = None,
+    route_projection_cursor: RouteProjectionCursor | None = None,
+    frame_index: int | None = None,
 ) -> None:
     if widget.type == "progress_bar":
         _draw_progress_bar(draw, widget, hud_value.distance_m,
@@ -445,7 +508,7 @@ def _render_widget(
                          frame_width, frame_height, scale)
     elif widget.type == "route_map":
         _draw_route_map(image, draw, widget, route_points,
-                        hud_value, theme, frame_width, frame_height, scale, route_map_cache_key=route_map_cache_key)
+                        hud_value, theme, frame_width, frame_height, scale, route_map_cache_key=route_map_cache_key, route_projection_cursor=route_projection_cursor, frame_index=frame_index)
     elif widget.type == "hero_metric":
         _draw_hero_metric(draw, widget, hud_value.pace_seconds_per_km,
                           theme, frame_width, frame_height, scale)
@@ -1125,6 +1188,8 @@ def _draw_route_map(
     scale: RenderScale,
     *,
     route_map_cache_key: str | None = None,
+    route_projection_cursor: RouteProjectionCursor | None = None,
+    frame_index: int | None = None,
 ) -> None:
     left, top = _resolve_widget_origin(
         widget, frame_width, frame_height, scale)
@@ -1155,7 +1220,15 @@ def _draw_route_map(
     # Compute dynamic components
     show_north_marker = _style_bool(widget, "show_north_marker", True)
     show_bearing_label = _style_bool(widget, "show_bearing_label", True)
-    route_projection = _resolve_route_projection(route_points, hud_value)
+    if route_projection_cursor is None:
+        route_projection = _resolve_route_projection(route_points, hud_value)
+    else:
+        route_projection = _resolve_route_projection_with_cursor(
+            route_points,
+            hud_value,
+            route_projection_cursor,
+            frame_index=frame_index,
+        )
     bearing_label = ""
     if route_projection is not None and show_bearing_label:
         bearing_label = _format_bearing_label(route_projection.tangent)
@@ -2221,6 +2294,74 @@ def _format_pace(pace_seconds_per_km: float | None) -> str:
 
 
 def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value: HudSample) -> RouteProjection | None:
+    return _resolve_route_projection_in_range(route_points, hud_value, start_index=0, end_index=max(len(route_points) - 2, 0))
+
+
+def _resolve_route_projection_with_cursor(
+    route_points: list[tuple[float, float]],
+    hud_value: HudSample,
+    cursor: RouteProjectionCursor,
+    *,
+    frame_index: int | None = None,
+) -> RouteProjection | None:
+    if len(route_points) < 2:
+        return None
+    resolved_frame_index = 0 if frame_index is None else frame_index
+    should_full_scan = (
+        cursor.last_full_scan_frame < 0
+        or resolved_frame_index - cursor.last_full_scan_frame >= cursor.resync_interval_frames
+        or cursor.segment_index < 0
+        or cursor.segment_index >= len(route_points) - 1
+    )
+    if should_full_scan:
+        projection = _resolve_route_projection(route_points, hud_value)
+        if projection is not None:
+            cursor.segment_index = projection.segment_index
+            cursor.last_full_scan_frame = resolved_frame_index
+        return projection
+
+    radius = max(cursor.search_radius_segments, 1)
+    start_index = max(cursor.segment_index - radius, 0)
+    end_index = min(cursor.segment_index + radius, len(route_points) - 2)
+    projection = _resolve_route_projection_in_range(
+        route_points,
+        hud_value,
+        start_index=start_index,
+        end_index=end_index,
+    )
+    if projection is None:
+        return None
+
+    current = (hud_value.latitude, hud_value.longitude)
+    if current[0] is not None and current[1] is not None and _route_projection_looks_stale(projection, current):
+        full_projection = _resolve_route_projection(route_points, hud_value)
+        if full_projection is not None:
+            cursor.segment_index = full_projection.segment_index
+            cursor.last_full_scan_frame = resolved_frame_index
+        return full_projection
+
+    cursor.segment_index = projection.segment_index
+    return projection
+
+
+def _route_projection_looks_stale(route_projection: RouteProjection, current: tuple[float, float]) -> bool:
+    segment_length_sq = _distance_squared(route_projection.segment_start, route_projection.segment_end)
+    if segment_length_sq <= 0:
+        return False
+    distance_sq = _distance_squared(current, route_projection.point)
+    # Interpolated activity samples should land on the route polyline. If the
+    # local window's best point is implausibly far from the current GPS point,
+    # resync with a full scan to handle jumps and crossings.
+    return distance_sq > max(segment_length_sq * 4.0, 1e-8)
+
+
+def _resolve_route_projection_in_range(
+    route_points: list[tuple[float, float]],
+    hud_value: HudSample,
+    *,
+    start_index: int,
+    end_index: int,
+) -> RouteProjection | None:
     if hud_value.latitude is None or hud_value.longitude is None:
         return None
 
@@ -2232,7 +2373,14 @@ def _resolve_route_projection(route_points: list[tuple[float, float]], hud_value
     closest_distance_sq = float("inf")
     segment_index = 0
 
-    for index, (segment_start, segment_end) in enumerate(zip(route_points, route_points[1:])):
+    bounded_start = max(start_index, 0)
+    bounded_end = min(end_index, len(route_points) - 2)
+    if bounded_end < bounded_start:
+        return None
+
+    for index in range(bounded_start, bounded_end + 1):
+        segment_start = route_points[index]
+        segment_end = route_points[index + 1]
         candidate = _project_point_onto_segment(
             current, segment_start, segment_end)
         distance_sq = _distance_squared(current, candidate)

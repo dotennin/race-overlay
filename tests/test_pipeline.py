@@ -899,6 +899,49 @@ def test_run_pipeline_emits_throttled_preview_updates_when_enabled(tmp_path: Pat
     assert all(update.image_bytes.startswith(b"\x89PNG\r\n\x1a\n") for update in preview_updates)
 
 
+def test_preview_source_frame_cache_reuses_same_second_extract(monkeypatch) -> None:
+    preview_updates = []
+    extracted_timestamps: list[float] = []
+    clip = fake_clip(Path("clip.MP4"), fps=30.0)
+
+    def fake_extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image.Image:
+        extracted_timestamps.append(timestamp_seconds)
+        return Image.new("RGB", (1280, 720), (25, 50, 200))
+
+    def preview_update(payload) -> bool:
+        if payload is None:
+            return True
+        preview_updates.append(payload)
+        return True
+
+    monkeypatch.setattr("race_overlay.pipeline.extract_video_frame", fake_extract_video_frame, raising=False)
+
+    import race_overlay.pipeline as pipeline_module
+
+    preview_cache = pipeline_module.PreviewSourceFrameCache()
+    pipeline_module._maybe_publish_preview(
+        clip=clip,
+        index=0,
+        overlay_frame=Image.new("RGBA", (1280, 720), (200, 50, 25, 128)),
+        preview_update=preview_update,
+        progress=None,
+        last_preview_bucket=None,
+        preview_source_cache=preview_cache,
+    )
+    pipeline_module._maybe_publish_preview(
+        clip=clip,
+        index=1,
+        overlay_frame=Image.new("RGBA", (1280, 720), (200, 50, 25, 128)),
+        preview_update=preview_update,
+        progress=None,
+        last_preview_bucket=None,
+        preview_source_cache=preview_cache,
+    )
+
+    assert len(preview_updates) == 2
+    assert [round(timestamp, 3) for timestamp in extracted_timestamps] == [0.0]
+
+
 def test_run_pipeline_continues_when_preview_extraction_fails(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "overlay.yaml"
     save_config(config_path, ProjectConfig(activity_file="activity_22577902433.tcx", hud=broadcast_runner_preset()))

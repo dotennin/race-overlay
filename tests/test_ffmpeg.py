@@ -33,6 +33,7 @@ def test_resolve_output_encoding_plan_preserves_supported_source_settings() -> N
     plan = resolve_output_encoding_plan(make_clip())
 
     assert plan.video_codec == "libx264"
+    assert plan.video_preset == "veryfast"
     assert plan.pixel_format == "yuv420p"
     assert plan.video_bitrate == 16_000_000
     assert plan.color_space == "bt709"
@@ -224,6 +225,8 @@ def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
         "0:a:0?",
         "-c:v:0",
         "libx264",
+        "-preset:v:0",
+        "veryfast",
         "-pix_fmt:v:0",
         "yuv420p",
         "-b:v:0",
@@ -281,6 +284,8 @@ def test_build_cache_compose_command_uses_single_audio_stream() -> None:
         "0:a:0?",
         "-c:v:0",
         "libx264",
+        "-preset:v:0",
+        "veryfast",
         "-pix_fmt:v:0",
         "yuv420p",
         "-b:v:0",
@@ -357,6 +362,36 @@ def test_build_stream_compose_command_omits_dropped_color_metadata() -> None:
     assert "-color_primaries:v:0" not in command
 
 
+def test_resolve_output_encoding_plan_accepts_custom_video_preset() -> None:
+    plan = resolve_output_encoding_plan(make_clip(), video_preset="fast")
+
+    assert plan.video_preset == "fast"
+
+
+def test_resolve_output_encoding_plan_rejects_unsupported_video_preset() -> None:
+    try:
+        resolve_output_encoding_plan(make_clip(), video_preset="placebo")
+    except ValueError as exc:
+        assert "video_preset" in str(exc)
+    else:
+        raise AssertionError("unsupported preset should fail")
+
+
+def test_build_stream_compose_command_omits_preset_for_prores() -> None:
+    clip = make_clip(video_codec="prores", pixel_format="yuv422p10le")
+    plan = resolve_output_encoding_plan(clip)
+
+    command = build_stream_compose_command(
+        source_path=Path("source.MOV"),
+        clip=clip,
+        output_path=Path("output.MOV"),
+        plan=plan,
+    )
+
+    assert plan.video_codec == "prores_ks"
+    assert "-preset:v:0" not in command
+
+
 def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
     clip = make_clip(
         video_codec="hevc",
@@ -401,6 +436,8 @@ def test_compose_video_uses_resolved_encoding_plan(monkeypatch) -> None:
         "0:a:0?",
         "-c:v:0",
         "libx265",
+        "-preset:v:0",
+        "veryfast",
         "-pix_fmt:v:0",
         "yuv420p10le",
         "-b:v:0",

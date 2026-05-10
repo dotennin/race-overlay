@@ -158,10 +158,84 @@ def test_run_benchmark_passes_lap_states_to_renderer(monkeypatch: pytest.MonkeyP
         route_points=[],
         num_frames=10,
         lap_states={"lap-waterfall": lap_state},
+        render_path="public",
     )
 
     assert captured
     assert captured[0]["lap_states"] == {"lap-waterfall": lap_state}
+
+
+def test_run_benchmark_uses_prepared_renderer_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    hud_config = HudConfig(
+        theme=HudThemeConfig(),
+        widgets=[
+            HudWidgetConfig(
+                id="test-metric",
+                type="metric_card",
+                bindings={"value": "pace_seconds_per_km"},
+                anchor="top-left",
+                x=10,
+                y=10,
+                width=200,
+                height=80,
+            )
+        ],
+    )
+    hud_sample = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=36.0833,
+        longitude=140.2106,
+        altitude_m=25.0,
+        distance_m=1000.0,
+        speed_mps=3.58,
+        pace_seconds_per_km=278.0,
+        heart_rate_bpm=162,
+        cadence_spm=178,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr("race_overlay.benchmark.render_hud_frame", lambda **kwargs: calls.append("public") or None)
+    monkeypatch.setattr("race_overlay.benchmark.render_prepared_hud_frame", lambda **kwargs: calls.append("prepared") or None)
+
+    run_benchmark(
+        width=1280,
+        height=720,
+        hud_config=hud_config,
+        hud_sample=hud_sample,
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        num_frames=10,
+    )
+
+    assert calls == ["prepared"] * 10
+
+
+def test_run_benchmark_can_use_public_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    hud_config = HudConfig(theme=HudThemeConfig(), widgets=[])
+    hud_sample = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 48, 10, tzinfo=timezone.utc),
+        latitude=None,
+        longitude=None,
+        altitude_m=None,
+        distance_m=None,
+        speed_mps=None,
+        pace_seconds_per_km=None,
+        heart_rate_bpm=None,
+        cadence_spm=None,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr("race_overlay.benchmark.render_hud_frame", lambda **kwargs: calls.append("public") or None)
+    monkeypatch.setattr("race_overlay.benchmark.render_prepared_hud_frame", lambda **kwargs: calls.append("prepared") or None)
+
+    run_benchmark(
+        width=1280,
+        height=720,
+        hud_config=hud_config,
+        hud_sample=hud_sample,
+        route_points=[],
+        num_frames=10,
+        render_path="public",
+    )
+
+    assert calls == ["public"] * 10
 
 
 def test_format_benchmark_results_produces_human_readable_output() -> None:

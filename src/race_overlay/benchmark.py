@@ -1,7 +1,13 @@
 import time
 from dataclasses import dataclass, replace
 
-from race_overlay.hud import render_hud_frame
+from race_overlay.hud import (
+    RouteProjectionCursor,
+    prime_route_map_caches,
+    render_hud_frame,
+    render_prepared_hud_frame,
+    validate_hud_config,
+)
 from race_overlay.hud_schema import HudConfig
 from race_overlay.models import HudSample
 
@@ -28,6 +34,7 @@ def run_benchmark(
     *,
     total_distance_m: float | None = None,
     lap_states: dict | None = None,
+    render_path: str = "prepared",
 ) -> BenchmarkResult:
     """Run a benchmark rendering frames and measuring performance.
     
@@ -48,21 +55,56 @@ def run_benchmark(
     """
     if num_frames < 10:
         raise ValueError(f"num_frames must be at least 10 frames for statistics, got {num_frames}")
+    if render_path not in {"prepared", "public"}:
+        raise ValueError("render_path must be 'prepared' or 'public'")
     
     frame_times_ms: list[float] = []
+    validated_hud_config = validate_hud_config(hud_config)
+    visible_widgets = sorted(
+        (widget for widget in validated_hud_config.widgets if widget.visible),
+        key=lambda widget: widget.z_index,
+    )
+    route_map_cache_keys = prime_route_map_caches(
+        widgets=visible_widgets,
+        route_points=route_points,
+        theme=validated_hud_config.theme,
+        frame_width=width,
+        frame_height=height,
+    )
+    route_projection_cursors = {
+        widget.id: RouteProjectionCursor()
+        for widget in visible_widgets
+        if widget.type == "route_map"
+    }
     
-    for _ in range(num_frames):
+    for frame_index in range(num_frames):
         start = time.perf_counter()
-        render_hud_frame(
-            width=width,
-            height=height,
-            hud_value=hud_sample,
-            route_points=route_points,
-            hud_config=hud_config,
-            elapsed_seconds=0,
-            total_distance_m=total_distance_m,
-            lap_states=lap_states,
-        )
+        if render_path == "public":
+            render_hud_frame(
+                width=width,
+                height=height,
+                hud_value=hud_sample,
+                route_points=route_points,
+                hud_config=hud_config,
+                elapsed_seconds=0,
+                total_distance_m=total_distance_m,
+                lap_states=lap_states,
+            )
+        else:
+            render_prepared_hud_frame(
+                width=width,
+                height=height,
+                hud_value=hud_sample,
+                route_points=route_points,
+                theme=validated_hud_config.theme,
+                widgets=visible_widgets,
+                elapsed_seconds=0,
+                total_distance_m=total_distance_m,
+                lap_states=lap_states,
+                route_map_cache_keys=route_map_cache_keys,
+                route_projection_cursors=route_projection_cursors,
+                frame_index=frame_index,
+            )
         end = time.perf_counter()
         frame_times_ms.append((end - start) * 1000)
     
@@ -134,6 +176,7 @@ def run_multi_variant_benchmark(
     widget_ids_to_toggle: list[str] | None = None,
     total_distance_m: float | None = None,
     lap_states: dict | None = None,
+    render_path: str = "prepared",
 ) -> dict[str, BenchmarkResult]:
     """Run benchmarks comparing baseline config with variants that toggle widgets.
     
@@ -169,6 +212,7 @@ def run_multi_variant_benchmark(
         num_frames=num_frames,
         total_distance_m=total_distance_m,
         lap_states=lap_states,
+        render_path=render_path,
     )
     
     # Run variants with each widget toggled off
@@ -190,6 +234,7 @@ def run_multi_variant_benchmark(
             num_frames=num_frames,
             total_distance_m=total_distance_m,
             lap_states=lap_states,
+            render_path=render_path,
         )
     
     return results

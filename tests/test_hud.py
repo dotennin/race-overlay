@@ -12,11 +12,14 @@ import inspect
 from race_overlay.hud import (
     HudLayout,
     RenderScale,
+    RouteProjectionCursor,
     RouteProjection,
     _draw_progress_bar,
     _metric_value,
     _metric_suffix,
     _progress_bar_text_layout,
+    _resolve_route_projection,
+    _resolve_route_projection_with_cursor,
     _scaled_font,
     _split_route_points,
     _widget_panel_enabled,
@@ -38,6 +41,68 @@ def clear_route_map_cache():
     """Clear route map cache before each test to prevent cross-test pollution."""
     hud_module._clear_route_map_cache()
     yield
+
+
+def test_route_projection_cursor_matches_full_scan_for_sequential_route() -> None:
+    route_points = [(36.0 + index * 0.0001, 140.0) for index in range(100)]
+    cursor = RouteProjectionCursor(resync_interval_frames=60)
+
+    for frame_index, route_index in enumerate((1, 2, 3, 4, 5, 6, 7, 8)):
+        hud_value = HudSample(
+            timestamp=datetime(2026, 4, 19, 9, 0, frame_index, tzinfo=timezone.utc),
+            latitude=route_points[route_index][0],
+            longitude=route_points[route_index][1],
+            altitude_m=None,
+            distance_m=None,
+            speed_mps=None,
+            pace_seconds_per_km=None,
+            heart_rate_bpm=None,
+            cadence_spm=None,
+        )
+
+        full = _resolve_route_projection(route_points, hud_value)
+        optimized = _resolve_route_projection_with_cursor(route_points, hud_value, cursor, frame_index=frame_index)
+
+        assert optimized is not None
+        assert full is not None
+        assert optimized.segment_index == full.segment_index
+        assert optimized.point == pytest.approx(full.point)
+
+
+def test_route_projection_cursor_resyncs_after_large_gps_jump() -> None:
+    route_points = [(36.0 + index * 0.0001, 140.0) for index in range(100)]
+    cursor = RouteProjectionCursor(resync_interval_frames=60)
+    first_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 0, 0, tzinfo=timezone.utc),
+        latitude=route_points[2][0],
+        longitude=route_points[2][1],
+        altitude_m=None,
+        distance_m=None,
+        speed_mps=None,
+        pace_seconds_per_km=None,
+        heart_rate_bpm=None,
+        cadence_spm=None,
+    )
+    jump_value = HudSample(
+        timestamp=datetime(2026, 4, 19, 9, 0, 1, tzinfo=timezone.utc),
+        latitude=route_points[80][0],
+        longitude=route_points[80][1],
+        altitude_m=None,
+        distance_m=None,
+        speed_mps=None,
+        pace_seconds_per_km=None,
+        heart_rate_bpm=None,
+        cadence_spm=None,
+    )
+
+    _resolve_route_projection_with_cursor(route_points, first_value, cursor, frame_index=0)
+    full = _resolve_route_projection(route_points, jump_value)
+    optimized = _resolve_route_projection_with_cursor(route_points, jump_value, cursor, frame_index=1)
+
+    assert optimized is not None
+    assert full is not None
+    assert optimized.segment_index == full.segment_index
+    assert optimized.point == pytest.approx(full.point)
     hud_module._clear_route_map_cache()
 
 

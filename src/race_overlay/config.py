@@ -24,12 +24,18 @@ class TimelineConfig:
 
 
 @dataclass(slots=True)
+class EncodingConfig:
+    video_preset: str = "veryfast"
+
+
+@dataclass(slots=True)
 class ProjectConfig:
     activity_file: str
     video_globs: list[str] = field(default_factory=lambda: ["*.MP4", "*.mov"])
     output_dir: str = "rendered"
     cache_dir: str = "cache"
     timeline: TimelineConfig = field(default_factory=TimelineConfig)
+    encoding: EncodingConfig = field(default_factory=EncodingConfig)
     hud: HudConfig = field(default_factory=broadcast_runner_preset)
     hud_presets: dict[str, HudConfig] = field(default_factory=dict)
     overrides: dict[str, dict[str, float | str]] = field(default_factory=dict)
@@ -115,6 +121,7 @@ def load_config(path: Path) -> ProjectConfig:
         output_dir=payload["output_dir"],
         cache_dir=payload["cache_dir"],
         timeline=TimelineConfig(**payload["timeline"]),
+        encoding=EncodingConfig(**payload.get("encoding", {})),
         hud=hud,
         hud_presets=_normalize_hud_presets(hud, payload.get("presets")),
         overrides=payload.get("overrides", {}),
@@ -209,6 +216,9 @@ def _serialize_config(config: ProjectConfig) -> dict[str, object]:
         "timeline": {
             "global_offset_seconds": config.timeline.global_offset_seconds,
             "outside_activity": config.timeline.outside_activity,
+        },
+        "encoding": {
+            "video_preset": config.encoding.video_preset,
         },
         "hud": serialize_hud_config(config.hud),
         "presets": {name: serialize_hud_config(hud) for name, hud in presets.items()},

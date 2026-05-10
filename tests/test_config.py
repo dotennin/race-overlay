@@ -444,6 +444,26 @@ def test_project_config_defaults_to_broadcast_runner_hud() -> None:
 
     assert config.hud.preset == "broadcast-runner"
     assert any(widget.id == "distance-ruler" for widget in config.hud.widgets)
+    assert config.encoding.video_preset == "veryfast"
+
+
+def test_load_config_reads_optional_encoding_video_preset(tmp_path: Path) -> None:
+    path = tmp_path / "overlay.yaml"
+    path.write_text(
+        "activity_file: activity.tcx\n"
+        "video_globs:\n  - '*.MP4'\n"
+        "output_dir: rendered\n"
+        "cache_dir: cache\n"
+        "timeline:\n  global_offset_seconds: 0.0\n  outside_activity: no_data\n"
+        "encoding:\n  video_preset: fast\n"
+        "hud:\n  fields:\n    pace: true\n"
+        "overrides: {}\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.encoding.video_preset == "fast"
 
 
 def test_load_config_rejects_non_finite_style_values(tmp_path: Path) -> None:

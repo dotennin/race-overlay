@@ -14,6 +14,9 @@ SUPPORTED_VIDEO_CODEC_MAP = {
 }
 
 DEFAULT_VIDEO_CODEC = "libx264"
+DEFAULT_VIDEO_PRESET = "veryfast"
+SUPPORTED_VIDEO_PRESETS = ("ultrafast", "veryfast", "faster", "fast", "medium", "slow")
+PRESET_CAPABLE_VIDEO_CODECS = {"libx264", "libx265"}
 DEFAULT_PIXEL_FORMATS = {
     "libx264": "yuv420p",
     "libx265": "yuv420p",
@@ -57,6 +60,7 @@ COLOR_METADATA_DROP_PRONOUNS = {
 class OutputEncodingPlan:
     video_codec: str
     pixel_format: str
+    video_preset: str | None
     video_bitrate: int | None
     color_space: str | None
     color_transfer: str | None
@@ -257,6 +261,12 @@ def _append_main_video_encoding_args(command: list[str], plan: OutputEncodingPla
         [
             "-c:v:0",
             plan.video_codec,
+        ]
+    )
+    if plan.video_preset is not None:
+        command.extend(["-preset:v:0", plan.video_preset])
+    command.extend(
+        [
             "-pix_fmt:v:0",
             plan.pixel_format,
         ]
@@ -341,7 +351,10 @@ def compose_video(
     )
 
 
-def resolve_output_encoding_plan(clip: VideoClip) -> OutputEncodingPlan:
+def resolve_output_encoding_plan(clip: VideoClip, *, video_preset: str = DEFAULT_VIDEO_PRESET) -> OutputEncodingPlan:
+    if video_preset not in SUPPORTED_VIDEO_PRESETS:
+        supported = ", ".join(SUPPORTED_VIDEO_PRESETS)
+        raise ValueError(f"encoding.video_preset must be one of: {supported}")
     warnings: list[str] = []
     source_codec = clip.video_codec
     video_codec = SUPPORTED_VIDEO_CODEC_MAP.get(source_codec or "", DEFAULT_VIDEO_CODEC)
@@ -398,6 +411,7 @@ def resolve_output_encoding_plan(clip: VideoClip) -> OutputEncodingPlan:
     return OutputEncodingPlan(
         video_codec=video_codec,
         pixel_format=pixel_format,
+        video_preset=video_preset if video_codec in PRESET_CAPABLE_VIDEO_CODECS else None,
         video_bitrate=clip.video_bitrate,
         color_space=color_space,
         color_transfer=color_transfer,

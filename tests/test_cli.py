@@ -197,6 +197,45 @@ def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> No
     assert "%" in result.stdout
 
 
+def test_benchmark_render_profile_outputs_cumulative_stats(tmp_path: Path) -> None:
+    from race_overlay.hud_schema import HudConfig
+    import shutil
+
+    config_path = tmp_path / "overlay.yaml"
+    activity_src = next(
+        parent / "activity_22577902433.tcx"
+        for parent in Path(__file__).resolve().parents
+        if (parent / "activity_22577902433.tcx").exists()
+    )
+    activity_path = tmp_path / "activity.tcx"
+    shutil.copy(activity_src, activity_path)
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file=activity_path.name,
+            hud=HudConfig(widgets=[]),
+        ),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "benchmark-render",
+            "--config-path",
+            str(config_path),
+            "--num-frames",
+            "10",
+            "--profile",
+            "--path",
+            "prepared",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "function calls" in result.stdout
+    assert "Ordered by: cumulative time" in result.stdout
+
+
 def test_benchmark_render_rejects_single_sample_activity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from race_overlay.hud_schema import HudConfig, HudWidgetConfig
 

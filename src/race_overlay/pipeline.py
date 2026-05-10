@@ -27,6 +27,7 @@ from race_overlay.ffmpeg import (
 )
 from race_overlay.editor_render import RenderJobCanceledError, RenderPreviewUpdate, RenderProgressUpdate
 from race_overlay.hud import (
+    RouteProjectionCursor,
     prime_route_map_caches,
     render_hud_frame as _render_hud_frame,
     render_prepared_hud_frame,
@@ -54,6 +55,23 @@ class RenderContext:
     sample_cursor: SampleCursor
     total_distance_m: float | None
     route_map_cache_keys: dict[str, str]
+    route_projection_cursors: dict[str, RouteProjectionCursor]
+
+
+@dataclass(slots=True, frozen=False)
+class PreviewSourceFrameCache:
+    source_path: Path | None = None
+    bucket: int | None = None
+    image: Image.Image | None = None
+
+    def get(self, source_path: Path, *, bucket: int, timestamp_seconds: float) -> Image.Image:
+        if self.source_path == source_path and self.bucket == bucket and self.image is not None:
+            return self.image.copy()
+        image = extract_video_frame(source_path, timestamp_seconds=timestamp_seconds)
+        self.source_path = source_path
+        self.bucket = bucket
+        self.image = image.copy()
+        return image
 
 
 def create_render_context(
@@ -88,6 +106,11 @@ def create_render_context(
         frame_width=frame_width,
         frame_height=frame_height,
     )
+    route_projection_cursors = {
+        widget.id: RouteProjectionCursor()
+        for widget in visible_widgets
+        if widget.type == "route_map"
+    }
     
     return RenderContext(
         hud_config=validated_hud_config,
@@ -96,6 +119,7 @@ def create_render_context(
         sample_cursor=sample_cursor,
         total_distance_m=total_distance_m,
         route_map_cache_keys=route_map_cache_keys,
+        route_projection_cursors=route_projection_cursors,
     )
 
 
@@ -123,6 +147,8 @@ def render_hud_frame(
     lap_states=None,
     visible_widgets: list[HudWidgetConfig] | None = None,
     route_map_cache_keys: dict[str, str] | None = None,
+    route_projection_cursors: dict[str, RouteProjectionCursor] | None = None,
+    frame_index: int | None = None,
 ):
     if visible_widgets is None:
         return _render_hud_frame(
@@ -146,6 +172,8 @@ def render_hud_frame(
         total_distance_m=total_distance_m,
         lap_states=lap_states,
         route_map_cache_keys=route_map_cache_keys,
+        route_projection_cursors=route_projection_cursors,
+        frame_index=frame_index,
     )
 
 
@@ -232,6 +260,8 @@ def _render_overlay_frame(
         lap_states=lap_states,
         visible_widgets=context.visible_widgets,
         route_map_cache_keys=context.route_map_cache_keys,
+        route_projection_cursors=context.route_projection_cursors,
+        frame_index=index,
     )
 
 
@@ -281,6 +311,7 @@ def _maybe_publish_preview(
     preview_update: PreviewUpdateReporter | None,
     progress: ProgressReporter | None,
     last_preview_bucket: int | None,
+    preview_source_cache: PreviewSourceFrameCache | None = None,
 ) -> int | None:
     if preview_update is None:
         return last_preview_bucket
@@ -291,7 +322,14 @@ def _maybe_publish_preview(
         return last_preview_bucket
     frame_time_seconds = _frame_time_seconds(index=index, fps=clip.fps)
     try:
-        source_frame = extract_video_frame(clip.path, timestamp_seconds=frame_time_seconds)
+        if preview_source_cache is None:
+            source_frame = extract_video_frame(clip.path, timestamp_seconds=frame_time_seconds)
+        else:
+            source_frame = preview_source_cache.get(
+                clip.path,
+                bucket=current_bucket,
+                timestamp_seconds=frame_time_seconds,
+            )
         preview_image = _compose_preview_frame(source_frame=source_frame, overlay_frame=overlay_frame)
         preview_bytes = _encode_preview_png(preview_image)
     except Exception as exc:
@@ -313,9 +351,10 @@ def _maybe_publish_preview(
 
 def _emit_encoding_plan(progress: ProgressReporter | None, clip, plan) -> None:
     audio_description = " ".join(plan.audio_args) if plan.audio_args else "none"
+    preset_description = plan.video_preset or "none"
     _emit(
         progress,
-        f"Encoding plan: {clip.path.name} video={plan.video_codec} pix_fmt={plan.pixel_format} audio={audio_description}",
+        f"Encoding plan: {clip.path.name} video={plan.video_codec} pix_fmt={plan.pixel_format} preset={preset_description} audio={audio_description}",
     )
     for warning in plan.warnings:
         _emit(progress, f"Encoding fallback for {clip.path.name}: {warning}")
@@ -409,6 +448,7 @@ def _render_clip_streaming(
     try:
         frame_total = max(_frame_count(clip), 1)
         last_preview_bucket: int | None = None
+        preview_source_cache = PreviewSourceFrameCache()
         empty_frame_bytes = _create_empty_frame_bytes(clip.width, clip.height)
         for index in range(frame_total):
             if cancel_requested is not None and cancel_requested():
@@ -437,6 +477,7 @@ def _render_clip_streaming(
                 preview_update=preview_update,
                 progress=progress,
                 last_preview_bucket=last_preview_bucket,
+                preview_source_cache=preview_source_cache,
             )
             try:
                 frame_bytes = empty_frame_bytes if image is None else image.tobytes()
@@ -482,6 +523,7 @@ def _render_clip_via_cache(
     _emit(progress, f"Generating frame cache at {frame_dir}")
     frame_total = max(_frame_count(clip), 1)
     last_preview_bucket: int | None = None
+    preview_source_cache = PreviewSourceFrameCache()
     empty_frame = Image.new("RGBA", (clip.width, clip.height), (0, 0, 0, 0))
     for index in range(frame_total):
         if cancel_requested is not None and cancel_requested():
@@ -510,6 +552,7 @@ def _render_clip_via_cache(
             preview_update=preview_update,
             progress=progress,
             last_preview_bucket=last_preview_bucket,
+            preview_source_cache=preview_source_cache,
         )
         frame_to_save = empty_frame if image is None else image
         frame_to_save.save(frame_dir / f"{index:06d}.png")
@@ -572,7 +615,7 @@ def run_pipeline(
             continue
 
         output_path = output_dir / clip.path.name
-        plan = resolve_output_encoding_plan(clip)
+        plan = resolve_output_encoding_plan(clip, video_preset=config.encoding.video_preset)
         _emit_encoding_plan(progress, clip, plan)
 
         # Create render context once per clip to avoid repeated per-frame work
