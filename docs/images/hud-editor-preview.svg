@@ -1,0 +1,24 @@
+<svg width="1400" height="800" viewBox="0 0 1400 800" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="800" fill="#121824"/>
+  <rect width="1400" height="56" fill="#1e2636"/>
+  <text x="20" y="34" fill="#d6def2" font-family="Arial, sans-serif" font-size="22">Race Overlay • HUD Editor</text>
+  <rect x="0" y="56" width="260" height="744" fill="#18202f"/>
+  <text x="20" y="88" fill="#d6def2" font-family="Arial" font-size="20">Layers</text>
+  <rect x="16" y="110" width="228" height="34" rx="6" fill="#2b3750"/><text x="28" y="132" fill="#edf2ff" font-family="Arial" font-size="16">Speed Gauge</text>
+  <rect x="16" y="152" width="228" height="34" rx="6" fill="#2b3750"/><text x="28" y="174" fill="#edf2ff" font-family="Arial" font-size="16">Lap Waterfall</text>
+  <rect x="16" y="194" width="228" height="34" rx="6" fill="#2b3750"/><text x="28" y="216" fill="#edf2ff" font-family="Arial" font-size="16">Elapsed Time</text>
+  <rect x="1080" y="56" width="320" height="744" fill="#18202f"/>
+  <text x="1100" y="88" fill="#d6def2" font-family="Arial" font-size="20">Inspector</text>
+  <text x="1100" y="132" fill="#edf2ff" font-family="Arial" font-size="16">Position: x=72 y=68</text>
+  <text x="1100" y="166" fill="#edf2ff" font-family="Arial" font-size="16">Size: w=420 h=120</text>
+  <text x="1100" y="200" fill="#edf2ff" font-family="Arial" font-size="16">Font: Barlow SemiCondensed</text>
+  <rect x="280" y="90" width="780" height="670" fill="#0d1320"/>
+  <rect x="320" y="130" width="700" height="590" fill="none" stroke="#516488" stroke-width="2"/>
+  <rect x="360" y="160" width="400" height="100" rx="12" fill="#0b5fdc"/>
+  <text x="390" y="220" fill="white" font-family="Arial" font-size="34" font-weight="bold">SPEED 5:12 /km</text>
+  <rect x="360" y="280" width="300" height="80" rx="12" fill="#2a385c"/>
+  <text x="390" y="330" fill="#f6f8ff" font-family="Arial" font-size="28">HEART RATE 168 bpm</text>
+  <rect x="780" y="160" width="200" height="200" rx="12" fill="#2a385c"/>
+  <text x="820" y="220" fill="#f6f8ff" font-family="Arial" font-size="28">LAP</text>
+  <text x="835" y="300" fill="#f6f8ff" font-family="Arial" font-size="68" font-weight="bold">03</text>
+</svg>

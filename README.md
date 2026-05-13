@@ -1,5 +1,21 @@
 # Race Overlay
 
+Race Overlay is a Python toolchain for turning your activity telemetry into polished running videos with an editable, broadcast-style HUD. It can read activity files, align data with footage, preview overlays in a browser editor, and render final videos with FFmpeg.
+
+## What you can do
+
+- Import activity data from `.tcx` and `.fit` files.
+- Interactively position and style HUD widgets in a browser-based editor.
+- Use presets (including the default `broadcast-runner`) or customize every block.
+- Apply per-video timing offsets to sync telemetry with each source clip.
+- Render production-ready output with burned-in overlays.
+
+## HUD editor preview
+
+![HUD editor preview](docs/images/hud-editor-preview.svg)
+
+The editor provides a live canvas, layer controls, and an inspector so you can quickly build layouts that match your video style.
+
 ## Quick start
 
 ```bash
@@ -38,8 +54,9 @@ overrides:
     outside_activity: skip
 ```
 
-## Render Benchmark
-```
+## Render benchmark
+
+```bash
 uv run race-overlay benchmark-render --config-path overlay.yaml --num-frames 50 --width 1920 --height 1080
 ```
 
