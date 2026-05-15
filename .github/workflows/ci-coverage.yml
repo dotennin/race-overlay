@@ -27,7 +27,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --group dev
 
       - name: Run tests
         run: uv run pytest -q
@@ -49,7 +49,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --group dev
 
       - name: Generate coverage report
         run: uv run pytest --cov=src/race_overlay --cov-report=term-missing --cov-report=xml
@@ -73,24 +73,27 @@ jobs:
           python -m pip install "setuptools<81" coverage-badge
           coverage-badge -o coverage.svg
 
-      - name: Checkout docs branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/checkout@v4
-        with:
-          ref: docs
-          path: docs-branch
-
       - name: Update coverage badge on docs branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          cp coverage.svg docs-branch/coverage.svg
+          mkdir -p docs-branch
           cd docs-branch
-          if git diff --quiet -- coverage.svg; then
+          git init
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git fetch origin docs || true
+          if git show-ref --verify --quiet refs/remotes/origin/docs; then
+            git checkout -b docs refs/remotes/origin/docs
+          else
+            git checkout --orphan docs
+            git rm -rf . || true
+          fi
+          cp ../coverage.svg coverage.svg
+          git add coverage.svg
+          if git diff --cached --quiet -- coverage.svg; then
             echo "No coverage badge changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add coverage.svg
           git commit -m "chore: update coverage badge"
           git push origin docs
