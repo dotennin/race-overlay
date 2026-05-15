@@ -134,21 +134,16 @@ def test_init_writes_default_overlay_without_removed_theme_colors(tmp_path: Path
     assert route_map["style"]["background_rgba"] == [6, 10, 18, 148]
 
 
-def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> None:
+def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Benchmark command should output baseline and variant comparisons."""
     from race_overlay.hud_schema import HudConfig, HudWidgetConfig
-    import shutil
     
     config_path = tmp_path / "overlay.yaml"
-    activity_src = next(
-        parent / "activity_22577902433.tcx"
-        for parent in Path(__file__).resolve().parents
-        if (parent / "activity_22577902433.tcx").exists()
-    )
     activity_path = tmp_path / "activity.tcx"
-    
-    # Copy existing activity file
-    shutil.copy(activity_src, activity_path)
+    activity_path.write_text(
+        "<?xml version='1.0' encoding='UTF-8'?><TrainingCenterDatabase/>",
+        encoding="utf-8",
+    )
     
     save_config(
         config_path,
@@ -183,6 +178,36 @@ def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> No
         ),
     )
     
+    monkeypatch.setattr(
+        "race_overlay.cli.load_activity",
+        lambda path: ActivityTrack(
+            sport="running",
+            samples=[
+                ActivitySample(
+                    timestamp=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                    latitude=35.0,
+                    longitude=139.0,
+                    altitude_m=5.0,
+                    distance_m=0.0,
+                    speed_mps=0.0,
+                    heart_rate_bpm=120,
+                    cadence_spm=160,
+                ),
+                ActivitySample(
+                    timestamp=datetime(2026, 1, 1, 0, 0, 10, tzinfo=timezone.utc),
+                    latitude=35.0001,
+                    longitude=139.0001,
+                    altitude_m=5.0,
+                    distance_m=50.0,
+                    speed_mps=5.0,
+                    heart_rate_bpm=125,
+                    cadence_spm=164,
+                ),
+            ],
+            laps=[],
+        ),
+    )
+
     result = CliRunner().invoke(
         app,
         ["benchmark-render", "--config-path", str(config_path), "--num-frames", "10"],

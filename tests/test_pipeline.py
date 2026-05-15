@@ -994,6 +994,11 @@ def test_run_pipeline_cancel_before_render_does_not_emit_preview_updates(tmp_pat
     monkeypatch.setattr("race_overlay.pipeline.probe_video", lambda path: fake_clip(path, duration_seconds=2.0, fps=30.0))
     monkeypatch.setattr("race_overlay.pipeline.align_clip", lambda *args, **kwargs: fake_alignment())
     monkeypatch.setattr(
+        "race_overlay.pipeline.open_stream_compose_process",
+        lambda **kwargs: FakeStreamingProcess([], returncode=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
         "race_overlay.pipeline.extract_video_frame",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("canceled renders must not extract preview frames")),
         raising=False,
