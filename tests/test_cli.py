@@ -12,6 +12,45 @@ from race_overlay.models import ActivitySample, ActivityTrack
 from race_overlay.hud_presets import broadcast_runner_preset
 
 
+def _write_activity_tcx(path: Path) -> None:
+    path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+  <Activities>
+    <Activity Sport="Running">
+      <Id>2026-01-01T00:00:00Z</Id>
+      <Lap StartTime="2026-01-01T00:00:00Z">
+        <Track>
+          <Trackpoint>
+            <Time>2026-01-01T00:00:00Z</Time>
+            <Position>
+              <LatitudeDegrees>35.0</LatitudeDegrees>
+              <LongitudeDegrees>139.0</LongitudeDegrees>
+            </Position>
+            <DistanceMeters>0.0</DistanceMeters>
+            <HeartRateBpm><Value>120</Value></HeartRateBpm>
+            <Cadence>80</Cadence>
+          </Trackpoint>
+          <Trackpoint>
+            <Time>2026-01-01T00:00:05Z</Time>
+            <Position>
+              <LatitudeDegrees>35.0001</LatitudeDegrees>
+              <LongitudeDegrees>139.0001</LongitudeDegrees>
+            </Position>
+            <DistanceMeters>20.0</DistanceMeters>
+            <HeartRateBpm><Value>125</Value></HeartRateBpm>
+            <Cadence>82</Cadence>
+          </Trackpoint>
+        </Track>
+      </Lap>
+    </Activity>
+  </Activities>
+</TrainingCenterDatabase>
+""",
+        encoding="utf-8",
+    )
+
+
 def test_cli_shows_top_level_help() -> None:
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -137,18 +176,10 @@ def test_init_writes_default_overlay_without_removed_theme_colors(tmp_path: Path
 def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> None:
     """Benchmark command should output baseline and variant comparisons."""
     from race_overlay.hud_schema import HudConfig, HudWidgetConfig
-    import shutil
     
     config_path = tmp_path / "overlay.yaml"
-    activity_src = next(
-        parent / "activity_22577902433.tcx"
-        for parent in Path(__file__).resolve().parents
-        if (parent / "activity_22577902433.tcx").exists()
-    )
     activity_path = tmp_path / "activity.tcx"
-    
-    # Copy existing activity file
-    shutil.copy(activity_src, activity_path)
+    _write_activity_tcx(activity_path)
     
     save_config(
         config_path,
@@ -199,16 +230,10 @@ def test_benchmark_render_outputs_multi_variant_comparison(tmp_path: Path) -> No
 
 def test_benchmark_render_profile_outputs_cumulative_stats(tmp_path: Path) -> None:
     from race_overlay.hud_schema import HudConfig
-    import shutil
 
     config_path = tmp_path / "overlay.yaml"
-    activity_src = next(
-        parent / "activity_22577902433.tcx"
-        for parent in Path(__file__).resolve().parents
-        if (parent / "activity_22577902433.tcx").exists()
-    )
     activity_path = tmp_path / "activity.tcx"
-    shutil.copy(activity_src, activity_path)
+    _write_activity_tcx(activity_path)
     save_config(
         config_path,
         ProjectConfig(
