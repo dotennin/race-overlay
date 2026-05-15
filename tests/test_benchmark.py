@@ -58,8 +58,8 @@ def test_run_benchmark_measures_frame_render_time() -> None:
     assert result.mean_ms > 0
     assert result.p50_ms > 0
     assert result.p95_ms > 0
-    assert result.mean_ms <= result.p95_ms
     assert result.p50_ms <= result.p95_ms
+    assert result.p95_ms <= max(result.frame_times_ms)
     assert len(result.frame_times_ms) == 50
 
 
