@@ -1,5 +1,8 @@
 # Race Overlay
 
+[![CI Coverage](https://github.com/dotennin/race-overlay/actions/workflows/ci-coverage.yml/badge.svg)](https://github.com/dotennin/race-overlay/actions/workflows/ci-coverage.yml)
+[![Coverage](https://raw.githubusercontent.com/dotennin/race-overlay/docs/coverage.svg)](https://github.com/dotennin/race-overlay/actions/workflows/ci-coverage.yml)
+
 Race Overlay is a Python toolchain for turning your activity telemetry into polished running videos with an editable, broadcast-style HUD. It can read activity files, align data with footage, preview overlays in a browser editor, and render final videos with FFmpeg.
 
 ## What you can do

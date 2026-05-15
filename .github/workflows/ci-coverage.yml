@@ -76,21 +76,33 @@ jobs:
       - name: Checkout docs branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           ref: docs
           path: docs-branch
+
+      - name: Ensure docs branch exists
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if [ ! -d docs-branch/.git ]; then
+            mkdir -p docs-branch
+            cd docs-branch
+            git init
+            git checkout -b docs
+            git remote add origin "https://github.com/${{ github.repository }}.git"
+          fi
 
       - name: Update coverage badge on docs branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           cp coverage.svg docs-branch/coverage.svg
           cd docs-branch
-          if git diff --quiet -- coverage.svg; then
-            echo "No coverage badge changes to commit."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add coverage.svg
+          if git diff --cached --quiet -- coverage.svg; then
+            echo "No coverage badge changes to commit."
+            exit 0
+          fi
           git commit -m "chore: update coverage badge"
           git push origin docs
