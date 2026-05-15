@@ -1,0 +1,106 @@
+name: CI Tests & Coverage
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tests:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Run unit tests
+        run: uv run pytest
+
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+          uv add --dev pytest-cov
+      - name: Generate coverage reports
+        run: |
+          uv run pytest --cov=src/race_overlay --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=json:coverage.json
+      - name: Build coverage markdown
+        id: covmd
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('coverage.json').read_text())
+          total = data['totals']['percent_covered']
+          md = f"## Test Coverage\n\n**Total coverage:** `{total:.2f}%`\n"
+          Path('coverage-summary.md').write_text(md)
+          print(f"coverage={total:.2f}")
+          with open(Path.cwd() / 'cov_output.txt', 'w') as f:
+              f.write(f"{total:.2f}")
+          PY
+          echo "coverage=$(cat cov_output.txt)" >> "$GITHUB_OUTPUT"
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage.json
+            coverage-summary.md
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: coverage-summary.md
+      - name: Publish badge data to docs branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          COVERAGE: ${{ steps.covmd.outputs.coverage }}
+        run: |
+          mkdir -p /tmp/coverage-docs
+          cat > /tmp/coverage-docs/coverage-badge.json <<EOF
+          {
+            "schemaVersion": 1,
+            "label": "coverage",
+            "message": "${COVERAGE}%",
+            "color": "$(python - <<'PY'
+          import os
+          c = float(os.environ['COVERAGE'])
+          print('brightgreen' if c >= 90 else 'green' if c >= 80 else 'yellow' if c >= 70 else 'orange' if c >= 60 else 'red')
+          PY
+          )"
+          }
+          EOF
+
+          cd /tmp
+          git init coverage-docs-repo
+          cd coverage-docs-repo
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin docs || true
+          git checkout -B docs
+          cp /tmp/coverage-docs/coverage-badge.json ./coverage-badge.json
+          git add coverage-badge.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update coverage badge data [skip ci]" || exit 0
+          git push origin docs --force
