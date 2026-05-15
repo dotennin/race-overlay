@@ -1,0 +1,77 @@
+name: CI Coverage
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+  coverage:
+    name: Coverage report
+    runs-on: ubuntu-latest
+    needs: tests
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Generate coverage
+        run: uv run pytest --cov=src/race_overlay --cov-report=term --cov-report=xml
+
+      - name: Upload coverage XML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+      - name: Coverage badge and PR comment
+        uses: tj-actions/coverage-badge-py@v2
+        with:
+          output: coverage.svg
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update coverage report"
+          branch: docs
+          target-branch: docs
+          update-coverage: true
+          comment-on-pr: true
+          summary: true
+          skip-if-no-changes: true
