@@ -17,13 +17,18 @@ from race_overlay.config import (
     _locked_config_save,
     load_config,
     resolve_path_from_config,
+    resolve_video_override,
     resolve_video_globs_from_config,
     save_config,
+    video_override_key,
 )
 from race_overlay.hud import render_hud_frame
 from race_overlay.hud_schema import HUD_FONT_FAMILY_OPTIONS, HUD_FONT_WEIGHT_OPTIONS, HudConfig, HudWidgetConfig, serialize_hud_config
 from race_overlay.models import ActivityLap, HudSample
+from race_overlay.rotation import RotationSpec, validate_rotation_degrees
 from race_overlay.sampling import LapWaterfallState, lap_waterfall_state_for_widget
+from race_overlay.video_library import project_video_map, project_video_paths, video_id
+from race_overlay.video_probe import probe_video
 
 _EDITOR_SAVE_LOCK = Lock()
 _EDITOR_REVISION_FIELD = "revision"
@@ -142,6 +147,10 @@ _WIDGET_STYLE_SCHEMA_BY_TYPE = {
 
 class StaleHudSaveError(ValueError):
     """Raised when an editor save is based on outdated HUD state."""
+
+
+class StaleProjectSaveError(ValueError):
+    """Raised when a project mutation is based on outdated project state."""
 
 
 def _sample_hud_value() -> HudSample:
@@ -554,6 +563,52 @@ def build_editor_state(
     }
 
 
+def _project_revision(config_path: Path) -> str:
+    return hashlib.sha256(config_path.read_bytes()).hexdigest()
+
+
+def _build_video_states(
+    config: ProjectConfig,
+    config_path: Path,
+) -> list[dict[str, object]]:
+    paths = project_video_paths(config_path, config.video_globs)
+    states: list[dict[str, object]] = []
+    for path in paths:
+        override = resolve_video_override(config, config_path, path, paths)
+        item: dict[str, object] = {
+            "id": video_id(path),
+            "name": path.name,
+            "display_path": video_override_key(config_path, path),
+            "media_url": f"/api/videos/{video_id(path)}",
+            "user_rotation_degrees": override.rotation_degrees,
+            "source_rotation_degrees": 0,
+            "effective_rotation_degrees": override.rotation_degrees,
+            "encoded_width": None,
+            "encoded_height": None,
+            "display_width": None,
+            "display_height": None,
+            "error": None,
+        }
+        try:
+            clip = probe_video(path)
+            rotation = RotationSpec.from_clip(clip, override.rotation_degrees)
+        except Exception as exc:
+            item["error"] = f"Preview metadata unavailable: {exc}"
+        else:
+            item.update(
+                {
+                    "source_rotation_degrees": rotation.source_degrees,
+                    "effective_rotation_degrees": rotation.effective_degrees,
+                    "encoded_width": rotation.encoded_width,
+                    "encoded_height": rotation.encoded_height,
+                    "display_width": rotation.display_width,
+                    "display_height": rotation.display_height,
+                }
+            )
+        states.append(item)
+    return states
+
+
 def _build_project_state(config: ProjectConfig, config_path: Path | None) -> dict[str, object]:
     choices = {
         "activity_files": [],
@@ -561,8 +616,12 @@ def _build_project_state(config: ProjectConfig, config_path: Path | None) -> dic
         "output_dirs": [],
     }
     config_display = {"name": "", "path": ""}
+    revision = ""
+    videos: list[dict[str, object]] = []
     if config_path is not None:
         config_display = {"name": config_path.name, "path": str(config_path)}
+        revision = _project_revision(config_path)
+        videos = _build_video_states(config, config_path)
         config_dir = config_path.resolve().parent
         choices = {
             "activity_files": _discover_relative_paths(config_dir, _ACTIVITY_FILE_SUFFIXES, files_only=True),
@@ -574,6 +633,8 @@ def _build_project_state(config: ProjectConfig, config_path: Path | None) -> dic
         "activity_file": config.activity_file,
         "video_globs": list(config.video_globs),
         "output_dir": config.output_dir,
+        "revision": revision,
+        "videos": videos,
         "choices": choices,
     }
 
@@ -764,6 +825,66 @@ def save_editor_project_payload(config_path: Path, payload: dict[str, object]) -
     with _EDITOR_SAVE_LOCK:
         with _locked_config_save(config_path):
             save_config(config_path, latest_config)
+
+
+def save_video_rotation_payload(
+    config_path: Path,
+    video_identifier: str,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise TypeError("rotation payload must be a JSON object")
+    unexpected = set(payload) - {"rotation_degrees", "revision"}
+    if unexpected:
+        raise ValueError(
+            f"rotation payload contains unsupported fields: {', '.join(sorted(unexpected))}"
+        )
+    rotation_value = payload.get("rotation_degrees")
+    if isinstance(rotation_value, bool) or not isinstance(rotation_value, int):
+        raise ValueError("rotation_degrees must be 0, 90, 180, or 270")
+    rotation_degrees = validate_rotation_degrees(rotation_value)
+    expected_revision = payload.get("revision")
+    if not isinstance(expected_revision, str) or not expected_revision:
+        raise ValueError("revision must be a non-empty string")
+
+    with _EDITOR_SAVE_LOCK:
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            if _project_revision(config_path) != expected_revision:
+                raise StaleProjectSaveError(
+                    "stale project save rejected; reload editor state and try again"
+                )
+            videos = project_video_map(config_path, latest_config.video_globs)
+            video_path = videos.get(video_identifier)
+            if video_path is None:
+                raise FileNotFoundError("video not found")
+            all_paths = list(videos.values())
+            existing = resolve_video_override(
+                latest_config,
+                config_path,
+                video_path,
+                all_paths,
+            )
+            key = video_override_key(config_path, video_path)
+            values: dict[str, float | int | str] = {}
+            legacy_key = video_path.name
+            if key in latest_config.overrides:
+                values.update(latest_config.overrides[key])
+            elif legacy_key in latest_config.overrides:
+                values.update(latest_config.overrides.pop(legacy_key))
+            else:
+                if existing.offset_seconds:
+                    values["offset_seconds"] = existing.offset_seconds
+                if existing.outside_activity is not None:
+                    values["outside_activity"] = existing.outside_activity
+            values["rotation_degrees"] = rotation_degrees
+            latest_config.overrides[key] = values
+            save_config(config_path, latest_config)
+
+    return {
+        "rotation_degrees": rotation_degrees,
+        "revision": _project_revision(config_path),
+    }
 
 
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:

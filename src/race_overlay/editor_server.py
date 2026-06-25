@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import subprocess
 from json import JSONDecodeError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +10,7 @@ from urllib.parse import urlparse
 
 from race_overlay.editor_preview import (
     StaleHudSaveError,
+    StaleProjectSaveError,
     _validate_preview_dimensions,
     build_editor_state,
     editor_render_snapshot,
@@ -17,12 +19,14 @@ from race_overlay.editor_preview import (
     render_preview_png,
     save_editor_preset_payload,
     save_editor_project_payload,
+    save_video_rotation_payload,
     save_editor_payload,
     select_editor_preset,
 )
 from race_overlay.editor_render import EditorRenderJobManager, RenderJobAlreadyRunningError
 from race_overlay.editor_render import RenderPreviewToggleInactiveError
 from race_overlay.pipeline import run_pipeline
+from race_overlay.video_library import project_video_map
 
 _ACTIVE_SERVERS: list[ThreadingHTTPServer] = []
 _ACTIVE_THREADS: list[Thread] = []
@@ -87,6 +91,34 @@ def pick_project_config_value(field: str) -> dict[str, object]:
     return {"field": field, "value": value}
 
 
+def _parse_byte_range(value: str, size: int) -> tuple[int, int]:
+    if size <= 0:
+        raise ValueError("invalid byte range")
+    if not value.startswith("bytes=") or "," in value:
+        raise ValueError("unsupported byte range")
+    spec = value[6:]
+    if "-" not in spec:
+        raise ValueError("invalid byte range")
+    start_text, end_text = spec.split("-", 1)
+    if not start_text:
+        try:
+            suffix_length = int(end_text)
+        except ValueError as exc:
+            raise ValueError("invalid byte range") from exc
+        if suffix_length <= 0:
+            raise ValueError("invalid byte range")
+        start = max(size - suffix_length, 0)
+        return start, size - 1
+    try:
+        start = int(start_text)
+        end = int(end_text) if end_text else size - 1
+    except ValueError as exc:
+        raise ValueError("invalid byte range") from exc
+    if start < 0 or start >= size or end < start:
+        raise ValueError("invalid byte range")
+    return start, min(end, size - 1)
+
+
 def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPRequestHandler]:
     class EditorHandler(BaseHTTPRequestHandler):
         def _write_json(self, status: int, payload: dict[str, object]) -> None:
@@ -97,8 +129,68 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
             self.end_headers()
             self.wfile.write(body)
 
+        def _serve_project_video(self, request_path: str, *, head_only: bool) -> bool:
+            prefix = "/api/videos/"
+            if not request_path.startswith(prefix):
+                return False
+            video_identifier = request_path[len(prefix):]
+            if not video_identifier or "/" in video_identifier:
+                self.send_response(404)
+                self.end_headers()
+                return True
+            try:
+                config = load_editor_config(config_path)
+                video_path = project_video_map(
+                    config_path,
+                    config.video_globs,
+                ).get(video_identifier)
+            except (OSError, ValueError):
+                video_path = None
+            if video_path is None:
+                self.send_response(404)
+                self.end_headers()
+                return True
+            size = video_path.stat().st_size
+            range_header = self.headers.get("Range")
+            status = 200
+            start = 0
+            end = size - 1
+            if range_header:
+                try:
+                    start, end = _parse_byte_range(range_header, size)
+                except ValueError:
+                    self.send_response(416)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return True
+                status = 206
+            length = size if status == 200 else end - start + 1
+            content_type = mimetypes.guess_type(video_path.name)[0] or "application/octet-stream"
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(length))
+            if status == 206:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.end_headers()
+            if not head_only and length:
+                with video_path.open("rb") as source:
+                    source.seek(start)
+                    remaining = length
+                    while remaining:
+                        chunk = source.read(min(64 * 1024, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+            return True
+
         def do_GET(self) -> None:
             request_path = urlparse(self.path).path
+            if self._serve_project_video(request_path, head_only=False):
+                return
             if request_path == "/":
                 body = files("race_overlay.editor_assets").joinpath("index.html").read_text(encoding="utf-8").encode("utf-8")
                 self.send_response(200)
@@ -162,6 +254,71 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 return
             self.send_response(404)
             self.end_headers()
+
+        def do_HEAD(self) -> None:
+            request_path = urlparse(self.path).path
+            if self._serve_project_video(request_path, head_only=True):
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_PUT(self) -> None:
+            request_path = urlparse(self.path).path
+            prefix = "/api/videos/"
+            suffix = "/rotation"
+            if not request_path.startswith(prefix) or not request_path.endswith(suffix):
+                self.send_response(404)
+                self.end_headers()
+                return
+            video_identifier = request_path[len(prefix):-len(suffix)]
+            if not video_identifier or "/" in video_identifier:
+                self.send_response(404)
+                self.end_headers()
+                return
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length < 0:
+                    raise ValueError
+            except ValueError:
+                self._write_json(400, {"error": "invalid Content-Length header"})
+                return
+            try:
+                payload = json.loads(
+                    self.rfile.read(content_length) or b"{}",
+                    parse_constant=_reject_invalid_json_constant,
+                )
+            except (JSONDecodeError, ValueError):
+                self._write_json(400, {"error": "invalid JSON payload"})
+                return
+            try:
+                result = save_video_rotation_payload(
+                    config_path,
+                    video_identifier,
+                    payload,
+                )
+            except StaleProjectSaveError as exc:
+                project = build_editor_state(
+                    load_editor_config(config_path),
+                    width,
+                    height,
+                    config_path=config_path,
+                )["project"]
+                self._write_json(
+                    409,
+                    {"error": str(exc), "project": project},
+                )
+                return
+            except FileNotFoundError:
+                self.send_response(404)
+                self.end_headers()
+                return
+            except (TypeError, ValueError) as exc:
+                self._write_json(400, {"error": str(exc)})
+                return
+            except OSError as exc:
+                self._write_json(500, {"error": str(exc)})
+                return
+            self._write_json(200, result)
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
@@ -345,7 +502,11 @@ def _reject_invalid_json_constant(value: str) -> object:
 def launch_editor(config_path: Path, width: int, height: int) -> str:
     _validate_preview_dimensions(width, height)
     load_editor_config(config_path)
-    server = ThreadingHTTPServer(("127.0.0.1", 10086), _build_handler(config_path, width, height))
+    handler = _build_handler(config_path, width, height)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", 10086), handler)
+    except OSError:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever)
     thread.start()
     _ACTIVE_SERVERS.append(server)

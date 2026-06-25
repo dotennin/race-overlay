@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from race_overlay.models import VideoClip
+from race_overlay.rotation import RotationSpec, validate_rotation_degrees
 
 SUPPORTED_VIDEO_CODEC_MAP = {
     "h264": "libx264",
@@ -230,16 +231,29 @@ def build_overlay_video(frame_dir: Path, fps: float, output_path: Path) -> None:
     )
 
 
-def extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image.Image:
-    result = subprocess.run(
+def _rotation_filter(degrees: int) -> str:
+    return {
+        0: "null",
+        90: "transpose=clock",
+        180: "hflip,vflip",
+        270: "transpose=cclock",
+    }[validate_rotation_degrees(degrees)]
+
+
+def extract_video_frame(
+    source_path: Path,
+    *,
+    timestamp_seconds: float,
+    rotation_degrees: int | None = None,
+) -> Image.Image:
+    command = ["ffmpeg", "-loglevel", "error"]
+    if rotation_degrees is not None:
+        command.append("-noautorotate")
+    command.extend(["-ss", str(timestamp_seconds), "-i", str(source_path)])
+    if rotation_degrees is not None:
+        command.extend(["-vf", _rotation_filter(rotation_degrees)])
+    command.extend(
         [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-ss",
-            str(timestamp_seconds),
-            "-i",
-            str(source_path),
             "-frames:v",
             "1",
             "-f",
@@ -247,7 +261,10 @@ def extract_video_frame(source_path: Path, *, timestamp_seconds: float) -> Image
             "-vcodec",
             "png",
             "-",
-        ],
+        ]
+    )
+    result = subprocess.run(
+        command,
         check=True,
         capture_output=True,
     )
@@ -309,22 +326,31 @@ def build_cache_compose_command(
     output_path: Path,
     plan: OutputEncodingPlan,
     attached_pic_stream_index: int | None,
+    rotation: RotationSpec | None = None,
 ) -> list[str]:
-    command = [
-        "ffmpeg",
-        "-y",
+    command = ["ffmpeg", "-y"]
+    if rotation is not None:
+        command.append("-noautorotate")
+    command.extend([
         "-i",
         str(source_path),
         "-i",
         str(overlay_path),
         "-filter_complex",
-        "[0:v][1:v]overlay=0:0[video]",
+        (
+            f"[0:v]{_rotation_filter(rotation.effective_degrees)}[oriented];"
+            "[oriented][1:v]overlay=0:0[video]"
+            if rotation is not None
+            else "[0:v][1:v]overlay=0:0[video]"
+        ),
         "-map",
         "[video]",
         "-map",
         AUDIO_STREAM_SELECTOR,
-    ]
+    ])
     _append_main_video_encoding_args(command, plan)
+    if rotation is not None:
+        command.extend(["-metadata:s:v:0", "rotate=0"])
     _append_audio_encoding_args(command, plan)
     _append_attached_pic_passthrough_args(command, attached_pic_stream_index=attached_pic_stream_index)
     command.append(str(output_path))
@@ -338,6 +364,7 @@ def compose_video(
     *,
     plan: OutputEncodingPlan,
     attached_pic_stream_index: int | None,
+    rotation: RotationSpec | None = None,
 ) -> None:
     subprocess.run(
         build_cache_compose_command(
@@ -346,6 +373,7 @@ def compose_video(
             output_path=output_path,
             plan=plan,
             attached_pic_stream_index=attached_pic_stream_index,
+            rotation=rotation,
         ),
         check=True,
     )
@@ -423,11 +451,17 @@ def resolve_output_encoding_plan(clip: VideoClip, *, video_preset: str = DEFAULT
 
 
 def build_stream_compose_command(
-    *, source_path: Path, clip: VideoClip, output_path: Path, plan: OutputEncodingPlan
+    *,
+    source_path: Path,
+    clip: VideoClip,
+    output_path: Path,
+    plan: OutputEncodingPlan,
+    rotation: RotationSpec | None = None,
 ) -> list[str]:
-    command = [
-        "ffmpeg",
-        "-y",
+    command = ["ffmpeg", "-y"]
+    if rotation is not None:
+        command.append("-noautorotate")
+    command.extend([
         "-i",
         str(source_path),
         "-f",
@@ -441,13 +475,20 @@ def build_stream_compose_command(
         "-i",
         "-",
         "-filter_complex",
-        "[0:v][1:v]overlay=0:0[video]",
+        (
+            f"[0:v]{_rotation_filter(rotation.effective_degrees)}[oriented];"
+            "[oriented][1:v]overlay=0:0[video]"
+            if rotation is not None
+            else "[0:v][1:v]overlay=0:0[video]"
+        ),
         "-map",
         "[video]",
         "-map",
         AUDIO_STREAM_SELECTOR,
-    ]
+    ])
     _append_main_video_encoding_args(command, plan)
+    if rotation is not None:
+        command.extend(["-metadata:s:v:0", "rotate=0"])
     _append_audio_encoding_args(command, plan)
     _append_attached_pic_passthrough_args(command, attached_pic_stream_index=clip.attached_pic_stream_index)
     command.append(str(output_path))
@@ -455,9 +496,20 @@ def build_stream_compose_command(
 
 
 def open_stream_compose_process(
-    *, source_path: Path, clip: VideoClip, output_path: Path, plan: OutputEncodingPlan
+    *,
+    source_path: Path,
+    clip: VideoClip,
+    output_path: Path,
+    plan: OutputEncodingPlan,
+    rotation: RotationSpec | None = None,
 ) -> subprocess.Popen[bytes]:
     return subprocess.Popen(
-        build_stream_compose_command(source_path=source_path, clip=clip, output_path=output_path, plan=plan),
+        build_stream_compose_command(
+            source_path=source_path,
+            clip=clip,
+            output_path=output_path,
+            plan=plan,
+            rotation=rotation,
+        ),
         stdin=subprocess.PIPE,
     )

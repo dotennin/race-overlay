@@ -3756,3 +3756,152 @@ def test_editor_shell_uses_canvas_first_layout_copy() -> None:
     assert "function renderOverlayLibrary()" in app_js
     assert "function toggleThemeDefaults(" in app_js
     assert "layer-item__actions" not in app_js
+    assert 'id="video-preview-modal"' in html
+    assert 'id="video-preview-grid"' in html
+    assert "function renderVideoPreviewGrid()" in app_js
+    assert "async function saveVideoRotation(" in app_js
+    assert "grid-template-columns: repeat(auto-fit" in css
+    assert "overflow-y: auto;" in css
+
+
+def test_editor_state_exposes_discovered_videos_and_project_revision(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clip-a.MP4").write_bytes(b"first-video")
+    (video_dir / "clip-b.mov").write_bytes(b"second-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity.tcx",
+            video_globs=["videos/*.MP4", "videos/*.mov"],
+            overrides={"videos/clip-a.MP4": {"rotation_degrees": 90}},
+        ),
+    )
+
+    state = build_editor_state(
+        load_config(config_path),
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+
+    assert state["project"]["revision"]
+    assert [video["name"] for video in state["project"]["videos"]] == [
+        "clip-a.MP4",
+        "clip-b.mov",
+    ]
+    assert state["project"]["videos"][0]["user_rotation_degrees"] == 90
+    assert state["project"]["videos"][0]["media_url"].startswith("/api/videos/")
+    assert state["project"]["videos"][0]["id"] != state["project"]["videos"][1]["id"]
+
+
+def test_api_rotation_put_is_idempotent_and_rejects_stale_revision(tmp_path: Path) -> None:
+    video = tmp_path / "videos" / "clip.MP4"
+    video.parent.mkdir()
+    video.write_bytes(b"video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity.tcx",
+            video_globs=["videos/*.MP4"],
+            overrides={"clip.MP4": {"offset_seconds": 1.25}},
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request("GET", "/api/state")
+        response = connection.getresponse()
+        state = json.loads(response.read().decode("utf-8"))
+        connection.close()
+        video_state = state["project"]["videos"][0]
+
+        payload = json.dumps(
+            {
+                "rotation_degrees": 90,
+                "revision": state["project"]["revision"],
+            }
+        )
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request(
+            "PUT",
+            f"/api/videos/{video_state['id']}/rotation",
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        put_response = connection.getresponse()
+        updated = json.loads(put_response.read().decode("utf-8"))
+        connection.close()
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request(
+            "PUT",
+            f"/api/videos/{video_state['id']}/rotation",
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        stale_response = connection.getresponse()
+        stale_body = json.loads(stale_response.read().decode("utf-8"))
+        connection.close()
+
+    assert put_response.status == 200
+    assert updated["rotation_degrees"] == 90
+    assert stale_response.status == 409
+    assert stale_body["project"]["revision"] == updated["revision"]
+    reloaded = load_config(config_path)
+    assert "clip.MP4" not in reloaded.overrides
+    assert reloaded.overrides["videos/clip.MP4"] == {
+        "offset_seconds": 1.25,
+        "rotation_degrees": 90,
+    }
+
+
+def test_api_video_supports_get_head_and_single_byte_ranges(tmp_path: Path) -> None:
+    video = tmp_path / "clip.MP4"
+    video.write_bytes(b"0123456789")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(activity_file="activity.tcx", video_globs=["clip.MP4"]),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request("GET", "/api/state")
+        state_response = connection.getresponse()
+        state = json.loads(state_response.read().decode("utf-8"))
+        connection.close()
+        media_url = state["project"]["videos"][0]["media_url"]
+
+        def request(method: str, range_header: str | None = None):
+            headers = {"Range": range_header} if range_header else {}
+            conn = HTTPConnection(parts.hostname, parts.port)
+            conn.request(method, media_url, headers=headers)
+            result = conn.getresponse()
+            body = result.read()
+            response_headers = dict(result.getheaders())
+            conn.close()
+            return result.status, response_headers, body
+
+        full = request("GET")
+        opened = request("GET", "bytes=4-")
+        suffix = request("GET", "bytes=-3")
+        head = request("HEAD")
+        multiple = request("GET", "bytes=0-1,4-5")
+
+    assert full[0] == 200
+    assert full[1]["Accept-Ranges"] == "bytes"
+    assert full[2] == b"0123456789"
+    assert opened[0] == 206
+    assert opened[1]["Content-Range"] == "bytes 4-9/10"
+    assert opened[2] == b"456789"
+    assert suffix[0] == 206
+    assert suffix[2] == b"789"
+    assert head[0] == 200
+    assert head[1]["Content-Length"] == "10"
+    assert head[2] == b""
+    assert multiple[0] == 416

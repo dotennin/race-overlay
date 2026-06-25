@@ -53,6 +53,7 @@ class VideoClip:
     has_attached_pic: bool = False
     attached_pic_stream_index: int | None = None
     codec_tag_string: str | None = None
+    source_rotation_degrees: int = 0
 
 
 @dataclass(slots=True, frozen=True)

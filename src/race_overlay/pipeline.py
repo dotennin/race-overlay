@@ -1,10 +1,11 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from glob import glob
 from io import BytesIO
 import os
 import fnmatch
+from inspect import signature
 from pathlib import Path
 import subprocess
 
@@ -14,7 +15,7 @@ from race_overlay.activity.loader import load_activity
 from race_overlay.alignment import align_clip
 from race_overlay.config import (
     load_config,
-    resolve_override,
+    resolve_video_override,
     resolve_path_from_config,
     resolve_video_globs_from_config,
 )
@@ -36,6 +37,8 @@ from race_overlay.hud import (
 from race_overlay.hud_schema import HudConfig, HudWidgetConfig
 from race_overlay.sampling import lap_waterfall_states_for_widgets, sample_at, SampleCursor
 from race_overlay.video_probe import probe_video
+from race_overlay.rotation import RotationSpec
+from race_overlay.video_library import discover_video_paths
 
 ProgressReporter = Callable[[str], None]
 ProgressUpdateReporter = Callable[[RenderProgressUpdate], None]
@@ -64,10 +67,20 @@ class PreviewSourceFrameCache:
     bucket: int | None = None
     image: Image.Image | None = None
 
-    def get(self, source_path: Path, *, bucket: int, timestamp_seconds: float) -> Image.Image:
+    def get(
+        self,
+        source_path: Path,
+        *,
+        bucket: int,
+        timestamp_seconds: float,
+        rotation_degrees: int,
+    ) -> Image.Image:
         if self.source_path == source_path and self.bucket == bucket and self.image is not None:
             return self.image.copy()
-        image = extract_video_frame(source_path, timestamp_seconds=timestamp_seconds)
+        kwargs: dict[str, object] = {"timestamp_seconds": timestamp_seconds}
+        if "rotation_degrees" in signature(extract_video_frame).parameters:
+            kwargs["rotation_degrees"] = rotation_degrees
+        image = extract_video_frame(source_path, **kwargs)
         self.source_path = source_path
         self.bucket = bucket
         self.image = image.copy()
@@ -204,7 +217,7 @@ def _emit_progress_update(
     )
 
 
-def _discover_videos(patterns: list[str]) -> list[Path]:
+def _discover_videos_legacy(patterns: list[str]) -> list[Path]:
     """Discover files matching patterns, treating filename matching as case-insensitive.
 
     glob.glob() is used to respect directory patterns, but filesystems may be case-sensitive
@@ -233,6 +246,10 @@ def _discover_videos(patterns: list[str]) -> list[Path]:
                 matches.add(candidate)
 
     return sorted(matches)
+
+
+def _discover_videos(patterns: list[str]) -> list[Path]:
+    return discover_video_paths(patterns)
 
 
 def _render_overlay_frame(
@@ -312,6 +329,7 @@ def _maybe_publish_preview(
     progress: ProgressReporter | None,
     last_preview_bucket: int | None,
     preview_source_cache: PreviewSourceFrameCache | None = None,
+    rotation: RotationSpec | None = None,
 ) -> int | None:
     if preview_update is None:
         return last_preview_bucket
@@ -323,12 +341,16 @@ def _maybe_publish_preview(
     frame_time_seconds = _frame_time_seconds(index=index, fps=clip.fps)
     try:
         if preview_source_cache is None:
-            source_frame = extract_video_frame(clip.path, timestamp_seconds=frame_time_seconds)
+            kwargs: dict[str, object] = {"timestamp_seconds": frame_time_seconds}
+            if "rotation_degrees" in signature(extract_video_frame).parameters:
+                kwargs["rotation_degrees"] = rotation.effective_degrees if rotation else 0
+            source_frame = extract_video_frame(clip.path, **kwargs)
         else:
             source_frame = preview_source_cache.get(
                 clip.path,
                 bucket=current_bucket,
                 timestamp_seconds=frame_time_seconds,
+                rotation_degrees=rotation.effective_degrees if rotation else 0,
             )
         preview_image = _compose_preview_frame(source_frame=source_frame, overlay_frame=overlay_frame)
         preview_bytes = _encode_preview_png(preview_image)
@@ -431,13 +453,20 @@ def _render_clip_streaming(
     context: RenderContext,
     output_path: Path,
     plan,
+    rotation: RotationSpec,
     progress: ProgressReporter | None = None,
     progress_update: ProgressUpdateReporter | None = None,
     preview_update: PreviewUpdateReporter | None = None,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> None:
     try:
-        process = open_stream_compose_process(source_path=clip.path, clip=clip, output_path=output_path, plan=plan)
+        process = open_stream_compose_process(
+            source_path=clip.path,
+            clip=clip,
+            output_path=output_path,
+            plan=plan,
+            rotation=rotation,
+        )
     except OSError as exc:
         raise FatalStreamingComposeError(f"ffmpeg streaming setup failed: {exc}") from exc
 
@@ -478,6 +507,7 @@ def _render_clip_streaming(
                 progress=progress,
                 last_preview_bucket=last_preview_bucket,
                 preview_source_cache=preview_source_cache,
+                rotation=rotation,
             )
             try:
                 frame_bytes = empty_frame_bytes if image is None else image.tobytes()
@@ -514,6 +544,7 @@ def _render_clip_via_cache(
     output_dir: Path,
     progress: ProgressReporter | None,
     plan,
+    rotation: RotationSpec,
     progress_update: ProgressUpdateReporter | None = None,
     preview_update: PreviewUpdateReporter | None = None,
     cancel_requested: Callable[[], bool] | None = None,
@@ -553,6 +584,7 @@ def _render_clip_via_cache(
             progress=progress,
             last_preview_bucket=last_preview_bucket,
             preview_source_cache=preview_source_cache,
+            rotation=rotation,
         )
         frame_to_save = empty_frame if image is None else image
         frame_to_save.save(frame_dir / f"{index:06d}.png")
@@ -562,13 +594,13 @@ def _render_clip_via_cache(
     _emit(progress, f"Building overlay cache at {overlay_path}")
     build_overlay_video(frame_dir, clip.fps, overlay_path)
     _emit(progress, f"Composing final video at {output_path}")
-    compose_video(
-        clip.path,
-        overlay_path,
-        output_path,
-        plan=plan,
-        attached_pic_stream_index=clip.attached_pic_stream_index,
-    )
+    compose_kwargs: dict[str, object] = {
+        "plan": plan,
+        "attached_pic_stream_index": clip.attached_pic_stream_index,
+    }
+    if "rotation" in signature(compose_video).parameters:
+        compose_kwargs["rotation"] = rotation
+    compose_video(clip.path, overlay_path, output_path, **compose_kwargs)
 
 
 def run_pipeline(
@@ -596,12 +628,21 @@ def run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    for video_path in _discover_videos(resolve_video_globs_from_config(config_path, config.video_globs)):
+    video_paths = _discover_videos(
+        resolve_video_globs_from_config(config_path, config.video_globs)
+    )
+    for video_path in video_paths:
         if only and video_path.name != only:
             continue
         _emit(progress, f"Processing {video_path.name}")
-        clip = probe_video(video_path)
-        override = resolve_override(config, clip.path.name)
+        source_clip = probe_video(video_path)
+        override = resolve_video_override(config, config_path, video_path, video_paths)
+        rotation = RotationSpec.from_clip(source_clip, override.rotation_degrees)
+        clip = replace(
+            source_clip,
+            width=rotation.display_width,
+            height=rotation.display_height,
+        )
         alignment = align_clip(
             activity,
             clip,
@@ -615,7 +656,10 @@ def run_pipeline(
             continue
 
         output_path = output_dir / clip.path.name
-        plan = resolve_output_encoding_plan(clip, video_preset=config.encoding.video_preset)
+        plan = resolve_output_encoding_plan(
+            source_clip,
+            video_preset=config.encoding.video_preset,
+        )
         _emit_encoding_plan(progress, clip, plan)
 
         # Create render context once per clip to avoid repeated per-frame work
@@ -637,6 +681,7 @@ def run_pipeline(
                 context=context,
                 output_path=output_path,
                 plan=plan,
+                rotation=rotation,
                 progress=progress,
                 progress_update=progress_update,
                 preview_update=preview_update,
@@ -654,6 +699,7 @@ def run_pipeline(
                 output_dir=output_dir,
                 progress=progress,
                 plan=plan,
+                rotation=rotation,
                 progress_update=progress_update,
                 preview_update=preview_update,
                 cancel_requested=cancel_requested,

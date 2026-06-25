@@ -30,6 +30,10 @@ const elements = {
   projectActivityFile: document.getElementById("project-activity-file"),
   projectVideoGlobs: document.getElementById("project-video-globs"),
   projectOutputDir: document.getElementById("project-output-dir"),
+  videoPreviewModal: document.getElementById("video-preview-modal"),
+  videoPreviewGrid: document.getElementById("video-preview-grid"),
+  videoPreviewSummary: document.getElementById("video-preview-summary"),
+  videoPreviewCloseButton: document.getElementById("video-preview-close-button"),
   browseToggle: document.getElementById("browse-toggle"),
   browsePanel: document.getElementById("browse-panel"),
   overlayLibraryList: document.getElementById("overlay-library-list"),
@@ -80,6 +84,9 @@ let renderState = { status: "idle", stage: "", logs: [], error: null, cancel_req
 let renderPollTimer = null;
 let renderPanelMinimized = false;
 let renderPreviewOpen = false;
+let videoPreviewOpen = false;
+const videoRotationRequests = new Map();
+const pendingVideoRotations = new Set();
 let renderPreviewVersion = 0;
 let renderPreviewObjectUrl = "";
 let renderPreviewLastFetchAt = 0;
@@ -1206,6 +1213,198 @@ async function saveProjectState(payload) {
   setStatusMessage("Saved project settings.", "info");
 }
 
+function closeVideoPreview() {
+  videoPreviewOpen = false;
+  elements.videoPreviewGrid?.querySelectorAll("video").forEach((video) => video.pause());
+  if (!elements.videoPreviewModal) {
+    return;
+  }
+  if (
+    typeof elements.videoPreviewModal.close === "function"
+    && elements.videoPreviewModal.open
+  ) {
+    elements.videoPreviewModal.close();
+  }
+  elements.videoPreviewModal.hidden = true;
+  elements.videoPreviewModal.open = false;
+}
+
+function openVideoPreview() {
+  if (!elements.videoPreviewModal) {
+    return;
+  }
+  videoPreviewOpen = true;
+  renderVideoPreviewGrid();
+  elements.videoPreviewModal.hidden = false;
+  if (
+    typeof elements.videoPreviewModal.showModal === "function"
+    && !elements.videoPreviewModal.open
+  ) {
+    elements.videoPreviewModal.showModal();
+  } else {
+    elements.videoPreviewModal.open = true;
+  }
+}
+
+function stopOtherVideoPreviews(activeVideo) {
+  elements.videoPreviewGrid?.querySelectorAll("video").forEach((video) => {
+    if (video !== activeVideo) {
+      video.pause();
+    }
+  });
+}
+
+function sizeRotatedVideo(viewport, video, degrees) {
+  const sideways = degrees === 90 || degrees === 270;
+  const viewportWidth = viewport.clientWidth;
+  const viewportHeight = viewport.clientHeight;
+  if (!viewportWidth || !viewportHeight) {
+    return;
+  }
+  video.style.width = `${sideways ? viewportHeight : viewportWidth}px`;
+  video.style.height = `${sideways ? viewportWidth : viewportHeight}px`;
+  video.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
+}
+
+async function saveVideoRotation(videoId, rotationDegrees, requestSequence) {
+  const project = savedState?.project;
+  if (!project?.revision) {
+    throw new Error("Project state is unavailable");
+  }
+  const response = await fetch(`/api/videos/${encodeURIComponent(videoId)}/rotation`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      rotation_degrees: rotationDegrees,
+      revision: project.revision,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (requestSequence !== videoRotationRequests.get(videoId)) {
+    return false;
+  }
+  if (response.status === 409 && payload.project) {
+    savedState.project = payload.project;
+    renderProjectControls();
+    renderVideoPreviewGrid();
+    throw new Error(payload.error ?? "Video rotation conflicted with a newer project save");
+  }
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed save video rotation");
+  }
+  const video = project.videos?.find((item) => item.id === videoId);
+  if (video) {
+    video.user_rotation_degrees = payload.rotation_degrees;
+    video.effective_rotation_degrees = (
+      Number(video.source_rotation_degrees || 0) + payload.rotation_degrees
+    ) % 360;
+    const encodedWidth = Number(video.encoded_width || video.display_width);
+    const encodedHeight = Number(video.encoded_height || video.display_height);
+    if (encodedWidth && encodedHeight) {
+      const sideways = video.effective_rotation_degrees === 90
+        || video.effective_rotation_degrees === 270;
+      video.display_width = sideways ? encodedHeight : encodedWidth;
+      video.display_height = sideways ? encodedWidth : encodedHeight;
+    }
+  }
+  project.revision = payload.revision;
+  return true;
+}
+
+function renderVideoPreviewGrid() {
+  if (!elements.videoPreviewGrid || !elements.videoPreviewSummary) {
+    return;
+  }
+  const videos = Array.isArray(savedState?.project?.videos)
+    ? savedState.project.videos
+    : [];
+  elements.videoPreviewSummary.textContent = `${videos.length} video(s)`;
+  elements.videoPreviewGrid.innerHTML = "";
+  if (!videos.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No videos match the current video_globs.";
+    elements.videoPreviewGrid.appendChild(empty);
+    return;
+  }
+  videos.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "video-preview-card";
+    const title = document.createElement("h3");
+    title.className = "video-preview-card__title";
+    title.textContent = item.display_path || item.name;
+    title.title = item.display_path || item.name;
+    const viewport = document.createElement("div");
+    viewport.className = "video-preview-card__viewport";
+    const width = Number(item.display_width) || 16;
+    const height = Number(item.display_height) || 9;
+    viewport.style.aspectRatio = `${width} / ${height}`;
+    if (item.error) {
+      const error = document.createElement("div");
+      error.className = "video-preview-card__error";
+      error.textContent = item.error;
+      viewport.appendChild(error);
+    } else {
+      const video = document.createElement("video");
+      video.className = "video-preview-card__video";
+      video.src = item.media_url;
+      video.preload = "metadata";
+      video.playsInline = true;
+      video.controls = true;
+      const applySize = () => sizeRotatedVideo(
+        viewport,
+        video,
+        Number(item.user_rotation_degrees) || 0,
+      );
+      video.addEventListener("loadedmetadata", applySize);
+      video.addEventListener("play", () => stopOtherVideoPreviews(video));
+      viewport.appendChild(video);
+      if (typeof ResizeObserver === "function") {
+        const observer = new ResizeObserver(applySize);
+        observer.observe(viewport);
+      }
+    }
+    const actions = document.createElement("div");
+    actions.className = "video-preview-card__actions";
+    const rotateButton = document.createElement("button");
+    rotateButton.type = "button";
+    rotateButton.textContent = "↻ Rotate 90°";
+    rotateButton.disabled = pendingVideoRotations.has(item.id);
+    const angle = document.createElement("span");
+    angle.className = "video-preview-card__angle";
+    angle.textContent = `${Number(item.user_rotation_degrees) || 0}°`;
+    rotateButton.addEventListener("click", async () => {
+      const previous = Number(item.user_rotation_degrees) || 0;
+      const next = (previous + 90) % 360;
+      const sequence = (videoRotationRequests.get(item.id) || 0) + 1;
+      videoRotationRequests.set(item.id, sequence);
+      pendingVideoRotations.add(item.id);
+      item.user_rotation_degrees = next;
+      renderVideoPreviewGrid();
+      try {
+        await saveVideoRotation(item.id, next, sequence);
+        if (sequence === videoRotationRequests.get(item.id)) {
+          renderVideoPreviewGrid();
+        }
+      } catch (error) {
+        if (sequence === videoRotationRequests.get(item.id)) {
+          item.user_rotation_degrees = previous;
+          renderVideoPreviewGrid();
+          setStatusMessage(readErrorMessage(error, "Failed save video rotation"));
+        }
+      } finally {
+        if (sequence === videoRotationRequests.get(item.id)) {
+          pendingVideoRotations.delete(item.id);
+          renderVideoPreviewGrid();
+        }
+      }
+    });
+    actions.append(rotateButton, angle);
+    card.append(title, viewport, actions);
+    elements.videoPreviewGrid.appendChild(card);
+  });
+}
+
 function renderPresetControls() {
   if (!elements.presetSelect) {
     return;
@@ -1374,9 +1573,15 @@ function renderProjectControls() {
           await saveProjectState({ video_globs: value });
         } catch (error) {
           setStatusMessage(readErrorMessage(error, "Failed to save project settings"));
-        }
-      }),
+      }
+    }),
   );
+  const previewVideosButton = document.createElement("button");
+  previewVideosButton.type = "button";
+  previewVideosButton.textContent = `Preview all videos (${project.videos?.length || 0})`;
+  previewVideosButton.disabled = !project.videos?.length;
+  previewVideosButton.addEventListener("click", openVideoPreview);
+  videosCard.appendChild(previewVideosButton);
   elements.projectVideoGlobs.appendChild(videosCard);
 
   const outputCard = document.createElement("section");
@@ -1891,6 +2096,9 @@ if (elements.helpButton) {
 if (elements.helpCloseButton) {
   elements.helpCloseButton.addEventListener("click", closeHelp);
 }
+if (elements.videoPreviewCloseButton) {
+  elements.videoPreviewCloseButton.addEventListener("click", closeVideoPreview);
+}
 if (elements.helpModal) {
   elements.helpModal.addEventListener("click", (event) => {
     if (event.target === elements.helpModal) {
@@ -1996,6 +2204,11 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
       closeRenderPreview();
       renderRenderPreviewPane();
       void syncRenderPreviewState(renderState.status);
+      return;
+    }
+    if (event.key === "Escape" && videoPreviewOpen) {
+      event.preventDefault();
+      closeVideoPreview();
       return;
     }
     if (event.key === "Escape" && !elements.helpModal?.hidden) {

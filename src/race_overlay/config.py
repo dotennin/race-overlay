@@ -38,13 +38,14 @@ class ProjectConfig:
     encoding: EncodingConfig = field(default_factory=EncodingConfig)
     hud: HudConfig = field(default_factory=broadcast_runner_preset)
     hud_presets: dict[str, HudConfig] = field(default_factory=dict)
-    overrides: dict[str, dict[str, float | str]] = field(default_factory=dict)
+    overrides: dict[str, dict[str, float | int | str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True, frozen=True)
 class ClipOverride:
     offset_seconds: float = 0.0
     outside_activity: str | None = None
+    rotation_degrees: int = 0
 
 
 def write_default_config(path: Path, activity_file: str) -> None:
@@ -172,7 +173,48 @@ def resolve_override(config: ProjectConfig, filename: str) -> ClipOverride:
     return ClipOverride(
         offset_seconds=float(payload.get("offset_seconds", 0.0)),
         outside_activity=str(payload["outside_activity"]) if "outside_activity" in payload else None,
+        rotation_degrees=_rotation_degrees_from_override(payload),
     )
+
+
+def video_override_key(config_path: Path, video_path: Path) -> str:
+    resolved_video = video_path.resolve()
+    config_dir = config_path.resolve().parent
+    try:
+        return resolved_video.relative_to(config_dir).as_posix()
+    except ValueError:
+        return resolved_video.as_posix()
+
+
+def resolve_video_override(
+    config: ProjectConfig,
+    config_path: Path,
+    video_path: Path,
+    discovered_paths: list[Path],
+) -> ClipOverride:
+    key = video_override_key(config_path, video_path)
+    if key in config.overrides:
+        return resolve_override(config, key)
+
+    basename = video_path.name
+    if basename not in config.overrides:
+        return ClipOverride()
+
+    same_name_count = sum(path.name == basename for path in discovered_paths)
+    if same_name_count != 1:
+        raise ValueError(
+            f"ambiguous legacy override for '{basename}'; use project-relative video paths"
+        )
+    return resolve_override(config, basename)
+
+
+def _rotation_degrees_from_override(payload: dict[str, object]) -> int:
+    from race_overlay.rotation import validate_rotation_degrees
+
+    value = payload.get("rotation_degrees", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("rotation_degrees must be 0, 90, 180, or 270")
+    return validate_rotation_degrees(value)
 
 
 def resolve_path_from_config(config_path: Path, value: str) -> Path:
