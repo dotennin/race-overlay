@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from race_overlay.models import VideoClip
+from race_overlay.rotation import VALID_ROTATIONS
 
 
 def _parse_time(value: str) -> datetime:
@@ -36,6 +37,40 @@ def _attached_pic_stream_index(streams: list[dict[str, object]]) -> int | None:
         if stream.get("codec_type") == "video" and _has_attached_pic_disposition(stream):
             return int(stream["index"])
     return None
+
+
+def _source_rotation_degrees(video_stream: dict[str, object]) -> int:
+    rotation: object | None = None
+    from_display_matrix = False
+    side_data = video_stream.get("side_data_list", [])
+    if isinstance(side_data, list):
+        for entry in side_data:
+            if (
+                isinstance(entry, dict)
+                and entry.get("side_data_type") == "Display Matrix"
+                and "rotation" in entry
+            ):
+                rotation = entry["rotation"]
+                from_display_matrix = True
+                break
+    if rotation is None:
+        tags = video_stream.get("tags", {})
+        if isinstance(tags, dict):
+            rotation = tags.get("rotate")
+    if rotation is None:
+        return 0
+    try:
+        numeric = float(rotation)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid source video rotation: {rotation!r}") from exc
+    rounded = int(round(numeric)) % 360
+    if abs(numeric - round(numeric)) > 0.001 or rounded not in VALID_ROTATIONS:
+        raise ValueError(
+            f"source video rotation must be a quarter-turn, got {rotation!r}"
+        )
+    # ffprobe reports display-matrix rotation counter-clockwise. Internally all
+    # rotations are clockwise so they compose directly with the user's setting.
+    return (-rounded) % 360 if from_display_matrix else rounded
 
 
 def probe_video(path: Path) -> VideoClip:
@@ -76,4 +111,5 @@ def probe_video(path: Path) -> VideoClip:
         has_attached_pic=attached_pic_stream_index is not None,
         attached_pic_stream_index=attached_pic_stream_index,
         codec_tag_string=video_stream.get("codec_tag_string"),
+        source_rotation_degrees=_source_rotation_degrees(video_stream),
     )

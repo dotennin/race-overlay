@@ -3,8 +3,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 
-from race_overlay.ffmpeg import build_cache_compose_command, build_stream_compose_command, compose_video, resolve_output_encoding_plan
+from race_overlay.ffmpeg import (
+    build_cache_compose_command,
+    build_stream_compose_command,
+    compose_video,
+    extract_video_frame,
+    resolve_output_encoding_plan,
+)
 from race_overlay.models import VideoClip
+from race_overlay.rotation import RotationSpec
 
 
 def make_clip(**overrides) -> VideoClip:
@@ -241,6 +248,74 @@ def test_build_stream_compose_command_uses_raw_rgba_stdin() -> None:
         "copy",
         "output.MP4",
     ]
+
+
+def test_stream_compose_explicitly_applies_effective_rotation() -> None:
+    clip = make_clip(source_rotation_degrees=90)
+    plan = resolve_output_encoding_plan(clip)
+    rotation = RotationSpec.from_clip(clip, 90)
+
+    command = build_stream_compose_command(
+        source_path=Path("source.MP4"),
+        clip=clip,
+        output_path=Path("output.MP4"),
+        plan=plan,
+        rotation=rotation,
+    )
+
+    assert "-noautorotate" in command
+    assert command[command.index("-filter_complex") + 1] == (
+        "[0:v]hflip,vflip[oriented];"
+        "[oriented][1:v]overlay=0:0[video]"
+    )
+    assert command[command.index("-metadata:s:v:0") + 1] == "rotate=0"
+
+
+def test_cache_compose_uses_rotated_source_before_overlay() -> None:
+    clip = make_clip()
+    plan = resolve_output_encoding_plan(clip)
+    rotation = RotationSpec.from_clip(clip, 270)
+
+    command = build_cache_compose_command(
+        source_path=Path("source.MP4"),
+        overlay_path=Path("overlay.mov"),
+        output_path=Path("output.MP4"),
+        plan=plan,
+        attached_pic_stream_index=None,
+        rotation=rotation,
+    )
+
+    assert command[command.index("-filter_complex") + 1] == (
+        "[0:v]transpose=cclock[oriented];"
+        "[oriented][1:v]overlay=0:0[video]"
+    )
+
+
+def test_extract_video_frame_disables_autorotate_and_applies_rotation(monkeypatch) -> None:
+    captured: list[str] = []
+
+    class FakeImage:
+        def load(self) -> None:
+            return None
+
+    class Result:
+        stdout = b"not-an-image"
+
+    def fake_run(command, **_kwargs):
+        captured.extend(command)
+        return Result()
+
+    monkeypatch.setattr("race_overlay.ffmpeg.subprocess.run", fake_run)
+    monkeypatch.setattr("race_overlay.ffmpeg.Image.open", lambda _value: FakeImage())
+
+    extract_video_frame(
+        Path("source.MP4"),
+        timestamp_seconds=1.5,
+        rotation_degrees=90,
+    )
+
+    assert "-noautorotate" in captured
+    assert captured[captured.index("-vf") + 1] == "transpose=clock"
 
 
 def test_build_stream_compose_command_uses_audio_fallback_args() -> None:

@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from race_overlay.video_probe import probe_video
 
 
@@ -234,3 +236,79 @@ def test_probe_video_handles_zero_zero_avg_frame_rate(monkeypatch, tmp_path: Pat
     clip = probe_video(tmp_path / "clip.MP4")
 
     assert clip.fps == 0.0
+
+
+def test_probe_video_reads_display_matrix_rotation(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+                "side_data_list": [{"side_data_type": "Display Matrix", "rotation": 90}],
+            }
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    assert probe_video(tmp_path / "phone.mov").source_rotation_degrees == 270
+
+
+def test_probe_video_falls_back_to_rotate_tag(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+                "tags": {"rotate": "270"},
+            }
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    assert probe_video(tmp_path / "phone.mov").source_rotation_degrees == 270
+
+
+def test_probe_video_rejects_non_quarter_turn_rotation(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "streams": [
+            {
+                "index": 0,
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30/1",
+                "side_data_list": [{"side_data_type": "Display Matrix", "rotation": 45}],
+            }
+        ],
+        "format": {
+            "duration": "12.5",
+            "tags": {"creation_time": "2026-04-19T09:05:59Z"},
+        },
+    }
+    monkeypatch.setattr(
+        "race_overlay.video_probe.subprocess.check_output",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    with pytest.raises(ValueError, match="quarter-turn"):
+        probe_video(tmp_path / "phone.mov")
