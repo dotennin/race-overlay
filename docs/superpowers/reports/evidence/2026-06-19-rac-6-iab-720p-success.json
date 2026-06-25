@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-19T06:41:31.308Z",
+  "report": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "bitrateMbps": 6,
+    "mimeType": "video/webm;codecs=vp9,opus",
+    "elapsedMs": 5007.300000011921,
+    "outputBytes": 460855,
+    "durationSeconds": 5,
+    "audioTrackCount": 0,
+    "memoryUsedBytes": 13258583,
+    "playbackMode": "muted-fallback"
+  },
+  "activityName": "sample-measurement.tcx",
+  "videoName": "sample-measurement.webm"
+}

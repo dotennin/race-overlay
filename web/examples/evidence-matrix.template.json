@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "requiredTargets": ["chromium", "firefox", "safari", "production-device"],
+  "requiredExports": [
+    { "width": 1280, "height": 720, "durationSeconds": 5 },
+    { "width": 1920, "height": 1080, "durationSeconds": 5 },
+    { "width": 1920, "height": 1080, "durationSeconds": 60 }
+  ],
+  "targets": [
+    {
+      "name": "chromium",
+      "capabilities": "./chromium/capabilities.json",
+      "measurements": [
+        "./chromium/1280x720-5s-measurement.json",
+        "./chromium/1920x1080-5s-measurement.json",
+        "./chromium/1920x1080-60s-measurement.json"
+      ]
+    },
+    {
+      "name": "firefox",
+      "capabilities": "./firefox/capabilities.json",
+      "measurements": [
+        "./firefox/1280x720-5s-measurement.json",
+        "./firefox/1920x1080-5s-measurement.json",
+        "./firefox/1920x1080-60s-measurement.json"
+      ]
+    },
+    {
+      "name": "safari",
+      "capabilities": "./safari/capabilities.json",
+      "measurements": [
+        "./safari/1280x720-5s-measurement.json",
+        "./safari/1920x1080-5s-measurement.json",
+        "./safari/1920x1080-60s-measurement.json"
+      ]
+    },
+    {
+      "name": "production-device",
+      "capabilities": "./production-device/capabilities.json",
+      "measurements": [
+        "./production-device/1280x720-5s-measurement.json",
+        "./production-device/1920x1080-5s-measurement.json",
+        "./production-device/1920x1080-60s-measurement.json"
+      ]
+    }
+  ]
+}

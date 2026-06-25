@@ -1,0 +1,684 @@
+{
+  "activity": {
+    "laps": [],
+    "samples": [
+      {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 2.9,
+        "heartRateBpm": 103,
+        "latitude": 36.0832622554,
+        "longitude": 140.2106574643,
+        "speedMps": 1.521,
+        "timestamp": "2026-04-19T00:45:05.000Z"
+      },
+      {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 6.14,
+        "heartRateBpm": 102,
+        "latitude": 36.0832857247,
+        "longitude": 140.2106790897,
+        "speedMps": 0.0,
+        "timestamp": "2026-04-19T00:45:06.000Z"
+      },
+      {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 9.26,
+        "heartRateBpm": 101,
+        "latitude": 36.0833117086,
+        "longitude": 140.2106902376,
+        "speedMps": 2.809,
+        "timestamp": "2026-04-19T00:45:07.000Z"
+      }
+    ],
+    "sport": "Running"
+  },
+  "alignClip": [
+    {
+      "clip": {
+        "attachedPicStreamIndex": null,
+        "audioBitrate": null,
+        "audioCodec": null,
+        "codecTagString": null,
+        "colorPrimaries": null,
+        "colorSpace": null,
+        "colorTransfer": null,
+        "creationTime": "2026-04-19T00:45:05.000Z",
+        "durationSeconds": 1.0,
+        "fps": 30.0,
+        "hasAttachedPic": false,
+        "height": 1080,
+        "path": "inside.mp4",
+        "pixelFormat": null,
+        "videoBitrate": null,
+        "videoCodec": null,
+        "width": 1920
+      },
+      "clipEnd": "2026-04-19T00:45:06.000Z",
+      "clipStart": "2026-04-19T00:45:05.000Z",
+      "overlayEnd": "2026-04-19T00:45:06.000Z",
+      "overlayStart": "2026-04-19T00:45:05.000Z",
+      "status": "inside"
+    },
+    {
+      "clip": {
+        "attachedPicStreamIndex": null,
+        "audioBitrate": null,
+        "audioCodec": null,
+        "codecTagString": null,
+        "colorPrimaries": null,
+        "colorSpace": null,
+        "colorTransfer": null,
+        "creationTime": "2026-04-19T00:45:04.000Z",
+        "durationSeconds": 2.0,
+        "fps": 30.0,
+        "hasAttachedPic": false,
+        "height": 1080,
+        "path": "partial.mp4",
+        "pixelFormat": null,
+        "videoBitrate": null,
+        "videoCodec": null,
+        "width": 1920
+      },
+      "clipEnd": "2026-04-19T00:45:06.000Z",
+      "clipStart": "2026-04-19T00:45:04.000Z",
+      "overlayEnd": "2026-04-19T00:45:06.000Z",
+      "overlayStart": "2026-04-19T00:45:05.000Z",
+      "status": "partial"
+    },
+    {
+      "clip": {
+        "attachedPicStreamIndex": null,
+        "audioBitrate": null,
+        "audioCodec": null,
+        "codecTagString": null,
+        "colorPrimaries": null,
+        "colorSpace": null,
+        "colorTransfer": null,
+        "creationTime": "2026-04-19T00:45:08.000Z",
+        "durationSeconds": 1.0,
+        "fps": 30.0,
+        "hasAttachedPic": false,
+        "height": 1080,
+        "path": "outside.mp4",
+        "pixelFormat": null,
+        "videoBitrate": null,
+        "videoCodec": null,
+        "width": 1920
+      },
+      "clipEnd": "2026-04-19T00:45:09.000Z",
+      "clipStart": "2026-04-19T00:45:08.000Z",
+      "overlayEnd": null,
+      "overlayStart": null,
+      "status": "outside"
+    }
+  ],
+  "hudPreset": {
+    "preset": "broadcast-runner",
+    "theme": {
+      "font_family": "broadcast_value",
+      "font_size_px": 18,
+      "font_weight": "regular",
+      "note_text": "Race Day",
+      "show_units": true,
+      "text_rgba": [
+        247,
+        251,
+        255,
+        255
+      ],
+      "title_font_family": "broadcast_value",
+      "title_font_size_px": 16,
+      "title_font_weight": "regular",
+      "unit_font_family": "broadcast_value",
+      "unit_font_size_px": 13,
+      "unit_font_weight": "regular",
+      "value_font_family": "broadcast_value",
+      "value_font_size_px": 32,
+      "value_font_weight": "bold"
+    },
+    "widgets": [
+      {
+        "anchor": "top-left",
+        "bindings": {
+          "value": "timestamp"
+        },
+        "height": 56,
+        "id": "time-chip",
+        "style": {
+          "format": "%Y/%m/%d %H:%M:%S",
+          "variant": "timestamp_chip"
+        },
+        "type": "context_card",
+        "visible": true,
+        "width": 292,
+        "x": 44,
+        "y": 40,
+        "z_index": 36
+      },
+      {
+        "anchor": "top-left",
+        "bindings": {
+          "value": "distance_m"
+        },
+        "height": 56,
+        "id": "distance-ruler",
+        "style": {
+          "fill_rgba": [
+            34,
+            255,
+            138,
+            255
+          ],
+          "label": "Distance",
+          "rail_rgba": [
+            8,
+            12,
+            20,
+            220
+          ],
+          "show_current_value": true,
+          "show_total_value": true,
+          "tick_rgba": [
+            230,
+            238,
+            245,
+            168
+          ],
+          "variant": "ruler"
+        },
+        "type": "progress_bar",
+        "visible": true,
+        "width": 560,
+        "x": 359,
+        "y": 40,
+        "z_index": 40
+      },
+      {
+        "anchor": "top-left",
+        "bindings": {
+          "value": "altitude_m"
+        },
+        "height": 82,
+        "id": "elevation-stat",
+        "style": {
+          "label": "Elevation",
+          "unit": "M"
+        },
+        "type": "stat_block",
+        "visible": true,
+        "width": 152,
+        "x": 44,
+        "y": 122,
+        "z_index": 30
+      },
+      {
+        "anchor": "top-left",
+        "bindings": {
+          "value": "distance_m"
+        },
+        "height": 84,
+        "id": "distance-stat",
+        "style": {
+          "decimals": 2,
+          "label": "Distance",
+          "unit": "KM"
+        },
+        "type": "stat_block",
+        "visible": true,
+        "width": 196,
+        "x": 44,
+        "y": 208,
+        "z_index": 30
+      },
+      {
+        "anchor": "top-right",
+        "bindings": {
+          "value": "heart_rate_bpm"
+        },
+        "height": 82,
+        "id": "heart-rate-stat",
+        "style": {
+          "align": "right",
+          "label": "Heart rate",
+          "unit": "BPM"
+        },
+        "type": "stat_block",
+        "visible": true,
+        "width": 152,
+        "x": 1092,
+        "y": 118,
+        "z_index": 30
+      },
+      {
+        "anchor": "bottom-right",
+        "bindings": {
+          "value": "pace_seconds_per_km"
+        },
+        "height": 76,
+        "id": "pace-chip",
+        "style": {
+          "label": "Pace",
+          "variant": "compact"
+        },
+        "type": "metric_card",
+        "visible": true,
+        "width": 126,
+        "x": 978,
+        "y": 552,
+        "z_index": 20
+      },
+      {
+        "anchor": "bottom-right",
+        "bindings": {
+          "value": "cadence_spm"
+        },
+        "height": 76,
+        "id": "cadence-chip",
+        "style": {
+          "label": "Cadence",
+          "variant": "compact"
+        },
+        "type": "metric_card",
+        "visible": true,
+        "width": 126,
+        "x": 1110,
+        "y": 552,
+        "z_index": 20
+      },
+      {
+        "anchor": "bottom-right",
+        "bindings": {
+          "value": "elapsed_seconds"
+        },
+        "height": 76,
+        "id": "elapsed-chip",
+        "style": {
+          "label": "Elapsed",
+          "variant": "compact"
+        },
+        "type": "metric_card",
+        "visible": true,
+        "width": 126,
+        "x": 978,
+        "y": 636,
+        "z_index": 20
+      },
+      {
+        "anchor": "bottom-right",
+        "bindings": {
+          "value": "speed_mps"
+        },
+        "height": 126,
+        "id": "speed-chip",
+        "style": {
+          "label": "Speed",
+          "variant": "speed_gauge"
+        },
+        "type": "metric_card",
+        "visible": true,
+        "width": 126,
+        "x": 1110,
+        "y": 636,
+        "z_index": 20
+      },
+      {
+        "anchor": "top-left",
+        "bindings": {
+          "value": "route_points"
+        },
+        "height": 196,
+        "id": "route-map",
+        "style": {
+          "background_rgba": [
+            6,
+            10,
+            18,
+            148
+          ],
+          "completed_rgba": [
+            34,
+            255,
+            138,
+            255
+          ],
+          "label": "",
+          "remaining_rgba": [
+            13,
+            144,
+            195,
+            255
+          ],
+          "shape": "circle",
+          "show_bearing_label": true,
+          "show_north_marker": true,
+          "show_panel": true,
+          "zoom_percent": 90
+        },
+        "type": "route_map",
+        "visible": true,
+        "width": 196,
+        "x": 21,
+        "y": 488,
+        "z_index": 20
+      }
+    ]
+  },
+  "lapActivity": {
+    "laps": [
+      {
+        "avgHeartRateBpm": 121,
+        "calories": 80,
+        "distanceM": 1500.0,
+        "elevationDeltaM": 8.0,
+        "maxHeartRateBpm": 157,
+        "maxSpeedMps": 4.5,
+        "startTime": "2026-04-19T00:45:05.000Z",
+        "totalTimeSeconds": 300.0
+      },
+      {
+        "avgHeartRateBpm": null,
+        "calories": null,
+        "distanceM": 900.0,
+        "elevationDeltaM": -2.0,
+        "maxHeartRateBpm": null,
+        "maxSpeedMps": 3.8,
+        "startTime": "2026-04-19T00:50:05.000Z",
+        "totalTimeSeconds": 120.0
+      }
+    ],
+    "samples": [
+      {
+        "altitudeM": 10.0,
+        "cadenceSpm": 182,
+        "distanceM": 100.0,
+        "heartRateBpm": 120,
+        "latitude": 36.0,
+        "longitude": 140.0,
+        "speedMps": 2.0,
+        "timestamp": "2026-04-19T00:45:05.000Z"
+      },
+      {
+        "altitudeM": 18.0,
+        "cadenceSpm": 184,
+        "distanceM": 200.0,
+        "heartRateBpm": 122,
+        "latitude": 36.1,
+        "longitude": 140.1,
+        "speedMps": 2.5,
+        "timestamp": "2026-04-19T00:46:05.000Z"
+      },
+      {
+        "altitudeM": 20.0,
+        "cadenceSpm": 180,
+        "distanceM": 1000.0,
+        "heartRateBpm": null,
+        "latitude": null,
+        "longitude": null,
+        "speedMps": 2.5,
+        "timestamp": "2026-04-19T00:50:05.000Z"
+      },
+      {
+        "altitudeM": 14.0,
+        "cadenceSpm": 186,
+        "distanceM": 1250.0,
+        "heartRateBpm": null,
+        "latitude": null,
+        "longitude": null,
+        "speedMps": 3.8,
+        "timestamp": "2026-04-19T00:50:35.000Z"
+      },
+      {
+        "altitudeM": 18.0,
+        "cadenceSpm": 188,
+        "distanceM": 1900.0,
+        "heartRateBpm": null,
+        "latitude": null,
+        "longitude": null,
+        "speedMps": 3.1,
+        "timestamp": "2026-04-19T00:52:05.000Z"
+      }
+    ],
+    "sport": "Running"
+  },
+  "lapWaterfallState": [
+    {
+      "state": {
+        "completedLaps": [],
+        "newestLapIndex": null,
+        "oldestRowDimmed": false,
+        "opacity": 0.0,
+        "transitionPreviousRows": null,
+        "transitionProgress": 1.0,
+        "visibleRows": []
+      },
+      "when": "2026-04-19T00:46:35.000Z"
+    },
+    {
+      "state": {
+        "completedLaps": [
+          {
+            "avgHeartRateBpm": 121,
+            "calories": 80,
+            "distanceM": 1500.0,
+            "elevationDeltaM": 8.0,
+            "maxHeartRateBpm": 157,
+            "maxSpeedMps": 4.5,
+            "startTime": "2026-04-19T00:45:05.000Z",
+            "totalTimeSeconds": 300.0
+          },
+          {
+            "avgHeartRateBpm": null,
+            "calories": null,
+            "distanceM": 900.0,
+            "elevationDeltaM": -2.0,
+            "maxHeartRateBpm": null,
+            "maxSpeedMps": 3.8,
+            "startTime": "2026-04-19T00:50:05.000Z",
+            "totalTimeSeconds": 120.0
+          }
+        ],
+        "newestLapIndex": 1,
+        "oldestRowDimmed": true,
+        "opacity": 1.0,
+        "transitionPreviousRows": null,
+        "transitionProgress": 0.5,
+        "visibleRows": [
+          {
+            "isDimmed": true,
+            "lap": {
+              "avgHeartRateBpm": 121,
+              "calories": 80,
+              "distanceM": 1500.0,
+              "elevationDeltaM": 8.0,
+              "maxHeartRateBpm": 157,
+              "maxSpeedMps": 4.5,
+              "startTime": "2026-04-19T00:45:05.000Z",
+              "totalTimeSeconds": 300.0
+            },
+            "lapIndex": 0
+          },
+          {
+            "isDimmed": false,
+            "lap": {
+              "avgHeartRateBpm": null,
+              "calories": null,
+              "distanceM": 900.0,
+              "elevationDeltaM": -2.0,
+              "maxHeartRateBpm": null,
+              "maxSpeedMps": 3.8,
+              "startTime": "2026-04-19T00:50:05.000Z",
+              "totalTimeSeconds": 120.0
+            },
+            "lapIndex": 1
+          }
+        ]
+      },
+      "when": "2026-04-19T00:52:05.225Z"
+    }
+  ],
+  "routeProjection": [
+    {
+      "projection": {
+        "point": [
+          36.08327399005,
+          140.210668277
+        ],
+        "segmentEnd": [
+          36.0832857247,
+          140.2106790897
+        ],
+        "segmentIndex": 0,
+        "segmentStart": [
+          36.0832622554,
+          140.2106574643
+        ],
+        "tangent": [
+          2.346929999674785e-05,
+          2.162539999517321e-05
+        ]
+      },
+      "sample": {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 4.52,
+        "heartRateBpm": 102,
+        "latitude": 36.08327399005,
+        "longitude": 140.210668277,
+        "paceSecondsPerKm": 1314.9243918474688,
+        "speedMps": 0.7605,
+        "timestamp": "2026-04-19T00:45:05.500Z"
+      },
+      "split": {
+        "completed": [
+          [
+            36.0832622554,
+            140.2106574643
+          ],
+          [
+            36.08327399005,
+            140.210668277
+          ]
+        ],
+        "remaining": [
+          [
+            36.08327399005,
+            140.210668277
+          ],
+          [
+            36.0832857247,
+            140.2106790897
+          ],
+          [
+            36.0833117086,
+            140.2106902376
+          ]
+        ]
+      }
+    },
+    {
+      "projection": {
+        "point": [
+          36.08329871665,
+          140.21068466365
+        ],
+        "segmentEnd": [
+          36.0833117086,
+          140.2106902376
+        ],
+        "segmentIndex": 1,
+        "segmentStart": [
+          36.0832857247,
+          140.2106790897
+        ],
+        "tangent": [
+          2.5983900002302107e-05,
+          1.1147900011110323e-05
+        ]
+      },
+      "sample": {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 7.699999999999999,
+        "heartRateBpm": 102,
+        "latitude": 36.08329871665,
+        "longitude": 140.21068466365,
+        "paceSecondsPerKm": 711.9971520113919,
+        "speedMps": 1.4045,
+        "timestamp": "2026-04-19T00:45:06.500Z"
+      },
+      "split": {
+        "completed": [
+          [
+            36.0832622554,
+            140.2106574643
+          ],
+          [
+            36.0832857247,
+            140.2106790897
+          ],
+          [
+            36.08329871665,
+            140.21068466365
+          ]
+        ],
+        "remaining": [
+          [
+            36.08329871665,
+            140.21068466365
+          ],
+          [
+            36.0833117086,
+            140.2106902376
+          ]
+        ]
+      }
+    }
+  ],
+  "sampleAt": [
+    {
+      "sample": {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 2.9,
+        "heartRateBpm": 103,
+        "latitude": 36.0832622554,
+        "longitude": 140.2106574643,
+        "paceSecondsPerKm": 657.4621959237344,
+        "speedMps": 1.521,
+        "timestamp": "2026-04-19T00:45:05.000Z"
+      },
+      "when": "2026-04-19T00:45:05.000Z"
+    },
+    {
+      "sample": {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 4.52,
+        "heartRateBpm": 102,
+        "latitude": 36.08327399005,
+        "longitude": 140.210668277,
+        "paceSecondsPerKm": 1314.9243918474688,
+        "speedMps": 0.7605,
+        "timestamp": "2026-04-19T00:45:05.500Z"
+      },
+      "when": "2026-04-19T00:45:05.500Z"
+    },
+    {
+      "sample": {
+        "altitudeM": -1.4,
+        "cadenceSpm": 0,
+        "distanceM": 7.699999999999999,
+        "heartRateBpm": 102,
+        "latitude": 36.08329871665,
+        "longitude": 140.21068466365,
+        "paceSecondsPerKm": 711.9971520113919,
+        "speedMps": 1.4045,
+        "timestamp": "2026-04-19T00:45:06.500Z"
+      },
+      "when": "2026-04-19T00:45:06.500Z"
+    }
+  ]
+}

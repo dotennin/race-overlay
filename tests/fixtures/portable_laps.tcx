@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+  <Activities>
+    <Activity Sport="Running">
+      <Lap StartTime="2026-04-19T00:45:05Z">
+        <TotalTimeSeconds>300.0</TotalTimeSeconds>
+        <DistanceMeters>1500.0</DistanceMeters>
+        <MaximumSpeed>4.5</MaximumSpeed>
+        <AverageHeartRateBpm><Value>121</Value></AverageHeartRateBpm>
+        <MaximumHeartRateBpm><Value>157</Value></MaximumHeartRateBpm>
+        <Calories>80</Calories>
+        <Track>
+          <Trackpoint>
+            <Time>2026-04-19T00:45:05Z</Time>
+            <Position><LatitudeDegrees>36.0</LatitudeDegrees><LongitudeDegrees>140.0</LongitudeDegrees></Position>
+            <AltitudeMeters>10.0</AltitudeMeters>
+            <DistanceMeters>100.0</DistanceMeters>
+            <HeartRateBpm><Value>120</Value></HeartRateBpm>
+            <Extensions><ns3:TPX><ns3:Speed>2.0</ns3:Speed><ns3:RunCadence>91</ns3:RunCadence></ns3:TPX></Extensions>
+          </Trackpoint>
+          <Trackpoint>
+            <Time>2026-04-19T00:46:05Z</Time>
+            <Position><LatitudeDegrees>36.1</LatitudeDegrees><LongitudeDegrees>140.1</LongitudeDegrees></Position>
+            <AltitudeMeters>18.0</AltitudeMeters>
+            <DistanceMeters>200.0</DistanceMeters>
+            <HeartRateBpm><Value>122</Value></HeartRateBpm>
+            <Extensions><ns3:TPX><ns3:Speed>2.5</ns3:Speed><ns3:RunCadence>92</ns3:RunCadence></ns3:TPX></Extensions>
+          </Trackpoint>
+        </Track>
+      </Lap>
+      <Lap StartTime="2026-04-19T00:50:05Z">
+        <Track>
+          <Trackpoint>
+            <Time>2026-04-19T00:50:05Z</Time>
+            <AltitudeMeters>20.0</AltitudeMeters>
+            <DistanceMeters>1000.0</DistanceMeters>
+            <Extensions><ns3:TPX><ns3:Speed>2.5</ns3:Speed><ns3:RunCadence>90</ns3:RunCadence></ns3:TPX></Extensions>
+          </Trackpoint>
+          <Trackpoint>
+            <Time>2026-04-19T00:50:35Z</Time>
+            <AltitudeMeters>14.0</AltitudeMeters>
+            <DistanceMeters>1250.0</DistanceMeters>
+            <Extensions><ns3:TPX><ns3:Speed>3.8</ns3:Speed><ns3:RunCadence>93</ns3:RunCadence></ns3:TPX></Extensions>
+          </Trackpoint>
+          <Trackpoint>
+            <Time>2026-04-19T00:52:05Z</Time>
+            <AltitudeMeters>18.0</AltitudeMeters>
+            <DistanceMeters>1900.0</DistanceMeters>
+            <Extensions><ns3:TPX><ns3:Speed>3.1</ns3:Speed><ns3:RunCadence>94</ns3:RunCadence></ns3:TPX></Extensions>
+          </Trackpoint>
+        </Track>
+      </Lap>
+    </Activity>
+  </Activities>
+</TrainingCenterDatabase>

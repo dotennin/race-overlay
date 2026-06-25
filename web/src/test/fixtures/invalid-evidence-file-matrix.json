@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "name": "in-app-browser",
+      "capabilities": "iab-capabilities.json",
+      "measurements": ["invalid-measurement.json"]
+    }
+  ]
+}

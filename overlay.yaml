@@ -1,11 +1,48 @@
-activity_file: /Users/dotennin-mac14/Downloads/activity_22780203214.tcx
+activity_file: /Users/dotennin-mac14/Downloads/1/activity_23210204404.tcx
 video_globs:
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260506111826_0041_D.MP4
-output_dir: /Users/dotennin-mac14/Downloads/new/
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195346_20260611195347_1781181425418_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195346_20260611195347_1781181425418_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195638_20260611195638_1781181398593_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195638_20260611195638_1781181398593_video.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195516_20260611195517_1781181411139_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195516_20260611195517_1781181411139_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200050_20260611200051_1781181380809_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200050_20260611200051_1781181380809_video.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_194852_20260611194852_1781181443753_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_194852_20260611194852_1781181443753_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195030_20260611195030_1781181432697_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195030_20260611195030_1781181432697_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_194040_20260611194040_1781180859236_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_194040_20260611194040_1781180859236_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200310_20260611200311_1781181368941_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200310_20260611200311_1781181368941_video.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_193906_20260611193906_1781181448736_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_193906_20260611193906_1781181448736_video.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200334_20260611200334_1781181361727_video
+  2.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200334_20260611200334_1781181361727_video.mov
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195846_20260611195847_1781181386465_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_195846_20260611195847_1781181386465_video.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200018_20260611200018_1781181382270_video
+  2.MP4
+- /Users/dotennin-mac14/Downloads/1/dji_mimo_20260611_200018_20260611200018_1781181382270_video.MP4
+output_dir: /Users/dotennin-mac14/Downloads/1/test/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0
   outside_activity: no_data
+encoding:
+  video_preset: veryfast
 hud:
   preset: broadcast-runner
   theme:

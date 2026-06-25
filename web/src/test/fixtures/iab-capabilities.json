@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-19T06:41:31.308Z",
+  "status": "capabilities",
+  "browserName": "in-app-browser",
+  "videoName": "sample-measurement.webm",
+  "capabilities": {
+    "canExportWebm": true,
+    "supportedMimeType": "video/webm;codecs=vp9,opus",
+    "supportsCanvasCapture": true,
+    "supportsVideoCaptureStream": true,
+    "sourceAudioTrackCount": 0,
+    "supportsMemoryMeasurement": true
+  }
+}

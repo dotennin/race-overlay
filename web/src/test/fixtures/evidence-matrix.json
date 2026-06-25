@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "requiredTargets": ["in-app-browser", "chromium", "firefox", "safari"],
+  "requiredExports": [
+    { "width": 1280, "height": 720, "durationSeconds": 5 },
+    { "width": 1920, "height": 1080, "durationSeconds": 5 },
+    { "width": 1920, "height": 1080, "durationSeconds": 60 }
+  ],
+  "targets": [
+    {
+      "name": "in-app-browser",
+      "capabilities": "iab-capabilities.json",
+      "measurements": [
+        "../../../../docs/superpowers/reports/evidence/2026-06-19-rac-6-iab-720p-success.json",
+        "../../../../docs/superpowers/reports/evidence/2026-06-19-rac-6-iab-1080p-success.json"
+      ]
+    },
+    {
+      "name": "safari",
+      "measurements": []
+    }
+  ]
+}

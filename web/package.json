@@ -1,0 +1,64 @@
+{
+  "name": "race-overlay-web",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "./dist/lib/race-overlay-web.umd.cjs",
+  "module": "./dist/lib/race-overlay-web.js",
+  "types": "./dist/types/index.d.ts",
+  "bin": {
+    "race-overlay-evaluate-evidence": "./scripts/evaluate-portability-evidence.mjs",
+    "race-overlay-scaffold-evidence": "./scripts/scaffold-portability-evidence.mjs",
+    "race-overlay-verify-portability": "./scripts/verify-portability.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/lib/race-overlay-web.js",
+      "require": "./dist/lib/race-overlay-web.umd.cjs"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "files": [
+    "README.md",
+    "dist",
+    "examples",
+    "scripts/evaluate-portability-evidence.mjs",
+    "scripts/scaffold-portability-evidence.mjs",
+    "scripts/verify-package-consumer.mjs",
+    "scripts/verify-portability.mjs",
+    "src/styles.css"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && npm run build:app && npm run build:types && npm run build:lib",
+    "build:app": "vite build",
+    "build:lib": "vite build --config vite.lib.config.ts",
+    "build:types": "tsc -p tsconfig.lib.json",
+    "check:examples": "tsc -p tsconfig.examples.json --noEmit",
+    "evaluate:evidence": "node scripts/evaluate-portability-evidence.mjs",
+    "scaffold:evidence": "node scripts/scaffold-portability-evidence.mjs",
+    "verify:consumer": "node scripts/verify-package-consumer.mjs",
+    "verify:portability": "node scripts/verify-portability.mjs",
+    "test": "vitest"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "jsdom": "^26.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}

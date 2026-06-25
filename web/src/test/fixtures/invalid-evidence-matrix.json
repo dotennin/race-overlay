@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "requiredTargets": ["chromium", 42],
+  "requiredExports": [
+    { "width": "1920", "height": 1080, "durationSeconds": 60 }
+  ],
+  "targets": [
+    {
+      "name": "",
+      "measurements": "not-an-array"
+    }
+  ]
+}
