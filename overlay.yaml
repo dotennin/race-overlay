@@ -1,11 +1,25 @@
 activity_file: /Users/dotennin-mac14/Downloads/activity_22780203214.tcx
 video_globs:
-- /Volumes/OsmoNano/DCIM/DJI_001/DJI_20260506111826_0041_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625160638_0107_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625161704_0108_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625162245_0109_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163256_0110_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163535_0111_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163729_0112_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163913_0113_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163955_0114_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625164227_0115_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625164555_0116_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625165245_0117_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625165920_0118_D.MP4
+- /Users/dotennin-mac14/Downloads/pending/DJI_20260625171215_0119_D.MP4
 output_dir: /Users/dotennin-mac14/Downloads/new/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0
   outside_activity: no_data
+encoding:
+  video_preset: veryfast
 hud:
   preset: broadcast-runner
   theme:
@@ -687,4 +701,6 @@ presets:
         show_time: true
         fade_after_seconds: 10
         value_font_size_px: 24
-overrides: {}
+overrides:
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260625163729_0112_D.MP4:
+    rotation_degrees: 0
