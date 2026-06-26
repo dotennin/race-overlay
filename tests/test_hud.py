@@ -1400,7 +1400,7 @@ def test_render_hud_frame_renders_stride_metric_card(monkeypatch: pytest.MonkeyP
 
     assert "Stride" in labels
     assert "1.21" in labels
-    assert "m" in labels
+    assert "M" in labels
 
 
 def test_render_hud_frame_speed_gauge_metric_card_renders_kmh_value(monkeypatch: pytest.MonkeyPatch) -> None:
