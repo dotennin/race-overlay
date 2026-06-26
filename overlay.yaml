@@ -1,19 +1,7 @@
-activity_file: /Users/dotennin-mac14/Downloads/activity_22780203214.tcx
+activity_file: /Users/dotennin-mac14/Downloads/activity_23372541763.tcx
 video_globs:
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625160638_0107_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625161704_0108_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625162245_0109_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163256_0110_D.MP4
 - /Users/dotennin-mac14/Downloads/pending/DJI_20260625163535_0111_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163729_0112_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163913_0113_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625163955_0114_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625164227_0115_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625164555_0116_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625165245_0117_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625165920_0118_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260625171215_0119_D.MP4
-output_dir: /Users/dotennin-mac14/Downloads/new/
+output_dir: /Users/dotennin-mac14/Downloads/pending/new/
 cache_dir: cache
 timeline:
   global_offset_seconds: 0.0
@@ -255,6 +243,21 @@ hud:
     style:
       label: Stride
       variant: compact
+  - id: distance-stat
+    type: stat_block
+    bindings:
+      value: distance_m
+    anchor: top-left
+    x: 196
+    y: 624
+    width: 210
+    height: 88
+    z_index: 30
+    visible: true
+    style:
+      label: Distance
+      unit: KM
+      decimals: 2
 presets:
   broadcast-runner:
     preset: broadcast-runner
@@ -491,6 +494,21 @@ presets:
       style:
         label: Stride
         variant: compact
+    - id: distance-stat
+      type: stat_block
+      bindings:
+        value: distance_m
+      anchor: top-left
+      x: 196
+      y: 624
+      width: 210
+      height: 88
+      z_index: 30
+      visible: true
+      style:
+        label: Distance
+        unit: KM
+        decimals: 2
   bike:
     preset: bike
     theme:
@@ -704,3 +722,11 @@ presets:
 overrides:
   /Users/dotennin-mac14/Downloads/pending/DJI_20260625163729_0112_D.MP4:
     rotation_degrees: 0
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260625164555_0116_D.MP4:
+    rotation_degrees: 90
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260625171215_0119_D.MP4:
+    rotation_degrees: 270
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260625165920_0118_D.MP4:
+    rotation_degrees: 270
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260625165245_0117_D.MP4:
+    rotation_degrees: 270

@@ -22,6 +22,7 @@ from race_overlay.hud import (
     _resolve_route_projection_with_cursor,
     _scaled_font,
     _split_route_points,
+    _stat_block_value,
     _widget_panel_enabled,
     render_prepared_hud_frame,
     render_hud_frame,
@@ -2120,7 +2121,7 @@ def test_stat_block_unit_anchors_match_placement_logic(monkeypatch: pytest.Monke
                     y=0,
                     width=180,
                     height=96,
-                    style={"label": "Distance", "unit": "km"},
+                    style={"label": "Distance", "unit": "KM"},
                 ),
             ],
         ),
@@ -2132,8 +2133,167 @@ def test_stat_block_unit_anchors_match_placement_logic(monkeypatch: pytest.Monke
     assert left_unit_call[2] == "la", "Left-aligned stat block unit should use left anchor"
 
     # Check right-aligned stat block unit
-    right_unit_call = next(call for call in text_calls if call[0] == "km")
+    right_unit_call = next(call for call in text_calls if call[0] == "KM")
     assert right_unit_call[2] == "la", "Right-aligned stat block unit should use left anchor"
+
+
+def _make_sample(**overrides: object) -> HudSample:
+    kwargs = dict(
+        timestamp=datetime(2026, 6, 26, 12, 0, 0, tzinfo=timezone.utc),
+        latitude=36.0,
+        longitude=140.0,
+        altitude_m=25.0,
+        distance_m=500.0,
+        speed_mps=3.5,
+        pace_seconds_per_km=280.0,
+        heart_rate_bpm=160,
+        cadence_spm=180,
+    )
+    kwargs.update(overrides)
+    return HudSample(**kwargs)
+
+
+class TestStatBlockValue:
+    """Unit tests for _stat_block_value distance formatting."""
+
+    def test_distance_below_1000m_returns_integer_meters(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=500.0))
+        assert result == "500"
+
+    def test_distance_exactly_1000m_returns_km(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=1000.0))
+        assert result == "1.00"
+
+    def test_distance_above_1000m_returns_km_with_two_decimals(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=24600.0))
+        assert result == "24.60"
+
+    def test_distance_zero_returns_zero_meters(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=0.0))
+        assert result == "0"
+
+    def test_distance_none_returns_placeholder(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=None))
+        assert result == "--"
+
+    def test_altitude_still_returns_integer(self) -> None:
+        result = _stat_block_value("altitude_m", _make_sample(altitude_m=25.7))
+        assert result == "26"
+
+    def test_heart_rate_still_returns_raw_value(self) -> None:
+        result = _stat_block_value("heart_rate_bpm", _make_sample(heart_rate_bpm=162))
+        assert result == "162"
+
+    def test_decimals_from_widget_style(self) -> None:
+        widget = HudWidgetConfig(
+            id="dist", type="stat_block",
+            bindings={"value": "distance_m"},
+            anchor="top-left", x=0, y=0, width=180, height=96,
+            style={"decimals": 3},
+        )
+        result = _stat_block_value("distance_m", _make_sample(distance_m=12345.0), widget)
+        assert result == "12.345"
+
+    def test_distance_just_below_1000m_uses_meters(self) -> None:
+        result = _stat_block_value("distance_m", _make_sample(distance_m=999.0))
+        assert result == "999"
+
+    def test_unsupported_binding_raises_error(self) -> None:
+        with pytest.raises(AssertionError, match="unsupported stat_block binding"):
+            _stat_block_value("invalid_binding", _make_sample())
+
+
+_DISTANCE_STAT_WIDGET = HudWidgetConfig(
+    id="distance-stat",
+    type="stat_block",
+    bindings={"value": "distance_m"},
+    anchor="top-left",
+    x=0,
+    y=0,
+    width=210,
+    height=88,
+    style={"label": "Distance", "unit": "KM", "decimals": 2},
+)
+
+
+def test_stat_block_distance_renders_m_unit_below_1000m(monkeypatch: pytest.MonkeyPatch) -> None:
+    text_calls: list[str] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        text_calls.append(str(text))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=_make_sample(distance_m=500.0),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="test",
+            theme=HudThemeConfig(),
+            widgets=[_DISTANCE_STAT_WIDGET],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert any(txt == "500" for txt in text_calls)
+    assert any(txt == "M" for txt in text_calls)
+
+
+def test_stat_block_distance_renders_km_unit_above_1000m(monkeypatch: pytest.MonkeyPatch) -> None:
+    text_calls: list[str] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        text_calls.append(str(text))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=_make_sample(distance_m=24600.0),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="test",
+            theme=HudThemeConfig(),
+            widgets=[_DISTANCE_STAT_WIDGET],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert any(txt == "24.60" for txt in text_calls)
+    assert any(txt == "KM" for txt in text_calls)
+
+
+def test_stat_block_distance_renders_placeholder_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    text_calls: list[str] = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def record_text(self, xy, text, *args, **kwargs):
+        text_calls.append(str(text))
+        return original_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+
+    render_hud_frame(
+        width=1280,
+        height=720,
+        hud_value=_make_sample(distance_m=None),
+        route_points=[(36.0832, 140.2106), (36.0834, 140.2108)],
+        hud_config=HudConfig(
+            preset="test",
+            theme=HudThemeConfig(),
+            widgets=[_DISTANCE_STAT_WIDGET],
+        ),
+        elapsed_seconds=6852,
+    )
+
+    assert any(txt == "--" for txt in text_calls)
 
 
 def test_hero_metric_km_suffix_stays_within_narrow_widget(monkeypatch: pytest.MonkeyPatch) -> None:

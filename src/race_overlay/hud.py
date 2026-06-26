@@ -1052,7 +1052,10 @@ def _draw_stat_block(
     unit = str(widget.style.get("unit", "")) if _style_bool(
         widget, "show_unit", theme.show_units) else ""
     align = str(widget.style.get("align", "left"))
-    value_text = _stat_block_value(binding, hud_value)
+    value_text = _stat_block_value(binding, hud_value, widget)
+
+    if binding == "distance_m" and value_text != "--" and unit:
+        unit = "M" if hud_value.distance_m < 1000 else "KM"
 
     # Compact variant: reduced spacing
     if variant == "compact":
@@ -1164,13 +1167,16 @@ def _draw_stat_block(
             theme.text_rgba), anchor="la", font=unit_font)
 
 
-def _stat_block_value(binding: str, hud_value: HudSample) -> str:
+def _stat_block_value(binding: str, hud_value: HudSample, widget: HudWidgetConfig | None = None) -> str:
     if binding == "altitude_m":
         return "--" if hud_value.altitude_m is None else f"{hud_value.altitude_m:.0f}"
     if binding == "distance_m":
         if hud_value.distance_m is None:
             return "--"
-        return f"{hud_value.distance_m / 1000:.1f}"
+        decimals = int(widget.style.get("decimals", 2)) if widget else 2
+        if hud_value.distance_m < 1000:
+            return f"{hud_value.distance_m:.0f}"
+        return f"{hud_value.distance_m / 1000:.{decimals}f}"
     if binding == "heart_rate_bpm":
         return "--" if hud_value.heart_rate_bpm is None else str(hud_value.heart_rate_bpm)
     raise AssertionError(f"unsupported stat_block binding '{binding}'")
