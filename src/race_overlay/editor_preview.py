@@ -887,6 +887,65 @@ def save_video_rotation_payload(
     }
 
 
+def _contains_glob_marker(value: str) -> bool:
+    return any(marker in value for marker in "*?[")
+
+
+def remove_video_from_project(
+    config_path: Path,
+    video_identifier: str,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise TypeError("remove payload must be a JSON object")
+    unexpected = set(payload) - {"revision"}
+    if unexpected:
+        raise ValueError(
+            f"remove payload contains unsupported fields: {', '.join(sorted(unexpected))}"
+        )
+    expected_revision = payload.get("revision")
+    if not isinstance(expected_revision, str) or not expected_revision:
+        raise ValueError("revision must be a non-empty string")
+
+    with _EDITOR_SAVE_LOCK:
+        with _locked_config_save(config_path):
+            latest_config = load_editor_config(config_path)
+            if _project_revision(config_path) != expected_revision:
+                raise StaleProjectSaveError(
+                    "stale project save rejected; reload the editor state and try again"
+                )
+            videos = project_video_map(config_path, latest_config.video_globs)
+            video_path = videos.get(video_identifier)
+            if video_path is None:
+                raise FileNotFoundError("video not found")
+
+            target_path = video_path.resolve()
+            remaining_globs: list[str] = []
+            removed = False
+            for entry in latest_config.video_globs:
+                if _contains_glob_marker(entry):
+                    remaining_globs.append(entry)
+                    continue
+                try:
+                    entry_path = resolve_path_from_config(config_path, entry).resolve()
+                except OSError:
+                    remaining_globs.append(entry)
+                    continue
+                if entry_path == target_path:
+                    removed = True
+                    continue
+                remaining_globs.append(entry)
+
+            if not removed:
+                raise ValueError("cannot remove video without a direct video_globs entry")
+
+            latest_config.video_globs = remaining_globs
+            latest_config.overrides.pop(video_override_key(config_path, video_path), None)
+            latest_config.overrides.pop(video_path.name, None)
+            save_config(config_path, latest_config)
+            return {"revision": _project_revision(config_path)}
+
+
 def render_preview_png(config: ProjectConfig, width: int, height: int) -> bytes:
     _validate_preview_dimensions(width, height)
     lap_states = _sample_lap_waterfall_states(config.hud)

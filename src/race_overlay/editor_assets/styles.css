@@ -487,6 +487,7 @@ button:disabled {
 }
 
 .video-preview-card {
+  position: relative;
   min-width: 0;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -495,7 +496,7 @@ button:disabled {
 }
 
 .video-preview-card__title {
-  margin: 0 0 8px;
+  margin: 0 28px 8px 0;
   overflow: hidden;
   font-size: 0.84rem;
   text-overflow: ellipsis;
@@ -541,6 +542,29 @@ button:disabled {
   background: rgba(99, 214, 255, 0.14);
   color: var(--text);
   font-weight: 700;
+}
+
+.video-preview-card__remove {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(7, 10, 20, 0.72);
+  color: rgba(244, 247, 251, 0.78);
+  font-size: 1rem;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+}
+
+.video-preview-card__remove:hover:not(:disabled) {
+  background: rgba(255, 101, 128, 0.22);
+  color: #ffd7dd;
 }
 
 .video-preview-card__angle {

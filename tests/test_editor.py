@@ -17,17 +17,20 @@ from race_overlay.config import ProjectConfig, load_config, save_config
 from race_overlay.editor_preview import (
     build_editor_state,
     load_editor_config,
+    remove_video_from_project,
     render_preview_payload,
     save_editor_preset_payload,
     save_editor_project_payload,
     save_editor_payload,
     select_editor_preset,
+    StaleProjectSaveError,
 )
 from race_overlay.editor_render import EditorRenderJobManager, RenderJobCanceledError
 from race_overlay.editor_server import (
     NativePickerUnavailableError,
     _ACTIVE_SERVERS,
     _ACTIVE_THREADS,
+    _build_handler,
     launch_editor,
 )
 from race_overlay.hud_presets import broadcast_runner_preset
@@ -39,6 +42,7 @@ from race_overlay.hud_schema import (
     HudWidgetConfig,
     serialize_hud_config,
 )
+from race_overlay.video_library import video_id
 
 
 def test_build_editor_state_exposes_widgets_for_preview() -> None:
@@ -3760,6 +3764,13 @@ def test_editor_shell_uses_canvas_first_layout_copy() -> None:
     assert 'id="video-preview-grid"' in html
     assert "function renderVideoPreviewGrid()" in app_js
     assert "async function saveVideoRotation(" in app_js
+    assert "async function removeVideoFromProject(" in app_js
+    assert "Remove this video from the project list? The source file will not be deleted." not in app_js
+    assert "/api/videos/${videoId}/remove" in app_js
+    assert 'removeButton.textContent = "×"' in app_js
+    assert 'removeButton.setAttribute("aria-label", "Remove video from project")' in app_js
+    assert ".video-preview-card__remove" in css
+    assert "position: absolute;" in css
     assert "grid-template-columns: repeat(auto-fit" in css
     assert "overflow-y: auto;" in css
 
@@ -3794,6 +3805,130 @@ def test_editor_state_exposes_discovered_videos_and_project_revision(tmp_path: P
     assert state["project"]["videos"][0]["user_rotation_degrees"] == 90
     assert state["project"]["videos"][0]["media_url"].startswith("/api/videos/")
     assert state["project"]["videos"][0]["id"] != state["project"]["videos"][1]["id"]
+
+
+def test_editor_state_keeps_direct_video_entries_exact_when_duplicate_names_exist(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    archive_dir = video_dir / "archive"
+    archive_dir.mkdir(parents=True)
+    (video_dir / "clip-a.MP4").write_bytes(b"configured-video")
+    (archive_dir / "clip-a.MP4").write_bytes(b"duplicate-name-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity.tcx",
+            video_globs=["videos/clip-a.MP4"],
+        ),
+    )
+
+    state = build_editor_state(
+        load_config(config_path),
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+
+    assert [video["display_path"] for video in state["project"]["videos"]] == [
+        "videos/clip-a.MP4",
+    ]
+
+
+def test_remove_video_from_project_removes_direct_glob_entry_and_overrides(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clip-a.MP4").write_bytes(b"first-video")
+    (video_dir / "clip-b.mov").write_bytes(b"second-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity.tcx",
+            video_globs=["videos/clip-a.MP4", "videos/clip-b.mov"],
+            overrides={
+                "videos/clip-a.MP4": {"rotation_degrees": 90},
+                "clip-a.MP4": {"offset_seconds": 1.25},
+                "videos/clip-b.mov": {"rotation_degrees": 180},
+            },
+        ),
+    )
+    state = build_editor_state(
+        load_config(config_path),
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+
+    result = remove_video_from_project(
+        config_path,
+        state["project"]["videos"][0]["id"],
+        {"revision": state["project"]["revision"]},
+    )
+
+    updated = load_config(config_path)
+    assert result["revision"]
+    assert updated.video_globs == ["videos/clip-b.mov"]
+    assert updated.overrides == {"videos/clip-b.mov": {"rotation_degrees": 180}}
+    assert (video_dir / "clip-a.MP4").exists()
+    refreshed = build_editor_state(
+        updated,
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+    assert [video["name"] for video in refreshed["project"]["videos"]] == ["clip-b.mov"]
+
+
+def test_remove_video_from_project_rejects_glob_only_match(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clip-a.MP4").write_bytes(b"first-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(activity_file="activity.tcx", video_globs=["videos/*.MP4"]),
+    )
+    state = build_editor_state(
+        load_config(config_path),
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+
+    with pytest.raises(ValueError, match="direct video_globs entry"):
+        remove_video_from_project(
+            config_path,
+            state["project"]["videos"][0]["id"],
+            {"revision": state["project"]["revision"]},
+        )
+
+    assert load_config(config_path).video_globs == ["videos/*.MP4"]
+
+
+def test_remove_video_from_project_rejects_stale_revision(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clip-a.MP4").write_bytes(b"first-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(activity_file="activity.tcx", video_globs=["videos/clip-a.MP4"]),
+    )
+    state = build_editor_state(
+        load_config(config_path),
+        width=1280,
+        height=720,
+        config_path=config_path,
+    )
+
+    with pytest.raises(StaleProjectSaveError):
+        remove_video_from_project(
+            config_path,
+            state["project"]["videos"][0]["id"],
+            {"revision": "stale"},
+        )
+
+    assert load_config(config_path).video_globs == ["videos/clip-a.MP4"]
 
 
 def test_api_rotation_put_is_idempotent_and_rejects_stale_revision(tmp_path: Path) -> None:
@@ -3859,6 +3994,69 @@ def test_api_rotation_put_is_idempotent_and_rejects_stale_revision(tmp_path: Pat
     }
 
 
+def test_api_video_remove_put_updates_project_and_rejects_stale_revision(tmp_path: Path) -> None:
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clip-a.MP4").write_bytes(b"first-video")
+    (video_dir / "clip-b.mov").write_bytes(b"second-video")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(
+            activity_file="activity.tcx",
+            video_globs=["videos/clip-a.MP4", "videos/clip-b.mov"],
+            overrides={"videos/clip-a.MP4": {"rotation_degrees": 90}},
+        ),
+    )
+
+    with running_editor(config_path) as base_url:
+        parts = urlparse(base_url)
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request("GET", "/api/state")
+        response = connection.getresponse()
+        state = json.loads(response.read().decode("utf-8"))
+        connection.close()
+        video_state = state["project"]["videos"][0]
+
+        payload = json.dumps({"revision": state["project"]["revision"]})
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request(
+            "PUT",
+            f"/api/videos/{video_state['id']}/remove",
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        remove_response = connection.getresponse()
+        removed = json.loads(remove_response.read().decode("utf-8"))
+        connection.close()
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request(
+            "PUT",
+            f"/api/videos/{video_state['id']}/remove",
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        stale_response = connection.getresponse()
+        stale_body = json.loads(stale_response.read().decode("utf-8"))
+        connection.close()
+
+        connection = HTTPConnection(parts.hostname, parts.port)
+        connection.request("GET", "/api/state")
+        state_response = connection.getresponse()
+        refreshed = json.loads(state_response.read().decode("utf-8"))
+        connection.close()
+
+    assert remove_response.status == 200
+    assert removed["revision"]
+    assert stale_response.status == 409
+    assert stale_body["project"]["revision"] == removed["revision"]
+    assert [video["name"] for video in refreshed["project"]["videos"]] == ["clip-b.mov"]
+    assert load_config(config_path).video_globs == ["videos/clip-b.mov"]
+    assert load_config(config_path).overrides == {}
+    assert (video_dir / "clip-a.MP4").exists()
+
+
 def test_api_video_supports_get_head_and_single_byte_ranges(tmp_path: Path) -> None:
     video = tmp_path / "clip.MP4"
     video.write_bytes(b"0123456789")
@@ -3905,3 +4103,34 @@ def test_api_video_supports_get_head_and_single_byte_ranges(tmp_path: Path) -> N
     assert head[1]["Content-Length"] == "10"
     assert head[2] == b""
     assert multiple[0] == 416
+
+
+def test_api_video_streaming_ignores_client_disconnect(tmp_path: Path) -> None:
+    video = tmp_path / "clip.MP4"
+    video.write_bytes(b"0123456789")
+    config_path = tmp_path / "overlay.yaml"
+    save_config(
+        config_path,
+        ProjectConfig(activity_file="activity.tcx", video_globs=["clip.MP4"]),
+    )
+    handler_class = _build_handler(config_path, width=1280, height=720)
+    handler = handler_class.__new__(handler_class)
+    responses: list[int] = []
+
+    class DisconnectingWriter:
+        def write(self, _chunk: bytes) -> None:
+            raise BrokenPipeError("client closed connection")
+
+    handler.headers = {}
+    handler.wfile = DisconnectingWriter()
+    handler.send_response = responses.append
+    handler.send_header = lambda *_args: None
+    handler.end_headers = lambda: None
+
+    handled = handler._serve_project_video(
+        f"/api/videos/{video_id(video)}",
+        head_only=False,
+    )
+
+    assert handled is True
+    assert responses == [200]

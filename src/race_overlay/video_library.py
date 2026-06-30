@@ -32,17 +32,18 @@ def discover_video_paths(patterns: list[str]) -> list[Path]:
     for pattern in patterns:
         root = _static_root(pattern)
         candidates = {Path(match) for match in glob(pattern)}
-        dirpart, name_pattern = os.path.split(pattern)
-        if not any(marker in dirpart for marker in "*?["):
-            base = Path(dirpart or ".")
-            if base.exists():
-                lowered = name_pattern.lower()
-                candidates.update(
-                    candidate
-                    for candidate in base.rglob("*")
-                    if candidate.is_file()
-                    and fnmatch.fnmatch(candidate.name.lower(), lowered)
-                )
+        if any(marker in pattern for marker in "*?["):
+            dirpart, name_pattern = os.path.split(pattern)
+            if not any(marker in dirpart for marker in "*?["):
+                base = Path(dirpart or ".")
+                if base.exists():
+                    lowered = name_pattern.lower()
+                    candidates.update(
+                        candidate
+                        for candidate in base.rglob("*")
+                        if candidate.is_file()
+                        and fnmatch.fnmatch(candidate.name.lower(), lowered)
+                    )
         for candidate in candidates:
             try:
                 resolved = candidate.resolve(strict=True)

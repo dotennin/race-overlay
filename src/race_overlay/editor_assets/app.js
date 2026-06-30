@@ -87,6 +87,7 @@ let renderPreviewOpen = false;
 let videoPreviewOpen = false;
 const videoRotationRequests = new Map();
 const pendingVideoRotations = new Set();
+const pendingVideoRemovals = new Set();
 let renderPreviewVersion = 0;
 let renderPreviewObjectUrl = "";
 let renderPreviewLastFetchAt = 0;
@@ -1311,6 +1312,31 @@ async function saveVideoRotation(videoId, rotationDegrees, requestSequence) {
   return true;
 }
 
+async function removeVideoFromProject(videoId) {
+  const project = savedState?.project;
+  if (!project?.revision) {
+    throw new Error("Project state is unavailable");
+  }
+  const response = await fetch(`/api/videos/${videoId}/remove`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: project.revision }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (response.status === 409 && payload.project) {
+    savedState.project = payload.project;
+    renderProjectControls();
+    renderVideoPreviewGrid();
+    throw new Error(payload.error ?? "Video removal conflicted with newer project save");
+  }
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed remove video");
+  }
+  project.revision = payload.revision;
+  await loadState();
+  renderVideoPreviewGrid();
+}
+
 function renderVideoPreviewGrid() {
   if (!elements.videoPreviewGrid || !elements.videoPreviewSummary) {
     return;
@@ -1373,6 +1399,13 @@ function renderVideoPreviewGrid() {
     const angle = document.createElement("span");
     angle.className = "video-preview-card__angle";
     angle.textContent = `${Number(item.user_rotation_degrees) || 0}°`;
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "video-preview-card__remove";
+    removeButton.textContent = "×";
+    removeButton.setAttribute("aria-label", "Remove video from project");
+    removeButton.title = "Remove video from project";
+    removeButton.disabled = pendingVideoRemovals.has(item.id);
     rotateButton.addEventListener("click", async () => {
       const previous = Number(item.user_rotation_degrees) || 0;
       const next = (previous + 90) % 360;
@@ -1399,8 +1432,21 @@ function renderVideoPreviewGrid() {
         }
       }
     });
+    removeButton.addEventListener("click", async () => {
+      pendingVideoRemovals.add(item.id);
+      renderVideoPreviewGrid();
+      try {
+        await removeVideoFromProject(item.id);
+        setStatusMessage("Removed video from project.", "info");
+      } catch (error) {
+        setStatusMessage(readErrorMessage(error, "Failed remove video"));
+      } finally {
+        pendingVideoRemovals.delete(item.id);
+        renderVideoPreviewGrid();
+      }
+    });
     actions.append(rotateButton, angle);
-    card.append(title, viewport, actions);
+    card.append(removeButton, title, viewport, actions);
     elements.videoPreviewGrid.appendChild(card);
   });
 }

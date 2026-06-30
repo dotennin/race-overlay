@@ -17,6 +17,7 @@ from race_overlay.editor_preview import (
     load_editor_config,
     render_preview_payload,
     render_preview_png,
+    remove_video_from_project,
     save_editor_preset_payload,
     save_editor_project_payload,
     save_video_rotation_payload,
@@ -183,7 +184,10 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                         chunk = source.read(min(64 * 1024, remaining))
                         if not chunk:
                             break
-                        self.wfile.write(chunk)
+                        try:
+                            self.wfile.write(chunk)
+                        except (BrokenPipeError, ConnectionResetError):
+                            break
                         remaining -= len(chunk)
             return True
 
@@ -265,8 +269,19 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
         def do_PUT(self) -> None:
             request_path = urlparse(self.path).path
             prefix = "/api/videos/"
-            suffix = "/rotation"
-            if not request_path.startswith(prefix) or not request_path.endswith(suffix):
+            handlers = {
+                "/rotation": save_video_rotation_payload,
+                "/remove": remove_video_from_project,
+            }
+            suffix = next(
+                (
+                    candidate
+                    for candidate in handlers
+                    if request_path.startswith(prefix) and request_path.endswith(candidate)
+                ),
+                None,
+            )
+            if suffix is None:
                 self.send_response(404)
                 self.end_headers()
                 return
@@ -291,7 +306,7 @@ def _build_handler(config_path: Path, width: int, height: int) -> type[BaseHTTPR
                 self._write_json(400, {"error": "invalid JSON payload"})
                 return
             try:
-                result = save_video_rotation_payload(
+                result = handlers[suffix](
                     config_path,
                     video_identifier,
                     payload,
