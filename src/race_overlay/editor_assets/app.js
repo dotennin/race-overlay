@@ -1267,6 +1267,12 @@ function sizeRotatedVideo(viewport, video, degrees) {
   video.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
 }
 
+function formatDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 function getVideoPreviewRotationSnapshot(item) {
   return {
     user_rotation_degrees: item.user_rotation_degrees,
@@ -1303,11 +1309,6 @@ function updateVideoPreviewCardRotation(card, item) {
   const video = card.querySelector("video");
   const rotateButton = card.querySelector(".video-preview-card__rotate");
   const angle = card.querySelector(".video-preview-card__angle");
-  const width = Number(item.display_width) || 16;
-  const height = Number(item.display_height) || 9;
-  if (viewport) {
-    viewport.style.aspectRatio = `${width} / ${height}`;
-  }
   if (video && viewport) {
     sizeRotatedVideo(viewport, video, Number(item.user_rotation_degrees) || 0);
   }
@@ -1403,9 +1404,7 @@ function renderVideoPreviewGrid() {
     title.title = item.display_path || item.name;
     const viewport = document.createElement("div");
     viewport.className = "video-preview-card__viewport";
-    const width = Number(item.display_width) || 16;
-    const height = Number(item.display_height) || 9;
-    viewport.style.aspectRatio = `${width} / ${height}`;
+    let controls = null;
     if (item.error) {
       const error = document.createElement("div");
       error.className = "video-preview-card__error";
@@ -1417,7 +1416,7 @@ function renderVideoPreviewGrid() {
       video.src = item.media_url;
       video.preload = "metadata";
       video.playsInline = true;
-      video.controls = true;
+      video.controls = false;
       const applySize = () => sizeRotatedVideo(
         viewport,
         video,
@@ -1430,6 +1429,42 @@ function renderVideoPreviewGrid() {
         const observer = new ResizeObserver(applySize);
         observer.observe(viewport);
       }
+      controls = document.createElement("div");
+      controls.className = "video-preview-card__controls";
+      const playBtn = document.createElement("button");
+      playBtn.type = "button";
+      playBtn.className = "video-preview-card__play-btn";
+      playBtn.textContent = "▶";
+      playBtn.addEventListener("click", () => {
+        if (video.paused) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      });
+      video.addEventListener("play", () => { playBtn.textContent = "⏸"; });
+      video.addEventListener("pause", () => { playBtn.textContent = "▶"; });
+      const seekBar = document.createElement("input");
+      seekBar.type = "range";
+      seekBar.className = "video-preview-card__seek";
+      seekBar.min = "0";
+      seekBar.max = "1000";
+      seekBar.value = "0";
+      seekBar.addEventListener("input", () => {
+        if (video.duration) {
+          video.currentTime = (Number(seekBar.value) / 1000) * video.duration;
+        }
+      });
+      const timeEl = document.createElement("span");
+      timeEl.className = "video-preview-card__time";
+      timeEl.textContent = "0:00 / 0:00";
+      video.addEventListener("timeupdate", () => {
+        if (video.duration) {
+          seekBar.value = String((video.currentTime / video.duration) * 1000);
+          timeEl.textContent = `${formatDuration(video.currentTime)} / ${formatDuration(video.duration)}`;
+        }
+      });
+      controls.append(playBtn, seekBar, timeEl);
     }
     const actions = document.createElement("div");
     actions.className = "video-preview-card__actions";
@@ -1488,7 +1523,11 @@ function renderVideoPreviewGrid() {
       }
     });
     actions.append(rotateButton, angle);
-    card.append(removeButton, title, viewport, actions);
+    card.append(removeButton, title, viewport);
+    if (controls) {
+      card.append(controls);
+    }
+    card.append(actions);
     elements.videoPreviewGrid.appendChild(card);
   });
 }
