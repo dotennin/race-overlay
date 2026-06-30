@@ -67,3 +67,5 @@ uv run race-overlay benchmark-render --config-path overlay.yaml --num-frames 50 
 
 - `cache/`: normalized samples, frame sequences, overlay clips, render reports
 - `rendered/`: final burned-in videos
+
+## CI test trigger
