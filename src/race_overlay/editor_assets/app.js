@@ -1266,6 +1266,42 @@ function sizeRotatedVideo(viewport, video, degrees) {
   video.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
 }
 
+function applyVideoPreviewRotation(item, rotationDegrees) {
+  item.user_rotation_degrees = rotationDegrees;
+  item.effective_rotation_degrees = (
+    Number(item.source_rotation_degrees || 0) + rotationDegrees
+  ) % 360;
+  const encodedWidth = Number(item.encoded_width || item.display_width);
+  const encodedHeight = Number(item.encoded_height || item.display_height);
+  if (encodedWidth && encodedHeight) {
+    const sideways = item.effective_rotation_degrees === 90
+      || item.effective_rotation_degrees === 270;
+    item.display_width = sideways ? encodedHeight : encodedWidth;
+    item.display_height = sideways ? encodedWidth : encodedHeight;
+  }
+}
+
+function updateVideoPreviewCardRotation(card, item) {
+  const viewport = card.querySelector(".video-preview-card__viewport");
+  const video = card.querySelector("video");
+  const rotateButton = card.querySelector("button");
+  const angle = card.querySelector(".video-preview-card__angle");
+  const width = Number(item.display_width) || 16;
+  const height = Number(item.display_height) || 9;
+  if (viewport) {
+    viewport.style.aspectRatio = `${width} / ${height}`;
+  }
+  if (video && viewport) {
+    sizeRotatedVideo(viewport, video, Number(item.user_rotation_degrees) || 0);
+  }
+  if (rotateButton) {
+    rotateButton.disabled = pendingVideoRotations.has(item.id);
+  }
+  if (angle) {
+    angle.textContent = `${Number(item.user_rotation_degrees) || 0}°`;
+  }
+}
+
 async function saveVideoRotation(videoId, rotationDegrees, requestSequence) {
   const project = savedState?.project;
   if (!project?.revision) {
@@ -1294,18 +1330,7 @@ async function saveVideoRotation(videoId, rotationDegrees, requestSequence) {
   }
   const video = project.videos?.find((item) => item.id === videoId);
   if (video) {
-    video.user_rotation_degrees = payload.rotation_degrees;
-    video.effective_rotation_degrees = (
-      Number(video.source_rotation_degrees || 0) + payload.rotation_degrees
-    ) % 360;
-    const encodedWidth = Number(video.encoded_width || video.display_width);
-    const encodedHeight = Number(video.encoded_height || video.display_height);
-    if (encodedWidth && encodedHeight) {
-      const sideways = video.effective_rotation_degrees === 90
-        || video.effective_rotation_degrees === 270;
-      video.display_width = sideways ? encodedHeight : encodedWidth;
-      video.display_height = sideways ? encodedWidth : encodedHeight;
-    }
+    applyVideoPreviewRotation(video, payload.rotation_degrees);
   }
   project.revision = payload.revision;
   return true;
@@ -1379,23 +1404,23 @@ function renderVideoPreviewGrid() {
       const sequence = (videoRotationRequests.get(item.id) || 0) + 1;
       videoRotationRequests.set(item.id, sequence);
       pendingVideoRotations.add(item.id);
-      item.user_rotation_degrees = next;
-      renderVideoPreviewGrid();
+      applyVideoPreviewRotation(item, next);
+      updateVideoPreviewCardRotation(card, item);
       try {
         await saveVideoRotation(item.id, next, sequence);
         if (sequence === videoRotationRequests.get(item.id)) {
-          renderVideoPreviewGrid();
+          updateVideoPreviewCardRotation(card, item);
         }
       } catch (error) {
         if (sequence === videoRotationRequests.get(item.id)) {
-          item.user_rotation_degrees = previous;
-          renderVideoPreviewGrid();
+          applyVideoPreviewRotation(item, previous);
+          updateVideoPreviewCardRotation(card, item);
           setStatusMessage(readErrorMessage(error, "Failed save video rotation"));
         }
       } finally {
         if (sequence === videoRotationRequests.get(item.id)) {
           pendingVideoRotations.delete(item.id);
-          renderVideoPreviewGrid();
+          updateVideoPreviewCardRotation(card, item);
         }
       }
     });
