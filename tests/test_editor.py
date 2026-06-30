@@ -3771,8 +3771,20 @@ def test_editor_shell_uses_canvas_first_layout_copy() -> None:
     assert 'removeButton.setAttribute("aria-label", "Remove video from project")' in app_js
     assert ".video-preview-card__remove" in css
     assert "position: absolute;" in css
-    assert "grid-template-columns: repeat(auto-fit" in css
+    assert "--video-preview-card-width: 214px;" in css
+    assert "--video-preview-card-height: 280px;" in css
+    assert "grid-template-columns: repeat(auto-fill, var(--video-preview-card-width));" in css
     assert "overflow-y: auto;" in css
+    assert "height: var(--video-preview-card-height);" in css
+    assert "aspect-ratio: 4 / 3;" in css
+    assert "function getVideoPreviewFrameDimensions(" not in app_js
+    assert "viewport.style.aspectRatio" not in app_js.split("function renderVideoPreviewGrid()", 1)[1].split("function renderPresetControls()", 1)[0]
+    assert "function formatDuration(" in app_js
+    assert "video.controls = false" in app_js
+    assert ".video-preview-card__controls" in css
+    assert ".video-preview-card__play-btn" in css
+    assert ".video-preview-card__seek" in css
+    assert ".video-preview-card__time" in css
 
 
 def test_editor_state_exposes_discovered_videos_and_project_revision(tmp_path: Path) -> None:
