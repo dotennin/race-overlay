@@ -1266,13 +1266,29 @@ function sizeRotatedVideo(viewport, video, degrees) {
   video.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
 }
 
+function getVideoPreviewRotationSnapshot(item) {
+  return {
+    user_rotation_degrees: item.user_rotation_degrees,
+    effective_rotation_degrees: item.effective_rotation_degrees,
+    display_width: item.display_width,
+    display_height: item.display_height,
+  };
+}
+
+function restoreVideoPreviewRotationSnapshot(item, snapshot) {
+  item.user_rotation_degrees = snapshot.user_rotation_degrees;
+  item.effective_rotation_degrees = snapshot.effective_rotation_degrees;
+  item.display_width = snapshot.display_width;
+  item.display_height = snapshot.display_height;
+}
+
 function applyVideoPreviewRotation(item, rotationDegrees) {
   item.user_rotation_degrees = rotationDegrees;
   item.effective_rotation_degrees = (
     Number(item.source_rotation_degrees || 0) + rotationDegrees
   ) % 360;
-  const encodedWidth = Number(item.encoded_width || item.display_width);
-  const encodedHeight = Number(item.encoded_height || item.display_height);
+  const encodedWidth = Number(item.encoded_width);
+  const encodedHeight = Number(item.encoded_height);
   if (encodedWidth && encodedHeight) {
     const sideways = item.effective_rotation_degrees === 90
       || item.effective_rotation_degrees === 270;
@@ -1284,7 +1300,7 @@ function applyVideoPreviewRotation(item, rotationDegrees) {
 function updateVideoPreviewCardRotation(card, item) {
   const viewport = card.querySelector(".video-preview-card__viewport");
   const video = card.querySelector("video");
-  const rotateButton = card.querySelector("button");
+  const rotateButton = card.querySelector(".video-preview-card__rotate");
   const angle = card.querySelector(".video-preview-card__angle");
   const width = Number(item.display_width) || 16;
   const height = Number(item.display_height) || 9;
@@ -1393,14 +1409,15 @@ function renderVideoPreviewGrid() {
     actions.className = "video-preview-card__actions";
     const rotateButton = document.createElement("button");
     rotateButton.type = "button";
+    rotateButton.className = "video-preview-card__rotate";
     rotateButton.textContent = "↻ Rotate 90°";
     rotateButton.disabled = pendingVideoRotations.has(item.id);
     const angle = document.createElement("span");
     angle.className = "video-preview-card__angle";
     angle.textContent = `${Number(item.user_rotation_degrees) || 0}°`;
     rotateButton.addEventListener("click", async () => {
-      const previous = Number(item.user_rotation_degrees) || 0;
-      const next = (previous + 90) % 360;
+      const previous = getVideoPreviewRotationSnapshot(item);
+      const next = ((Number(item.user_rotation_degrees) || 0) + 90) % 360;
       const sequence = (videoRotationRequests.get(item.id) || 0) + 1;
       videoRotationRequests.set(item.id, sequence);
       pendingVideoRotations.add(item.id);
@@ -1413,7 +1430,7 @@ function renderVideoPreviewGrid() {
         }
       } catch (error) {
         if (sequence === videoRotationRequests.get(item.id)) {
-          applyVideoPreviewRotation(item, previous);
+          restoreVideoPreviewRotationSnapshot(item, previous);
           updateVideoPreviewCardRotation(card, item);
           setStatusMessage(readErrorMessage(error, "Failed save video rotation"));
         }
