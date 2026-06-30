@@ -1,9 +1,6 @@
 activity_file: /Users/dotennin-mac14/Downloads/pending/activity_23394312896.tcx
 video_globs:
 - /Users/dotennin-mac14/Downloads/pending/DJI_20260627181037_0120_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260627181339_0121_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260627181703_0122_D.MP4
-- /Users/dotennin-mac14/Downloads/pending/DJI_20260627181922_0123_D.MP4
 - /Users/dotennin-mac14/Downloads/pending/DJI_20260627182146_0124_D.MP4
 - /Users/dotennin-mac14/Downloads/pending/DJI_20260627182409_0126_D.MP4
 - /Users/dotennin-mac14/Downloads/pending/DJI_20260627182517_0127_D.MP4
@@ -743,6 +740,10 @@ overrides:
   /Users/dotennin-mac14/Downloads/pending/DJI_20260627182517_0127_D.MP4:
     rotation_degrees: 270
   /Users/dotennin-mac14/Downloads/pending/DJI_20260627182802_0129_D.MP4:
-    rotation_degrees: 90
+    rotation_degrees: 270
   /Users/dotennin-mac14/Downloads/pending/DJI_20260627182923_0130_D.MP4:
-    rotation_degrees: 180
+    rotation_degrees: 0
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260627182704_0128_D.MP4:
+    rotation_degrees: 0
+  /Users/dotennin-mac14/Downloads/pending/DJI_20260627183027_0131_D.MP4:
+    rotation_degrees: 270
