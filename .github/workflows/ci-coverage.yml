@@ -106,6 +106,7 @@ jobs:
           git add coverage.svg
           if git diff --cached --quiet -- coverage.svg; then
             echo "No coverage badge changes to commit."
+            git push origin docs
             exit 0
           fi
           git commit -m "chore: update coverage badge"
