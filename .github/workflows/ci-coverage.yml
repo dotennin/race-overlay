@@ -84,13 +84,17 @@ jobs:
       - name: Ensure docs branch exists
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          if [ ! -d docs-branch/.git ]; then
-            mkdir -p docs-branch
-            cd docs-branch
+          mkdir -p docs-branch
+          cd docs-branch
+          if [ ! -d .git ]; then
             git init
-            git checkout -b docs
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          else
             git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
           fi
+          git checkout -B docs
 
       - name: Update coverage badge on docs branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -102,6 +106,7 @@ jobs:
           git add coverage.svg
           if git diff --cached --quiet -- coverage.svg 2>/dev/null; then
             echo "No coverage badge changes to commit."
+            git push origin docs
             exit 0
           fi
           git commit -m "chore: update coverage badge"
